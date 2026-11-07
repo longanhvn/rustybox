@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [v1.3-86] - 2026-11-07
+### Added & Improved (Native OS Drag-and-Drop to SFTP Upload)
+- **Kéo thả File & Folder từ Windows Explorer vào SFTP (`Drag & Drop Upload`)**:
+  - Bật cờ `ViewportBuilder::with_drag_and_drop(true)` để lắng nghe sự kiện kéo thả tệp tin hệ điều hành trên Windows/Linux.
+  - Tự động chuyển sang tab SFTP nếu người dùng đang ở tab Sessions mà kéo tệp lướt qua thanh Sidebar khi đang kết nối VPS.
+  - Hiển thị khung viền sáng xanh neon kèm Overlay trực quan (`📥 Drop N item(s) to Upload` + đường dẫn thư mục đích) khi kéo tệp vào bảng SFTP.
+  - Tự động phân loại File lẻ và Thư mục đệ quy (`handle_dropped_paths`), hỗ trợ hàng đợi xử lý xung đột nhiều tệp trùng tên liên tiếp (`pending_conflicts`) và mở rộng chiều cao khung danh sách SFTP sát đáy sidebar.
+
+---
+
 ## [v1.3-85] - 2026-11-06
 ### Fixed (Windows Process Cleanup & Console Window Suppression)
 - **Triệt tiêu hiện tượng nháy cửa sổ dòng lệnh đen khi tắt tab / thoát ứng dụng**:

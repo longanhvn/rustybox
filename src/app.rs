@@ -2135,7 +2135,7 @@ impl eframe::App for RustyBoxApp {
                         .inner_margin(egui::Margin::symmetric(5.0, 1.5))
                         .show(ui, |ui| {
                             ui.label(
-                                RichText::new("v1.3-85")
+                                RichText::new("v1.3-86")
                                     .color(Color32::from_rgb(147, 197, 253))
                                     .size(10.5)
                                     .strong(),
@@ -2860,6 +2860,17 @@ impl eframe::App for RustyBoxApp {
 
         // 5. LEFT SIDEBAR (Sessions Tree & SFTP Explorer)
         if self.show_sftp_sidebar {
+            // Auto-switch to SFTP tab if user drags external files over the sidebar while SFTP is connected
+            if self.sidebar_tab == 0 && self.explorer.is_remote {
+                let is_dragging_files = ctx.input(|i| !i.raw.hovered_files.is_empty());
+                if is_dragging_files {
+                    if let Some(pos) = ctx.input(|i| i.pointer.hover_pos()) {
+                        if pos.x <= 320.0 {
+                            self.sidebar_tab = 1;
+                        }
+                    }
+                }
+            }
             let max_sidebar_w = (ctx.screen_rect().width() * 0.50).max(280.0);
             ctx.style_mut(|s| {
                 s.interaction.resize_grab_radius_side = 8.0;

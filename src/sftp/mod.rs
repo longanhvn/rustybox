@@ -166,6 +166,7 @@ pub struct FileExplorer {
     // Transfer progress & Conflict resolution
     pub transfer_progress: Option<TransferProgressInfo>,
     pub pending_conflict: Option<ConflictItem>,
+    pub pending_conflicts: Vec<ConflictItem>,
 }
 
 impl FileExplorer {
@@ -232,6 +233,7 @@ impl FileExplorer {
             diff_content_b: String::new(),
             transfer_progress: None,
             pending_conflict: None,
+            pending_conflicts: Vec::new(),
         };
         explorer.refresh();
         explorer
@@ -1088,16 +1090,36 @@ impl FileExplorer {
             || self.remote_raw_entries.iter().any(|e| e.name == name_str && !e.is_dir);
 
         if exists_remote {
-            self.pending_conflict = Some(ConflictItem {
+            let item = ConflictItem {
                 is_upload: true,
                 src_path: local_path,
                 dest_path: remote_path_buf,
                 file_name: name_str,
-            });
+            };
+            if self.pending_conflict.is_none() {
+                self.pending_conflict = Some(item);
+            } else {
+                self.pending_conflicts.push(item);
+            }
             return;
         }
 
-        self.execute_upload(local_path, remote_p);
+        if self.is_remote {
+            self.execute_upload(local_path, remote_p);
+        } else {
+            let dest = self.current_path.join(file_name);
+            if local_path != dest {
+                match fs::copy(&local_path, &dest) {
+                    Ok(_) => {
+                        self.status_message = Some(format!("Copied '{}'", name_str));
+                        self.refresh();
+                    }
+                    Err(e) => {
+                        self.error_message = Some(format!("Copy failed: {}", e));
+                    }
+                }
+            }
+        }
     }
 
     pub fn upload_folder(&mut self, local_path: PathBuf) {
@@ -1111,7 +1133,44 @@ impl FileExplorer {
         } else {
             format!("{}/{}", curr, name_str)
         };
-        self.execute_upload(local_path, remote_p);
+        if self.is_remote {
+            self.execute_upload(local_path, remote_p);
+        } else {
+            let dest = self.current_path.join(folder_name);
+            if local_path != dest {
+                if let Err(e) = copy_dir_local_recursive(&local_path, &dest) {
+                    self.error_message = Some(format!("Copy folder failed: {}", e));
+                } else {
+                    self.status_message = Some(format!("Copied folder '{}'", name_str));
+                    self.refresh();
+                }
+            }
+        }
+    }
+
+    pub fn handle_dropped_paths(&mut self, paths: Vec<PathBuf>) {
+        if paths.is_empty() {
+            return;
+        }
+        let mut file_count = 0usize;
+        let mut dir_count = 0usize;
+        for path in paths {
+            if path.is_dir() {
+                dir_count += 1;
+                self.upload_folder(path);
+            } else if path.is_file() || path.exists() {
+                file_count += 1;
+                self.upload_file(path);
+            }
+        }
+        if self.is_remote && (file_count > 0 || dir_count > 0) {
+            let summary = match (file_count, dir_count) {
+                (f, 0) => format!("Uploading {} dropped file(s)...", f),
+                (0, d) => format!("Uploading {} dropped folder(s)...", d),
+                (f, d) => format!("Uploading {} file(s) & {} folder(s)...", f, d),
+            };
+            self.status_message = Some(summary);
+        }
     }
 
     pub fn execute_upload(&mut self, local_path: PathBuf, remote_p: String) {
@@ -1159,6 +1218,9 @@ impl FileExplorer {
                 self.execute_download(&conflict.src_path, conflict.dest_path);
             }
         }
+        if !self.pending_conflicts.is_empty() {
+            self.pending_conflict = Some(self.pending_conflicts.remove(0));
+        }
     }
 
     pub fn resolve_conflict_rename(&mut self) {
@@ -1199,10 +1261,16 @@ impl FileExplorer {
                 counter += 1;
             }
         }
+        if !self.pending_conflicts.is_empty() {
+            self.pending_conflict = Some(self.pending_conflicts.remove(0));
+        }
     }
 
     pub fn resolve_conflict_skip(&mut self) {
         self.pending_conflict = None;
+        if !self.pending_conflicts.is_empty() {
+            self.pending_conflict = Some(self.pending_conflicts.remove(0));
+        }
     }
 
     pub fn parse_permissions_str(perms: &str) -> Option<[bool; 9]> {
@@ -1511,6 +1579,21 @@ impl FileExplorer {
         }
     }
 
+}
+
+fn copy_dir_local_recursive(src: &Path, dst: &Path) -> std::io::Result<()> {
+    fs::create_dir_all(dst)?;
+    for entry in fs::read_dir(src)? {
+        let entry = entry?;
+        let ty = entry.file_type()?;
+        let dest_path = dst.join(entry.file_name());
+        if ty.is_dir() {
+            copy_dir_local_recursive(&entry.path(), &dest_path)?;
+        } else {
+            fs::copy(entry.path(), dest_path)?;
+        }
+    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -1922,6 +2005,57 @@ mod tests {
         assert_eq!(explorer.diff_content_b, "hello rust");
 
         let _ = fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn test_handle_dropped_paths_files_and_folders() {
+        let base_dir = std::env::temp_dir().join(format!("rustybox_dnd_test_{}", std::process::id()));
+        let src_dir = base_dir.join("src_items");
+        let dst_dir = base_dir.join("dst_folder");
+        let _ = fs::create_dir_all(&src_dir);
+        let _ = fs::create_dir_all(&dst_dir);
+
+        let f1 = src_dir.join("dropped1.txt");
+        let _ = fs::write(&f1, "content 1");
+
+        let sub_folder = src_dir.join("nested_folder");
+        let _ = fs::create_dir_all(&sub_folder);
+        let f2 = sub_folder.join("inside.txt");
+        let _ = fs::write(&f2, "nested content");
+
+        let mut explorer = FileExplorer::new();
+        explorer.set_path(dst_dir.clone());
+        explorer.refresh();
+
+        explorer.handle_dropped_paths(vec![f1.clone(), sub_folder.clone()]);
+
+        assert!(dst_dir.join("dropped1.txt").exists());
+        assert_eq!(fs::read_to_string(dst_dir.join("dropped1.txt")).unwrap(), "content 1");
+        assert!(dst_dir.join("nested_folder").join("inside.txt").exists());
+        assert_eq!(
+            fs::read_to_string(dst_dir.join("nested_folder").join("inside.txt")).unwrap(),
+            "nested content"
+        );
+
+        // Test multi-file conflict queue when dropping duplicate files
+        let f_dup1 = src_dir.join("dropped1.txt");
+        let f_dup2 = src_dir.join("dup2.txt");
+        let _ = fs::write(&f_dup2, "new2");
+        let _ = fs::write(dst_dir.join("dup2.txt"), "existing2");
+        explorer.refresh();
+
+        explorer.handle_dropped_paths(vec![f_dup1, f_dup2]);
+        assert!(explorer.pending_conflict.is_some());
+        assert_eq!(explorer.pending_conflicts.len(), 1);
+
+        explorer.resolve_conflict_skip();
+        assert!(explorer.pending_conflict.is_some());
+        assert_eq!(explorer.pending_conflicts.len(), 0);
+
+        explorer.resolve_conflict_skip();
+        assert!(explorer.pending_conflict.is_none());
+
+        let _ = fs::remove_dir_all(&base_dir);
     }
 
 }

@@ -11,7 +11,7 @@ use std::path::PathBuf;
 pub fn render_sftp_sidebar(ui: &mut Ui, explorer: &mut FileExplorer) {
     explorer.poll();
 
-    ui.vertical(|ui| {
+    let sidebar_resp = ui.vertical(|ui| {
         ui.spacing_mut().item_spacing.y = 5.0;
 
         // Header indicator: Remote SFTP vs Local
@@ -582,10 +582,9 @@ pub fn render_sftp_sidebar(ui: &mut Ui, explorer: &mut FileExplorer) {
         }
 
         // 3. RECESSED SFTP FILE LIST TABLE (With `Name ▼` Header + `..` Row + Vector Icons)
-        let footer_reserve = 68.0;
-        let table_h = (ui.available_height() - footer_reserve).max(120.0);
+        let table_h = (ui.available_height() - 6.0).max(120.0);
 
-        egui::Frame::none()
+        let table_frame_resp = egui::Frame::none()
             .fill(Color32::from_rgb(13, 17, 23))
             .stroke(Stroke::new(1.0, Color32::from_rgb(40, 46, 56)))
             .rounding(Rounding::same(6.0))
@@ -1199,7 +1198,76 @@ pub fn render_sftp_sidebar(ui: &mut Ui, explorer: &mut FileExplorer) {
                     }
                 }
             });
+
+        // 4. NATIVE OS DRAG-AND-DROP OVERLAY & HANDLER (Files & Folders from Windows Explorer / OS)
+        let table_rect = table_frame_resp.response.rect;
+        let hovered_files_count = ui.ctx().input(|i| i.raw.hovered_files.len());
+        if hovered_files_count > 0 {
+            let fg_painter = ui.ctx().layer_painter(egui::LayerId::new(
+                egui::Order::Foreground,
+                egui::Id::new("sftp_drag_drop_overlay"),
+            ));
+            fg_painter.rect(
+                table_rect,
+                Rounding::same(6.0),
+                Color32::from_rgba_unmultiplied(15, 23, 42, 220),
+                Stroke::new(2.0, Color32::from_rgb(56, 189, 248)),
+            );
+
+            let center = table_rect.center();
+            let title_text = if explorer.is_remote {
+                format!("📥 Drop {} item(s) to Upload", hovered_files_count)
+            } else {
+                format!("📥 Drop {} item(s) to Copy here", hovered_files_count)
+            };
+            let dest_str = explorer.current_path.to_string_lossy();
+            let sub_text = if dest_str.len() > 36 {
+                format!("Target: ...{}", &dest_str[dest_str.len().saturating_sub(33)..])
+            } else {
+                format!("Target: {}", dest_str)
+            };
+
+            fg_painter.text(
+                pos2(center.x, center.y - 10.0),
+                Align2::CENTER_CENTER,
+                title_text,
+                FontId::proportional(13.5),
+                Color32::from_rgb(56, 189, 248),
+            );
+            fg_painter.text(
+                pos2(center.x, center.y + 12.0),
+                Align2::CENTER_CENTER,
+                sub_text,
+                FontId::monospace(11.0),
+                Color32::from_rgb(201, 209, 217),
+            );
+        }
     });
+
+    // Process OS dropped files if dropped over the SFTP sidebar (or when SFTP panel is active)
+    let dropped_paths: Vec<PathBuf> = ui.ctx().input(|i| {
+        if i.raw.dropped_files.is_empty() {
+            return Vec::new();
+        }
+        let drop_zone = sidebar_resp.response.rect.expand(16.0);
+        let in_sftp_zone = match i.pointer.interact_pos().or_else(|| i.pointer.hover_pos()) {
+            Some(pos) => drop_zone.contains(pos),
+            None => true, // Windows OLE Drop fallback when pointer coordinates aren't reported on same frame
+        };
+        if in_sftp_zone {
+            i.raw
+                .dropped_files
+                .iter()
+                .filter_map(|f| f.path.clone())
+                .collect()
+        } else {
+            Vec::new()
+        }
+    });
+
+    if !dropped_paths.is_empty() {
+        explorer.handle_dropped_paths(dropped_paths);
+    }
 
     // Modal File Editor
     if explorer.editor_open {
