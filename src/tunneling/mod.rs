@@ -252,7 +252,7 @@ impl TunnelManager {
             {
                 use std::os::windows::process::CommandExt;
                 let _ = std::process::Command::new("taskkill")
-                    .args(["/F", "/PID", &pid.to_string()])
+                    .args(["/F", "/T", "/PID", &pid.to_string()])
                     .creation_flags(0x08000000) // CREATE_NO_WINDOW
                     .stdout(std::process::Stdio::null())
                     .stderr(std::process::Stdio::null())
@@ -267,6 +267,14 @@ impl TunnelManager {
         }
 
         self.status_messages[idx] = "Stopped".to_string();
+    }
+
+    pub fn stop_all_tunnels(&mut self) {
+        for idx in 0..self.active_states.len() {
+            if self.is_running(idx) || self.child_pids.get(idx).map(|p| p.lock().is_some()).unwrap_or(false) {
+                self.stop_tunnel(idx);
+            }
+        }
     }
 
     pub fn add_tunnel(&mut self, config: TunnelConfig) {

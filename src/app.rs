@@ -621,6 +621,15 @@ impl RustyBoxApp {
             ("clear".into(), "clear\n".into()),
         ];
 
+        let mut explorer = FileExplorer::new();
+        explorer.remote_monitoring_enabled = config.remote_monitoring_enabled;
+        explorer.follow_terminal_folder = config.follow_terminal_folder;
+        let quick_macros = if config.quick_macros.is_empty() {
+            default_macros
+        } else {
+            config.quick_macros.clone()
+        };
+
         let mut app = Self {
             storage,
             sessions,
@@ -631,7 +640,7 @@ impl RustyBoxApp {
             multi_exec_enabled: false,
             broadcast_tx,
             broadcast_rx,
-            explorer: FileExplorer::new(),
+            explorer,
             network_tools: NetworkTools::new(),
             tunnel_manager: TunnelManager::with_tunnels(config.tunnels.clone()),
             new_session_dialog: NewSessionDialog::new(),
@@ -687,8 +696,8 @@ impl RustyBoxApp {
             show_manage_passwords: false,
             manage_passwords_search: String::new(),
             manage_passwords_show_all: false,
-            manage_passwords_save_mode: 0,
-            manage_passwords_save_ssh_keys: false,
+            manage_passwords_save_mode: (config.password_save_mode as usize).min(2),
+            manage_passwords_save_ssh_keys: config.save_key_passphrases,
             manage_passwords_tab: 0,
             manage_passwords_unmasked_ids: Vec::new(),
             credentials,
@@ -696,7 +705,7 @@ impl RustyBoxApp {
             new_cred_name: String::new(),
             new_cred_user: String::new(),
             new_cred_password: String::new(),
-            quick_macros: default_macros,
+            quick_macros,
             show_macro_manager: false,
             new_macro_name: String::new(),
             new_macro_cmd: String::new(),
@@ -1929,6 +1938,98 @@ impl RustyBoxApp {
             self.show_import_dialog = false;
         }
     }
+
+    pub fn build_full_export_config(&self) -> crate::session::storage::RustyBoxConfig {
+        let mut cfg = self.storage.load_config();
+        cfg.sessions = self.sessions.clone();
+        cfg.credentials = self.credentials.clone();
+        cfg.password_save_mode = self.manage_passwords_save_mode as u8;
+        cfg.save_key_passphrases = self.manage_passwords_save_ssh_keys;
+        cfg.ui_scale = self.ui_scale;
+        cfg.font_size = self.font_size;
+        cfg.terminal_font_family = self.terminal_font_family.clone();
+        cfg.theme_name = self.theme.name().to_string();
+        cfg.paste_protection_enabled = self.paste_protection_enabled;
+        cfg.quick_macros = self.quick_macros.clone();
+        cfg.snippets = self.snippets.clone();
+        cfg.tunnels = self.tunnel_manager.tunnels.clone();
+        cfg.highlight_rules = self.highlight_rules.clone();
+        cfg.highlight_rules_enabled = self.highlight_rules_enabled;
+        cfg.remote_monitoring_enabled = self.explorer.remote_monitoring_enabled;
+        cfg.follow_terminal_folder = self.explorer.follow_terminal_folder;
+        cfg
+    }
+
+    pub fn apply_imported_config(&mut self, ctx: &egui::Context, mut imported: crate::session::storage::RustyBoxConfig) {
+        let mut seen_ids = std::collections::HashSet::new();
+        for s in &mut imported.sessions {
+            if s.id.is_empty() || seen_ids.contains(&s.id) {
+                s.id = uuid::Uuid::new_v4().to_string();
+            }
+            seen_ids.insert(s.id.clone());
+        }
+        self.sessions = imported.sessions.clone();
+        if !imported.credentials.is_empty() {
+            self.credentials = imported.credentials.clone();
+        }
+        if !imported.quick_macros.is_empty() {
+            self.quick_macros = imported.quick_macros.clone();
+        }
+        if !imported.snippets.is_empty() {
+            self.snippets = imported.snippets.clone();
+        }
+        if !imported.tunnels.is_empty() {
+            self.tunnel_manager.stop_all_tunnels();
+            self.tunnel_manager = TunnelManager::with_tunnels(imported.tunnels.clone());
+        }
+        if !imported.highlight_rules.is_empty() {
+            self.highlight_rules = imported.highlight_rules.clone();
+        }
+        self.highlight_rules_enabled = imported.highlight_rules_enabled;
+        self.manage_passwords_save_mode = (imported.password_save_mode as usize).min(2);
+        self.manage_passwords_save_ssh_keys = imported.save_key_passphrases;
+        if imported.ui_scale >= 0.7 && imported.ui_scale <= 2.5 {
+            self.ui_scale = imported.ui_scale;
+        }
+        if imported.font_size >= 8.0 && imported.font_size <= 36.0 {
+            self.font_size = imported.font_size;
+        }
+        if !imported.terminal_font_family.is_empty() {
+            self.terminal_font_family = imported.terminal_font_family.clone();
+            crate::terminal::fonts::setup_terminal_fonts(ctx, &self.terminal_font_family);
+        }
+        if let Some(t) = TerminalTheme::from_name(&imported.theme_name) {
+            self.theme = t;
+        }
+        self.paste_protection_enabled = imported.paste_protection_enabled;
+        self.explorer.remote_monitoring_enabled = imported.remote_monitoring_enabled;
+        self.explorer.follow_terminal_folder = imported.follow_terminal_folder;
+
+        if imported.vault.is_some() {
+            self.storage.set_vault_key(None);
+            self.storage.set_vault_configured(true);
+            let _ = self.storage.save_config(&imported);
+            self.show_vault = true;
+        } else {
+            let full = self.build_full_export_config();
+            let _ = self.storage.save_config(&full);
+        }
+        self.status_toast = Some((
+            format!("Imported configuration ({} sessions)", self.sessions.len()),
+            std::time::Instant::now(),
+        ));
+    }
+
+    pub fn shutdown_cleanup(&mut self) {
+        self.tunnel_manager.stop_all_tunnels();
+        self.network_tools.stop_http_server();
+        self.network_tools.stop_syslog_server();
+        self.network_tools.stop_tftp_server();
+        self.explorer.disconnect_all_remotes();
+        for mut tab in self.open_tabs.drain(..) {
+            tab.session.kill();
+        }
+    }
 }
 
 impl eframe::App for RustyBoxApp {
@@ -2135,7 +2236,7 @@ impl eframe::App for RustyBoxApp {
                         .inner_margin(egui::Margin::symmetric(5.0, 1.5))
                         .show(ui, |ui| {
                             ui.label(
-                                RichText::new("v1.3-86")
+                                RichText::new("v1.3-87")
                                     .color(Color32::from_rgb(147, 197, 253))
                                     .size(10.5)
                                     .strong(),
@@ -2159,8 +2260,7 @@ impl eframe::App for RustyBoxApp {
                     ui.separator();
                     if ui.button("📤 Export Sessions (JSON)...").clicked() {
                         if let Some(path) = rfd::FileDialog::new().add_filter("JSON", &["json"]).save_file() {
-                            let mut cfg = self.storage.load_config();
-                            cfg.sessions = self.sessions.clone();
+                            let cfg = self.build_full_export_config();
                             let _ = self.storage.export_to_file(&path, &cfg);
                         }
                         ui.close_menu();
@@ -2172,15 +2272,16 @@ impl eframe::App for RustyBoxApp {
                     if ui.button("📥 Import Sessions from File (JSON)...").clicked() {
                         if let Some(path) = rfd::FileDialog::new().add_filter("JSON", &["json"]).pick_file() {
                             if let Ok(imported) = self.storage.import_from_file(&path) {
-                                self.sessions = imported.sessions;
-                                let _ = self.storage.save_sessions(&self.sessions);
+                                self.apply_imported_config(ui.ctx(), imported);
                             }
                         }
                         ui.close_menu();
                     }
                     ui.separator();
                     if ui.button("🚪 Exit").clicked() {
-                        std::process::exit(0);
+                        self.shutdown_cleanup();
+                        ui.ctx().send_viewport_cmd(egui::ViewportCommand::Close);
+                        ui.close_menu();
                     }
                 });
 
@@ -2191,17 +2292,37 @@ impl eframe::App for RustyBoxApp {
                         ui.close_menu();
                     }
                     if ui.button("📑 Duplicate Current Tab").clicked() {
-                        if let Some(tab) = self.open_tabs.get(self.active_tab_idx) {
-                            let title = format!("{} (Copy)", tab.title);
-                            self.spawn_local_terminal(&title, None, None);
+                        let dup_info = self.open_tabs.get(self.active_tab_idx).map(|tab| {
+                            (
+                                tab.title.clone(),
+                                tab.session_def.clone(),
+                                tab.custom_cmd.clone(),
+                                tab.workdir.clone(),
+                            )
+                        });
+                        if let Some((title, session_def, custom_cmd, workdir)) = dup_info {
+                            if let Some(s) = session_def {
+                                self.spawn_ssh_terminal(s);
+                            } else {
+                                let name = format!("{} (Copy)", title);
+                                self.spawn_local_terminal(&name, custom_cmd.as_deref(), workdir.as_deref());
+                            }
                         }
                         ui.close_menu();
                     }
-                    if ui.button("✖ Close Active Tab\tCtrl+W").clicked() {
-                        if !self.open_tabs.is_empty() {
-                            self.open_tabs.remove(self.active_tab_idx);
-                            if self.active_tab_idx >= self.open_tabs.len() && !self.open_tabs.is_empty() {
-                                self.active_tab_idx = self.open_tabs.len() - 1;
+                    if ui.button("✖ Close Active Tab\tCtrl+Shift+W").clicked() {
+                        if !self.open_tabs.is_empty() && !self.is_home_active {
+                            let active = self.active_tab_idx;
+                            if active < self.open_tabs.len() {
+                                let mut closed = self.open_tabs.remove(active);
+                                closed.session.kill();
+                                if self.open_tabs.is_empty() {
+                                    self.is_home_active = true;
+                                    self.active_tab_idx = 0;
+                                } else if self.active_tab_idx >= self.open_tabs.len() {
+                                    self.active_tab_idx = self.open_tabs.len() - 1;
+                                }
+                                self.sync_sidebar_with_active_tab();
                             }
                         }
                         ui.close_menu();
@@ -2235,10 +2356,12 @@ impl eframe::App for RustyBoxApp {
                     });
                     if ui.button("➕ Increase Font Size\tCtrl++").clicked() {
                         self.font_size = (self.font_size + 1.0).min(28.0);
+                        let _ = self.storage.save_preferences(self.ui_scale, self.font_size, &self.terminal_font_family, self.theme.name(), self.paste_protection_enabled);
                         ui.close_menu();
                     }
                     if ui.button("➖ Decrease Font Size\tCtrl+-").clicked() {
                         self.font_size = (self.font_size - 1.0).max(9.0);
+                        let _ = self.storage.save_preferences(self.ui_scale, self.font_size, &self.terminal_font_family, self.theme.name(), self.paste_protection_enabled);
                         ui.close_menu();
                     }
                 });
@@ -3263,10 +3386,20 @@ impl eframe::App for RustyBoxApp {
                         }
                     } else {
                         // SFTP BROWSER
+                        let prev_mon = self.explorer.remote_monitoring_enabled;
+                        let prev_follow = self.explorer.follow_terminal_folder;
                         if !self.is_home_active && self.explorer.follow_terminal_folder {
                             self.sync_terminal_cwd_if_enabled();
                         }
                         render_sftp_sidebar(ui, &mut self.explorer);
+                        if self.explorer.remote_monitoring_enabled != prev_mon
+                            || self.explorer.follow_terminal_folder != prev_follow
+                        {
+                            let _ = self.storage.save_sftp_preferences(
+                                self.explorer.remote_monitoring_enabled,
+                                self.explorer.follow_terminal_folder,
+                            );
+                        }
                     }
                 });
 
@@ -4453,12 +4586,15 @@ impl eframe::App for RustyBoxApp {
             }
             TerminalAction::ZoomIn => {
                 self.font_size = (self.font_size + 1.0).min(32.0);
+                let _ = self.storage.save_preferences(self.ui_scale, self.font_size, &self.terminal_font_family, self.theme.name(), self.paste_protection_enabled);
             }
             TerminalAction::ZoomOut => {
                 self.font_size = (self.font_size - 1.0).max(9.0);
+                let _ = self.storage.save_preferences(self.ui_scale, self.font_size, &self.terminal_font_family, self.theme.name(), self.paste_protection_enabled);
             }
             TerminalAction::ZoomReset => {
                 self.font_size = 14.0;
+                let _ = self.storage.save_preferences(self.ui_scale, self.font_size, &self.terminal_font_family, self.theme.name(), self.paste_protection_enabled);
             }
             TerminalAction::OpenSearch => {
                 self.search_open = true;
@@ -6106,7 +6242,12 @@ impl eframe::App for RustyBoxApp {
                         ui.add(TextEdit::singleline(&mut self.new_macro_cmd).desired_width(160.0).hint_text("ps aux\n"));
                         if ui.button("➕ Add").clicked() {
                             if !self.new_macro_name.trim().is_empty() && !self.new_macro_cmd.is_empty() {
-                                self.quick_macros.push((self.new_macro_name.clone(), self.new_macro_cmd.clone()));
+                                let mut cmd = self.new_macro_cmd.clone();
+                                if !cmd.ends_with('\n') {
+                                    cmd.push('\n');
+                                }
+                                self.quick_macros.push((self.new_macro_name.trim().to_string(), cmd));
+                                let _ = self.storage.save_quick_macros(&self.quick_macros);
                                 self.new_macro_name.clear();
                                 self.new_macro_cmd.clear();
                             }
@@ -6132,6 +6273,7 @@ impl eframe::App for RustyBoxApp {
             if let Some(idx) = delete_idx {
                 if idx < self.quick_macros.len() {
                     self.quick_macros.remove(idx);
+                    let _ = self.storage.save_quick_macros(&self.quick_macros);
                 }
             }
             self.show_macro_manager = open;
@@ -6618,6 +6760,10 @@ impl eframe::App for RustyBoxApp {
                             if ui.button("✔ OK").clicked() {
                                 let _ = self.storage.save_sessions(&self.sessions);
                                 let _ = self.storage.save_credentials(&self.credentials);
+                                let _ = self.storage.save_password_settings(
+                                    self.manage_passwords_save_mode as u8,
+                                    self.manage_passwords_save_ssh_keys,
+                                );
                                 close_dialog = true;
                             }
                         });
@@ -6717,16 +6863,14 @@ impl eframe::App for RustyBoxApp {
                             ui.horizontal(|ui| {
                                 if ui.button("📤 Export Config (RustyBox.json)...").clicked() {
                                     if let Some(path) = rfd::FileDialog::new().add_filter("JSON", &["json"]).save_file() {
-                                        let mut cfg = self.storage.load_config();
-                                        cfg.sessions = self.sessions.clone();
+                                        let cfg = self.build_full_export_config();
                                         let _ = self.storage.export_to_file(&path, &cfg);
                                     }
                                 }
                                 if ui.button("📥 Import Config (RustyBox.json)...").clicked() {
                                     if let Some(path) = rfd::FileDialog::new().add_filter("JSON", &["json"]).pick_file() {
                                         if let Ok(imported) = self.storage.import_from_file(&path) {
-                                            self.sessions = imported.sessions;
-                                            let _ = self.storage.save_sessions(&self.sessions);
+                                            self.apply_imported_config(ui.ctx(), imported);
                                         }
                                     }
                                 }
@@ -6901,7 +7045,9 @@ impl eframe::App for RustyBoxApp {
                     ScrollArea::vertical().show(ui, |ui| {
                         let shortcuts = [
                             ("Ctrl + T", "Open new Local Terminal tab"),
-                            ("Ctrl + W", "Close active tab"),
+                            ("Ctrl + Shift + W", "Close active tab (or Ctrl+W if exited)"),
+                            ("Ctrl + PageUp/Down", "Switch between terminal tabs"),
+                            ("Ctrl + Shift + C/V", "Copy / Paste terminal text"),
                             ("Ctrl + F", "Find in active terminal screen buffer"),
                             ("Ctrl + L", "Clear terminal screen buffer"),
                             ("Ctrl + C", "Send SIGINT interrupt signal to process"),
@@ -6911,8 +7057,8 @@ impl eframe::App for RustyBoxApp {
                             ("Ctrl + E", "Move cursor to end of line"),
                             ("Ctrl + K", "Cut text from cursor to end of line"),
                             ("Ctrl + U", "Cut whole line before cursor"),
-                            ("Ctrl + +", "Zoom in terminal font size"),
-                            ("Ctrl + -", "Zoom out terminal font size"),
+                            ("Ctrl + + / -", "Zoom in / out terminal font size"),
+                            ("Ctrl + Shift + +/-", "Scale entire application UI"),
                             ("Right Click", "Context Menu: Copy, Paste, Clear, Save output"),
                         ];
 
@@ -7148,6 +7294,10 @@ impl eframe::App for RustyBoxApp {
                     });
             }
         }
+    }
+
+    fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
+        self.shutdown_cleanup();
     }
 }
 

@@ -368,6 +368,18 @@ impl FileExplorer {
         self.refresh();
     }
 
+    pub fn disconnect_all_remotes(&mut self) {
+        for (_, sess) in self.remote_sessions.drain() {
+            sess.client.lock().disconnect();
+        }
+        if let Some(ref client) = self.remote_client {
+            client.lock().disconnect();
+        }
+        self.remote_client = None;
+        self.remote_label = None;
+        self.is_remote = false;
+    }
+
     pub fn set_sort_column(&mut self, col: SftpSortColumn) {
         if self.sort_column == col {
             self.sort_ascending = !self.sort_ascending;
@@ -1017,12 +1029,17 @@ impl FileExplorer {
     }
 
     pub fn create_folder(&mut self, name: &str) {
+        let trimmed = name.trim();
+        if trimmed.is_empty() || trimmed == "." || trimmed == ".." || trimmed.contains('/') || trimmed.contains('\\') {
+            self.error_message = Some("Invalid folder name".to_string());
+            return;
+        }
         if self.is_remote {
-            let curr = self.current_path.to_string_lossy().to_string();
+            let curr = self.current_path.to_string_lossy().replace('\\', "/");
             let remote_p = if curr.ends_with('/') {
-                format!("{}{}", curr, name)
+                format!("{}{}", curr, trimmed)
             } else {
-                format!("{}/{}", curr, name)
+                format!("{}/{}", curr, trimmed)
             };
             if let Some(ref client) = self.remote_client {
                 self.is_loading = true;
@@ -1032,7 +1049,7 @@ impl FileExplorer {
             return;
         }
 
-        let new_dir = self.current_path.join(name);
+        let new_dir = self.current_path.join(trimmed);
         if let Err(e) = fs::create_dir(&new_dir) {
             self.error_message = Some(format!("Create folder failed: {}", e));
         } else {
@@ -1041,12 +1058,17 @@ impl FileExplorer {
     }
 
     pub fn create_file(&mut self, name: &str) {
+        let trimmed = name.trim();
+        if trimmed.is_empty() || trimmed == "." || trimmed == ".." || trimmed.contains('/') || trimmed.contains('\\') {
+            self.error_message = Some("Invalid file name".to_string());
+            return;
+        }
         if self.is_remote {
-            let curr = self.current_path.to_string_lossy().to_string();
+            let curr = self.current_path.to_string_lossy().replace('\\', "/");
             let remote_p = if curr.ends_with('/') {
-                format!("{}{}", curr, name)
+                format!("{}{}", curr, trimmed)
             } else {
-                format!("{}/{}", curr, name)
+                format!("{}/{}", curr, trimmed)
             };
             if let Some(ref client) = self.remote_client {
                 self.is_loading = true;
@@ -1056,7 +1078,7 @@ impl FileExplorer {
             return;
         }
 
-        let new_path = self.current_path.join(name);
+        let new_path = self.current_path.join(trimmed);
         if let Err(e) = fs::write(&new_path, "") {
             self.error_message = Some(format!("Create file failed: {}", e));
         } else {
@@ -1189,12 +1211,17 @@ impl FileExplorer {
 
         // Conflict check: if local destination already exists, prompt user!
         if local_dest.exists() {
-            self.pending_conflict = Some(ConflictItem {
+            let item = ConflictItem {
                 is_upload: false,
                 src_path: remote_path.to_path_buf(),
                 dest_path: local_dest,
                 file_name: name_str,
-            });
+            };
+            if self.pending_conflict.is_none() {
+                self.pending_conflict = Some(item);
+            } else {
+                self.pending_conflicts.push(item);
+            }
             return;
         }
 
@@ -1202,7 +1229,7 @@ impl FileExplorer {
     }
 
     pub fn execute_download(&mut self, remote_path: &Path, local_dest: PathBuf) {
-        let remote_str = remote_path.to_string_lossy().to_string();
+        let remote_str = remote_path.to_string_lossy().replace('\\', "/");
         if let Some(ref client) = self.remote_client {
             self.is_loading = true;
             client.lock().download(remote_str, local_dest);
@@ -1213,7 +1240,8 @@ impl FileExplorer {
     pub fn resolve_conflict_overwrite(&mut self) {
         if let Some(conflict) = self.pending_conflict.take() {
             if conflict.is_upload {
-                self.execute_upload(conflict.src_path, conflict.dest_path.to_string_lossy().to_string());
+                let remote_dest = conflict.dest_path.to_string_lossy().replace('\\', "/");
+                self.execute_upload(conflict.src_path, remote_dest);
             } else {
                 self.execute_download(&conflict.src_path, conflict.dest_path);
             }
@@ -1252,7 +1280,13 @@ impl FileExplorer {
 
                 if !collision {
                     if conflict.is_upload {
-                        self.execute_upload(conflict.src_path, candidate.to_string_lossy().to_string());
+                        let parent_str = parent.to_string_lossy().replace('\\', "/");
+                        let remote_dest = if parent_str.ends_with('/') {
+                            format!("{}{}", parent_str, new_name)
+                        } else {
+                            format!("{}/{}", parent_str, new_name)
+                        };
+                        self.execute_upload(conflict.src_path, remote_dest);
                     } else {
                         self.execute_download(&conflict.src_path, candidate);
                     }
@@ -1421,21 +1455,25 @@ impl FileExplorer {
 
     pub fn rename_entry(&mut self, old_path: &Path, new_name: &str) {
         let trimmed = new_name.trim();
-        if trimmed.is_empty() {
-            self.error_message = Some("Name cannot be empty".to_string());
+        if trimmed.is_empty() || trimmed == "." || trimmed == ".." || trimmed.contains('/') || trimmed.contains('\\') {
+            self.error_message = Some("Invalid item name".to_string());
             return;
         }
         let parent = old_path.parent().unwrap_or(&self.current_path);
-        let new_path = parent.join(trimmed);
         if self.is_remote {
             if let Some(ref client) = self.remote_client {
                 self.is_loading = true;
-                client.lock().rename(
-                    old_path.to_string_lossy().to_string(),
-                    new_path.to_string_lossy().to_string(),
-                );
+                let old_str = old_path.to_string_lossy().replace('\\', "/");
+                let parent_str = parent.to_string_lossy().replace('\\', "/");
+                let new_str = if parent_str.ends_with('/') {
+                    format!("{}{}", parent_str, trimmed)
+                } else {
+                    format!("{}/{}", parent_str, trimmed)
+                };
+                client.lock().rename(old_str, new_str);
             }
         } else {
+            let new_path = parent.join(trimmed);
             match fs::rename(old_path, &new_path) {
                 Ok(_) => {
                     self.status_message = Some("Renamed successfully".to_string());
@@ -2052,6 +2090,47 @@ mod tests {
         assert!(explorer.pending_conflict.is_some());
         assert_eq!(explorer.pending_conflicts.len(), 0);
 
+        explorer.resolve_conflict_skip();
+        assert!(explorer.pending_conflict.is_none());
+
+        let _ = fs::remove_dir_all(&base_dir);
+    }
+
+    #[test]
+    fn test_sftp_path_validation_and_download_conflict_queue() {
+        let base_dir = std::env::temp_dir().join(format!("sftp_val_test_{}", uuid::Uuid::new_v4()));
+        let _ = fs::create_dir_all(&base_dir);
+
+        let mut explorer = FileExplorer::new();
+        explorer.set_path(base_dir.clone());
+
+        // Reject slash/backslash/parent traversal in create_folder, create_file, rename_entry
+        explorer.create_folder("bad/folder");
+        assert!(explorer.error_message.is_some());
+        explorer.error_message = None;
+
+        explorer.create_file("bad\\file.txt");
+        assert!(explorer.error_message.is_some());
+        explorer.error_message = None;
+
+        let valid_file = base_dir.join("valid.txt");
+        let _ = fs::write(&valid_file, "ok");
+        explorer.rename_entry(&valid_file, "../escaped.txt");
+        assert!(explorer.error_message.is_some());
+        assert!(valid_file.exists());
+
+        // Multi-file download conflict queue
+        let dl1 = base_dir.join("dl1.txt");
+        let dl2 = base_dir.join("dl2.txt");
+        let _ = fs::write(&dl1, "local1");
+        let _ = fs::write(&dl2, "local2");
+
+        explorer.download_file(Path::new("/remote/dl1.txt"), dl1);
+        explorer.download_file(Path::new("/remote/dl2.txt"), dl2);
+        assert!(explorer.pending_conflict.is_some());
+        assert_eq!(explorer.pending_conflicts.len(), 1);
+        explorer.resolve_conflict_skip();
+        assert!(explorer.pending_conflict.is_some());
         explorer.resolve_conflict_skip();
         assert!(explorer.pending_conflict.is_none());
 

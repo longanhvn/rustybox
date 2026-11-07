@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [v1.3-87] - 2026-11-07
+### Fixed & Improved (Full Codebase Stability Audit: Lifecycle Cleanup, POSIX SFTP Paths & Config Persistence)
+- **Thu hồi triệt để tiến trình nền và kết nối khi thoát ứng dụng (`eframe::App::on_exit`)**:
+  - Triển khai `on_exit` và `shutdown_cleanup()` để tự động dừng toàn bộ SSH Tunnels (`stop_all_tunnels`), tắt 3 máy chủ nhúng (`HTTP`, `Syslog`, `TFTP`), ngắt mọi phiên SFTP từ xa (`disconnect_all_remotes`) và kill sạch toàn bộ tiến trình PTY đang mở.
+  - Thay thế `std::process::exit(0)` ở `Sessions -> Exit` bằng `ViewportCommand::Close` để đi qua luồng thu hồi tài nguyên chuẩn; bổ sung cờ `/T` cho `taskkill /F /T /PID` (kèm `CREATE_NO_WINDOW`) trong `TunnelManager` trên Windows để diệt cả cây tiến trình con.
+- **Chuẩn hóa đường dẫn SFTP POSIX `/` trên Windows & Hàng đợi xung đột Download**:
+  - Khắc phục lỗi chèn dấu `\` của `Path::join` trên Windows làm hỏng tên tệp/thư mục trên máy chủ Linux từ xa trong `create_folder`, `create_file`, `rename_entry`, `execute_download`, `resolve_conflict_overwrite` và `resolve_conflict_rename`; chặn ký tự `/`, `\` và `..` trong tên đối tượng mới.
+  - Bổ sung hàng đợi `pending_conflicts` cho `download_file` đồng bộ với chiều Upload / Drag & Drop.
+- **Lưu trữ bền vững & Sao lưu/Khôi phục toàn diện cấu hình (`RustyBox.json`)**:
+  - Lưu xuống đĩa và tự động khôi phục khi khởi động các tùy chọn: `quick_macros`, `password_save_mode`, `save_key_passphrases`, `remote_monitoring_enabled`, `follow_terminal_folder`, và `font_size` (khi Zoom qua Menu, Context Menu hoặc phím tắt).
+  - Đồng bộ `Export` / `Import` ở cả thanh Menu `Sessions` lẫn cửa sổ `Settings` để sao lưu và nạp trọn vẹn toàn bộ Sessions, Credentials, Snippets, Tunnels, Macros, Highlight Rules, giao diện và tùy chọn SFTP.
+- **Đồng bộ thanh Menu `Terminal` & Bảng phím tắt**:
+  - Đồng bộ hành vi `Terminal -> Close Active Tab` và `Terminal -> Duplicate Current Tab` hoạt động nhất quán với thanh Tab (dọn tiến trình, kế thừa phiên SSH/Local, đồng bộ Sidebar SFTP) và cập nhật bảng tra cứu `Keyboard Shortcuts`.
+
+---
+
 ## [v1.3-86] - 2026-11-07
 ### Added & Improved (Native OS Drag-and-Drop to SFTP Upload)
 - **Kéo thả File & Folder từ Windows Explorer vào SFTP (`Drag & Drop Upload`)**:

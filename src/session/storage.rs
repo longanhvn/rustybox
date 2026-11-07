@@ -169,6 +169,10 @@ pub struct RustyBoxConfig {
     pub highlight_rules_enabled: bool,
     #[serde(default = "crate::terminal::highlight::default_highlight_rules")]
     pub highlight_rules: Vec<crate::terminal::HighlightRule>,
+    #[serde(default = "default_true")]
+    pub remote_monitoring_enabled: bool,
+    #[serde(default = "default_true")]
+    pub follow_terminal_folder: bool,
     pub sessions: Vec<Session>,
 }
 
@@ -190,6 +194,8 @@ impl Default for RustyBoxConfig {
             tunnels: crate::tunneling::default_tunnels(),
             highlight_rules_enabled: true,
             highlight_rules: crate::terminal::highlight::default_highlight_rules(),
+            remote_monitoring_enabled: true,
+            follow_terminal_folder: true,
             sessions: default_sessions_list(),
         }
     }
@@ -371,6 +377,26 @@ impl StorageManager {
         let mut cfg = self.load_config();
         cfg.highlight_rules = rules.to_vec();
         cfg.highlight_rules_enabled = enabled;
+        self.save_config(&cfg)
+    }
+
+    pub fn save_quick_macros(&self, macros: &[(String, String)]) -> Result<(), String> {
+        let mut cfg = self.load_config();
+        cfg.quick_macros = macros.to_vec();
+        self.save_config(&cfg)
+    }
+
+    pub fn save_password_settings(&self, mode: u8, save_ssh_keys: bool) -> Result<(), String> {
+        let mut cfg = self.load_config();
+        cfg.password_save_mode = mode;
+        cfg.save_key_passphrases = save_ssh_keys;
+        self.save_config(&cfg)
+    }
+
+    pub fn save_sftp_preferences(&self, remote_monitoring: bool, follow_terminal: bool) -> Result<(), String> {
+        let mut cfg = self.load_config();
+        cfg.remote_monitoring_enabled = remote_monitoring;
+        cfg.follow_terminal_folder = follow_terminal;
         self.save_config(&cfg)
     }
 
@@ -779,6 +805,9 @@ mod tests {
 
         // Update preferences
         storage.save_preferences(1.25, 16.0, "ubuntu_mono", "Dracula", false).unwrap();
+        storage.save_quick_macros(&[("my_top".into(), "htop -d 5\n".into())]).unwrap();
+        storage.save_password_settings(2, true).unwrap();
+        storage.save_sftp_preferences(false, false).unwrap();
 
         let loaded = storage.load_config();
         assert_eq!(loaded.ui_scale, 1.25);
@@ -786,6 +815,11 @@ mod tests {
         assert_eq!(loaded.terminal_font_family, "ubuntu_mono");
         assert_eq!(loaded.theme_name, "Dracula");
         assert_eq!(loaded.paste_protection_enabled, false);
+        assert_eq!(loaded.quick_macros, vec![("my_top".into(), "htop -d 5\n".into())]);
+        assert_eq!(loaded.password_save_mode, 2);
+        assert!(loaded.save_key_passphrases);
+        assert!(!loaded.remote_monitoring_enabled);
+        assert!(!loaded.follow_terminal_folder);
 
         let _ = fs::remove_dir_all(&base);
     }
