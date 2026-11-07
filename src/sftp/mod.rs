@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::time::SystemTime;
+use std::time::{Duration, Instant, SystemTime};
 use parking_lot::Mutex;
 
 pub mod remote;
@@ -83,6 +83,8 @@ pub struct RemoteSessionState {
     pub last_synced_terminal_cwd: Option<PathBuf>,
     pub selected_file: Option<PathBuf>,
     pub remote_disk_stats: Option<(u64, u64, f32)>,
+    pub remote_telemetry: Option<crate::telemetry::RemoteSystemMetrics>,
+    pub last_telemetry_poll: Option<Instant>,
     pub error_message: Option<String>,
     pub status_message: Option<String>,
 }
@@ -108,6 +110,7 @@ pub struct FileExplorer {
     pub remote_label: Option<String>,
     pub remote_client: Option<Arc<Mutex<RemoteSftpClient>>>,
     pub remote_disk_stats: Option<(u64, u64, f32)>,
+    pub remote_telemetry: Option<crate::telemetry::RemoteSystemMetrics>,
     pub remote_raw_entries: Vec<FileEntry>,
     pub remote_home_dir: Option<PathBuf>,
     pub last_synced_terminal_cwd: Option<PathBuf>,
@@ -185,6 +188,7 @@ impl FileExplorer {
             remote_label: None,
             remote_client: None,
             remote_disk_stats: None,
+            remote_telemetry: None,
             remote_raw_entries: Vec::new(),
             remote_home_dir: None,
             last_synced_terminal_cwd: None,
@@ -265,6 +269,7 @@ impl FileExplorer {
             sess.last_synced_terminal_cwd = self.last_synced_terminal_cwd.clone();
             sess.selected_file = self.selected_file.clone();
             sess.remote_disk_stats = self.remote_disk_stats;
+            sess.remote_telemetry = self.remote_telemetry.clone();
             sess.error_message = self.error_message.clone();
             sess.status_message = self.status_message.clone();
         }
@@ -285,6 +290,7 @@ impl FileExplorer {
             self.last_synced_terminal_cwd = sess.last_synced_terminal_cwd;
             self.selected_file = sess.selected_file;
             self.remote_disk_stats = sess.remote_disk_stats;
+            self.remote_telemetry = sess.remote_telemetry;
             self.error_message = sess.error_message;
             self.status_message = sess.status_message;
             self.apply_remote_filter_and_sort();
@@ -337,6 +343,8 @@ impl FileExplorer {
             last_synced_terminal_cwd: None,
             selected_file: None,
             remote_disk_stats: None,
+            remote_telemetry: None,
+            last_telemetry_poll: None,
             error_message: None,
             status_message: None,
         };
@@ -358,6 +366,7 @@ impl FileExplorer {
         self.is_loading = false;
         self.active_remote_label = None;
         self.remote_disk_stats = None;
+        self.remote_telemetry = None;
         self.remote_raw_entries.clear();
         self.remote_home_dir = None;
         self.last_synced_terminal_cwd = None;
@@ -474,6 +483,7 @@ impl FileExplorer {
                 match evt {
                     SftpEvent::Connected { initial_dir, .. } => {
                         sess.is_connected = true;
+                        sess.is_loading = false;
                         let init_path = PathBuf::from(&initial_dir);
                         sess.remote_home_dir = Some(init_path.clone());
                         sess.current_path = init_path.clone();
@@ -550,6 +560,12 @@ impl FileExplorer {
                     SftpEvent::DiskUsage { used, total, pct } => {
                         sess.remote_disk_stats = Some((used, total, pct));
                     }
+                    SftpEvent::Telemetry(metrics) => {
+                        sess.remote_telemetry = Some(metrics.clone());
+                        if self.remote_label.as_deref() == Some(label.as_str()) {
+                            self.remote_telemetry = Some(metrics);
+                        }
+                    }
                 }
             }
 
@@ -557,6 +573,22 @@ impl FileExplorer {
                 sess.is_loading = true;
                 let path_str = sess.current_path.to_string_lossy().to_string();
                 sess.client.lock().list_dir(&path_str);
+            }
+        }
+
+        if self.remote_monitoring_enabled {
+            let now = Instant::now();
+            let is_transferring = self.transfer_progress.is_some();
+            for (_label, sess) in self.remote_sessions.iter_mut() {
+                if sess.is_connected && !is_transferring {
+                    let should_poll = sess.last_telemetry_poll
+                        .map(|t| now.duration_since(t) >= Duration::from_millis(2500))
+                        .unwrap_or(true);
+                    if should_poll {
+                        sess.client.lock().fetch_telemetry();
+                        sess.last_telemetry_poll = Some(now);
+                    }
+                }
             }
         }
 
@@ -576,6 +608,18 @@ impl FileExplorer {
                 self.load_active_remote_state(&active_label);
             }
         }
+    }
+
+    pub fn get_active_telemetry(&self) -> Option<crate::telemetry::RemoteSystemMetrics> {
+        if self.is_remote {
+            if let Some(ref label) = self.remote_label {
+                if let Some(sess) = self.remote_sessions.get(label) {
+                    return sess.remote_telemetry.clone();
+                }
+            }
+            return self.remote_telemetry.clone();
+        }
+        None
     }
 
     pub fn set_path(&mut self, path: PathBuf) {
@@ -1924,4 +1968,141 @@ mod tests {
         let _ = fs::remove_dir_all(&temp_dir);
     }
 
+    #[test]
+    fn test_file_explorer_telemetry_event_delivery_behavior() {
+        use std::sync::mpsc::channel;
+
+        let mut explorer = FileExplorer::new();
+        let (cmd_tx, _cmd_rx) = channel();
+        let (event_tx, event_rx) = channel();
+
+        let client = Arc::new(Mutex::new(RemoteSftpClient::new_mock(cmd_tx, event_rx)));
+        let label = "ubuntu@103.57.220.111:22".to_string();
+
+        let sess = RemoteSessionState {
+            label: label.clone(),
+            config: SftpTargetConfig {
+                host: "103.57.220.111".to_string(),
+                port: 22,
+                user: "ubuntu".to_string(),
+                password: None,
+                key_path: None,
+            },
+            client,
+            is_connected: true,
+            is_loading: false,
+            current_path: PathBuf::from("/home/ubuntu"),
+            path_input: "/home/ubuntu".to_string(),
+            path_history: vec![],
+            remote_raw_entries: vec![],
+            remote_home_dir: Some(PathBuf::from("/home/ubuntu")),
+            last_synced_terminal_cwd: None,
+            selected_file: None,
+            remote_disk_stats: None,
+            remote_telemetry: None,
+            last_telemetry_poll: None,
+            error_message: None,
+            status_message: None,
+        };
+
+        explorer.remote_sessions.insert(label.clone(), sess);
+        explorer.load_active_remote_state(&label);
+
+        // Initially no telemetry metrics
+        assert!(explorer.get_active_telemetry().is_none());
+
+        // Worker emits real Telemetry event
+        let mut metrics = crate::telemetry::RemoteSystemMetrics::default();
+        metrics.cores = Some(8);
+        metrics.cpu_pct = Some(4);
+        metrics.ram_total_gb = Some(24.0);
+        metrics.ram_used_gb = Some(14.6);
+        metrics.ram_pct = Some(61);
+        metrics.disk_pct = Some(86);
+        metrics.uptime = Some("Up: 19h 11m".into());
+        metrics.net_rate = Some("▲254.0K  ▼79.0K".into());
+
+        event_tx.send(SftpEvent::Telemetry(metrics.clone())).unwrap();
+
+        // Calling poll() must process the event and populate active telemetry
+        explorer.poll();
+
+        let active = explorer.get_active_telemetry();
+        assert!(active.is_some(), "Telemetry must be available after poll()");
+        let telem = active.unwrap();
+        assert_eq!(telem.cores, Some(8));
+        assert_eq!(telem.cpu_pct, Some(4));
+        assert_eq!(telem.ram_pct, Some(61));
+        assert_eq!(telem.disk_pct, Some(86));
+        assert_eq!(telem.uptime, Some("Up: 19h 11m".into()));
+        assert_eq!(telem.net_rate, Some("▲254.0K  ▼79.0K".into()));
+    }
+
+    #[test]
+    fn test_file_explorer_telemetry_polling_behavior_and_transfer_suppression() {
+        use std::sync::mpsc::channel;
+        use crate::sftp::remote::SftpCommand;
+
+        let mut explorer = FileExplorer::new();
+        explorer.remote_monitoring_enabled = true;
+
+        let (cmd_tx, cmd_rx) = channel();
+        let (_event_tx, event_rx) = channel();
+
+        let client = Arc::new(Mutex::new(RemoteSftpClient::new_mock(cmd_tx, event_rx)));
+        let label = "ubuntu@103.57.220.111:22".to_string();
+
+        let sess = RemoteSessionState {
+            label: label.clone(),
+            config: SftpTargetConfig {
+                host: "103.57.220.111".to_string(),
+                port: 22,
+                user: "ubuntu".to_string(),
+                password: None,
+                key_path: None,
+            },
+            client,
+            is_connected: true,
+            is_loading: false,
+            current_path: PathBuf::from("/home/ubuntu"),
+            path_input: "/home/ubuntu".to_string(),
+            path_history: vec![],
+            remote_raw_entries: vec![],
+            remote_home_dir: Some(PathBuf::from("/home/ubuntu")),
+            last_synced_terminal_cwd: None,
+            selected_file: None,
+            remote_disk_stats: None,
+            remote_telemetry: None,
+            last_telemetry_poll: None,
+            error_message: None,
+            status_message: None,
+        };
+
+        explorer.remote_sessions.insert(label.clone(), sess);
+        explorer.load_active_remote_state(&label);
+
+        // Case 1: When idle, poll() should dispatch SftpCommand::FetchTelemetry
+        explorer.poll();
+        let cmd = cmd_rx.try_recv();
+        assert!(matches!(cmd, Ok(SftpCommand::FetchTelemetry)), "Idle connected session must trigger FetchTelemetry");
+
+        // Case 2: During active file transfer, poll() must NOT trigger FetchTelemetry to protect bandwidth
+        explorer.transfer_progress = Some(TransferProgressInfo {
+            file_name: "large_iso.img".into(),
+            is_upload: true,
+            transferred_bytes: 500_000_000,
+            total_bytes: 1_000_000_000,
+            bytes_per_sec: 25_000_000.0,
+            percent: 50.0,
+        });
+
+        // Reset last_telemetry_poll so it would otherwise be eligible
+        if let Some(s) = explorer.remote_sessions.get_mut(&label) {
+            s.last_telemetry_poll = None;
+        }
+
+        explorer.poll();
+        let suppressed_cmd = cmd_rx.try_recv();
+        assert!(suppressed_cmd.is_err(), "Telemetry poll must be suppressed during active file transfer");
+    }
 }

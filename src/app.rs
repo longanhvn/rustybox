@@ -11,137 +11,12 @@ use crate::terminal::widget::{TerminalAction, TerminalWidget};
 use crate::terminal::PtySession;
 use crate::tunneling::TunnelManager;
 use crossbeam_channel::{unbounded, Receiver, Sender};
+use crate::telemetry::TabTelemetry;
 use egui::{
     menu, pos2, vec2, Align, Align2, Color32, Layout, Margin, RichText, ScrollArea,
     TextEdit, TopBottomPanel, Vec2,
 };
 use std::collections::BTreeMap;
-
-#[derive(Clone, Debug, PartialEq)]
-pub struct DetectedRemoteSession {
-    pub user: String,
-    pub host: String,
-    pub disk_pct: Option<u32>,
-    pub ram_pct: Option<u32>,
-    pub cpu_pct: Option<u32>,
-    pub cores: Option<u32>,
-}
-
-pub fn detect_remote_session(title: &str, screen_text: &str, local_host: &str) -> Option<DetectedRemoteSession> {
-    let mut detected_user: Option<String> = None;
-    let mut detected_host: Option<String> = None;
-
-    let local_clean = local_host.trim().to_lowercase();
-
-    // 1. Check title first (OSC 0 / OSC 2 set by remote shell e.g. "user@host: dir" or "user@host")
-    let clean_title = title.trim();
-    if let Some((u, rest)) = clean_title.split_once('@') {
-        let u = u.trim();
-        let h = rest.split([':', ' ', '/', '~', '$', '#']).next().unwrap_or("").trim();
-        if !u.is_empty() && !h.is_empty() && !u.contains(' ') && !h.contains(' ') {
-            let h_lower = h.to_lowercase();
-            if h_lower != "localhost" && h_lower != "127.0.0.1" && h_lower != local_clean {
-                detected_user = Some(u.to_string());
-                detected_host = Some(h.to_string());
-            }
-        }
-    }
-
-    // 2. Scan lines of screen_text from bottom to top
-    let mut disk_pct = None;
-    let mut ram_pct = None;
-    let mut cpu_pct = None;
-    let cores = None;
-
-    for line in screen_text.lines().rev() {
-        let trimmed = line.trim();
-        if trimmed.is_empty() {
-            continue;
-        }
-
-        // Look for prompt: user@host:...[$#] or [user@host ~]$
-        if detected_user.is_none() || detected_host.is_none() {
-            if let Some(at_idx) = trimmed.rfind('@') {
-                let left = &trimmed[..at_idx];
-                let right = &trimmed[at_idx + 1..];
-
-                let user_candidate = left
-                    .split(|c: char| c.is_whitespace() || c == '[' || c == '(' || c == '<' || c == ':')
-                    .last()
-                    .unwrap_or("")
-                    .trim();
-
-                let host_candidate = right
-                    .split(|c: char| c == ':' || c.is_whitespace() || c == '~' || c == '#' || c == '$' || c == ']' || c == ')' || c == '>')
-                    .next()
-                    .unwrap_or("")
-                    .trim();
-
-                if !user_candidate.is_empty()
-                    && !host_candidate.is_empty()
-                    && !user_candidate.contains('/')
-                    && !host_candidate.contains('/')
-                    && !user_candidate.contains('\\')
-                    && !host_candidate.contains('\\')
-                    && user_candidate.chars().all(|c| c.is_alphanumeric() || c == '_' || c == '-')
-                    && host_candidate.chars().all(|c| c.is_alphanumeric() || c == '_' || c == '-' || c == '.')
-                {
-                    let h_lower = host_candidate.to_lowercase();
-                    if h_lower != "localhost" && h_lower != "127.0.0.1" && h_lower != local_clean {
-                        if trimmed.contains('#') || trimmed.contains('$') || trimmed.contains(':') || trimmed.contains('~') {
-                            detected_user = Some(user_candidate.to_string());
-                            detected_host = Some(host_candidate.to_string());
-                        }
-                    }
-                }
-            }
-        }
-
-        // Parse Linux MOTD stats
-        if line.contains("Usage of /:") && disk_pct.is_none() {
-            if let Some(pct_str) = line.split("Usage of /:").nth(1) {
-                if let Some(num_str) = pct_str.split('%').next() {
-                    if let Ok(pct) = num_str.trim().parse::<f32>() {
-                        disk_pct = Some(pct.round() as u32);
-                    }
-                }
-            }
-        }
-
-        if line.contains("Memory usage:") && ram_pct.is_none() {
-            if let Some(pct_str) = line.split("Memory usage:").nth(1) {
-                if let Some(num_str) = pct_str.split('%').next() {
-                    if let Ok(pct) = num_str.trim().parse::<f32>() {
-                        ram_pct = Some(pct.round() as u32);
-                    }
-                }
-            }
-        }
-
-        if line.contains("System load:") && cpu_pct.is_none() {
-            if let Some(val_str) = line.split("System load:").nth(1) {
-                if let Some(first_num) = val_str.split_whitespace().next() {
-                    if let Ok(load) = first_num.trim().parse::<f32>() {
-                        cpu_pct = Some(((load * 10.0).round() as u32).clamp(1, 95));
-                    }
-                }
-            }
-        }
-    }
-
-    if let (Some(u), Some(h)) = (detected_user, detected_host) {
-        Some(DetectedRemoteSession {
-            user: u,
-            host: h,
-            disk_pct,
-            ram_pct,
-            cpu_pct,
-            cores,
-        })
-    } else {
-        None
-    }
-}
 
 /// Extracts a working directory path from terminal window titles (e.g. OSC 0/2 set by bash `\u@\h: \w` or Windows cmd/PowerShell).
 pub fn extract_cwd_from_title(title: &str) -> Option<String> {
@@ -291,106 +166,6 @@ pub fn detect_terminal_cwd(tab: &OpenTab) -> Option<String> {
     extract_cwd_from_screen(&screen_text)
 }
 
-#[derive(Clone, Debug)]
-pub struct TabTelemetry {
-    pub host: String,
-    pub user: String,
-    pub cores: u32,
-    pub cpu_pct: u32,
-    pub ram_used_gb: f32,
-    pub ram_total_gb: f32,
-    pub uptime: String,
-    pub uptime_secs: u64,
-    pub disk_pct: u32,
-    pub net_rate: String,
-    pub is_remote: bool,
-    pub is_connected: bool,
-    pub last_updated: std::time::Instant,
-}
-
-impl TabTelemetry {
-    pub fn new_local() -> Self {
-        let cores = std::thread::available_parallelism()
-            .map(|n| n.get() as u32)
-            .unwrap_or(4);
-        let mut host = "LOCALHOST".to_string();
-        let mut user = "user".to_string();
-        #[cfg(target_os = "windows")]
-        {
-            if let Ok(h) = std::env::var("COMPUTERNAME") { host = h; }
-            if let Ok(u) = std::env::var("USERNAME") { user = u; }
-        }
-        #[cfg(not(target_os = "windows"))]
-        {
-            if let Ok(h) = std::fs::read_to_string("/proc/sys/kernel/hostname") {
-                let hc = h.trim();
-                if !hc.is_empty() { host = hc.to_uppercase(); }
-            }
-            if let Ok(u) = std::env::var("USER") { user = u; }
-        }
-
-        Self {
-            host,
-            user,
-            cores,
-            cpu_pct: 12,
-            ram_used_gb: 1.6,
-            ram_total_gb: 11.4,
-            uptime: "Up: 1 day".into(),
-            uptime_secs: 86400,
-            disk_pct: 48,
-            net_rate: "▲0.02M  ▼0.01M".into(),
-            is_remote: false,
-            is_connected: true,
-            last_updated: std::time::Instant::now() - std::time::Duration::from_secs(10),
-        }
-    }
-
-    pub fn new_remote(session: &Session) -> Self {
-        let (host_str, user_str) = session.session_type.remote_host_and_user();
-
-        let mut hasher = std::collections::hash_map::DefaultHasher::new();
-        std::hash::Hash::hash(&host_str, &mut hasher);
-        let hash = std::hash::Hasher::finish(&hasher);
-
-        let cores = match hash % 5 {
-            0 => 1,
-            1 => 2,
-            2 => 4,
-            3 => 8,
-            _ => 16,
-        };
-        let total_ram = match cores {
-            1 => 1.0,
-            2 => 2.0,
-            4 => 4.0,
-            8 => 8.0,
-            _ => 16.0,
-        };
-        let used_ram = (total_ram * (0.20 + ((hash % 35) as f32 / 100.0))).min(total_ram - 0.1);
-        let disk = 20 + ((hash % 35) as u32);
-        let days = 1 + ((hash % 60) as u64);
-        let uptime_secs = days * 86400 + (hash % 86400);
-        let cpu = 2 + ((hash % 15) as u32);
-
-        Self {
-            host: if !session.name.is_empty() { session.name.clone() } else { host_str },
-            user: if !user_str.is_empty() { user_str } else { "root".into() },
-            cores,
-            cpu_pct: cpu,
-            ram_used_gb: (used_ram * 10.0).round() / 10.0,
-            ram_total_gb: total_ram,
-            uptime: format!("Up: {} days", days),
-            uptime_secs,
-            disk_pct: disk,
-            net_rate: format!("▲{:.2}M  ▼{:.2}M", ((hash % 40) as f32 + 2.0)/100.0, ((hash % 70) as f32 + 5.0)/100.0),
-            is_remote: true,
-            is_connected: true,
-            last_updated: std::time::Instant::now(),
-        }
-    }
-}
-
 pub struct OpenTab {
     pub id: String,
     pub title: String,
@@ -511,6 +286,8 @@ pub struct RustyBoxApp {
     // Live System Telemetry Dashboard
     last_telemetry_time: std::time::Instant,
     local_telemetry: TabTelemetry,
+    last_local_net_bytes: Option<(u64, u64)>,
+    last_local_net_time: Option<std::time::Instant>,
     // Context Actions & Modals
     selected_sidebar_session_id: Option<String>,
     last_synced_tab_id: Option<String>,
@@ -705,6 +482,8 @@ impl RustyBoxApp {
             is_home_active: false,
             last_telemetry_time: std::time::Instant::now() - std::time::Duration::from_secs(10),
             local_telemetry: TabTelemetry::new_local(),
+            last_local_net_bytes: None,
+            last_local_net_time: None,
             selected_sidebar_session_id: None,
             last_synced_tab_id: None,
             last_synced_is_home: true,
@@ -1432,78 +1211,23 @@ impl RustyBoxApp {
     }
 
     fn update_telemetry(&mut self) {
+        self.explorer.poll();
+
         let elapsed = self.last_telemetry_time.elapsed();
         if elapsed < std::time::Duration::from_millis(1500) {
             return;
         }
         self.last_telemetry_time = std::time::Instant::now();
-        let elapsed_secs = elapsed.as_secs().max(1);
 
         // 1. Update local system telemetry
-        #[cfg(target_os = "windows")]
-        {
-            if let Ok(h) = std::env::var("COMPUTERNAME") { self.local_telemetry.host = h; }
-            if let Ok(u) = std::env::var("USERNAME") { self.local_telemetry.user = u; }
-            self.local_telemetry.cores = std::thread::available_parallelism().map(|n| n.get() as u32).unwrap_or(4);
-            let t = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs();
-            self.local_telemetry.cpu_pct = 8 + ((t % 7) as u32);
-        }
-        #[cfg(not(target_os = "windows"))]
-        {
-            if let Ok(h) = std::fs::read_to_string("/proc/sys/kernel/hostname") {
-                let h_clean = h.trim();
-                if !h_clean.is_empty() {
-                    self.local_telemetry.host = h_clean.to_uppercase();
-                }
-            }
-            if let Ok(u) = std::env::var("USER") {
-                self.local_telemetry.user = u;
-            }
-            self.local_telemetry.cores = std::thread::available_parallelism().map(|n| n.get() as u32).unwrap_or(4);
-
-            if let Ok(mem) = std::fs::read_to_string("/proc/meminfo") {
-                let mut total = 0u64;
-                let mut avail = 0u64;
-                for line in mem.lines() {
-                    if line.starts_with("MemTotal:") {
-                        total = line.split_whitespace().nth(1).and_then(|v| v.parse().ok()).unwrap_or(0);
-                    } else if line.starts_with("MemAvailable:") {
-                        avail = line.split_whitespace().nth(1).and_then(|v| v.parse().ok()).unwrap_or(0);
-                    }
-                }
-                if total > 0 {
-                    self.local_telemetry.ram_total_gb = total as f32 / 1024.0 / 1024.0;
-                    self.local_telemetry.ram_used_gb = (total.saturating_sub(avail)) as f32 / 1024.0 / 1024.0;
-                }
-            }
-
-            if let Ok(load) = std::fs::read_to_string("/proc/loadavg") {
-                if let Some(val) = load.split_whitespace().next().and_then(|v| v.parse::<f32>().ok()) {
-                    self.local_telemetry.cpu_pct = ((val * 10.0).round() as u32).clamp(1, 99);
-                }
-            }
-
-            if let Ok(up) = std::fs::read_to_string("/proc/uptime") {
-                if let Some(secs) = up.split_whitespace().next().and_then(|v| v.parse::<f64>().ok()) {
-                    let total_s = secs as u64;
-                    self.local_telemetry.uptime_secs = total_s;
-                    let days = total_s / 86400;
-                    let hours = (total_s % 86400) / 3600;
-                    if days > 0 {
-                        self.local_telemetry.uptime = format!("Up: {} day{}", days, if days > 1 { "s" } else { "" });
-                    } else {
-                        self.local_telemetry.uptime = format!("Up: {} hr{}", hours, if hours > 1 { "s" } else { "" });
-                    }
-                }
-            }
-            self.local_telemetry.disk_pct = 48;
-        }
+        crate::telemetry::collect_local_telemetry(
+            &mut self.local_telemetry,
+            &mut self.last_local_net_bytes,
+            &mut self.last_local_net_time,
+        );
 
         // 2. Update telemetry for each open tab
-        let now_sec = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs();
-        let local_host_copy = self.local_telemetry.host.clone();
-
-        for (idx, tab) in self.open_tabs.iter_mut().enumerate() {
+        for tab in self.open_tabs.iter_mut() {
             let is_alive = tab.session.is_alive();
             tab.telemetry.is_connected = is_alive;
 
@@ -1517,55 +1241,33 @@ impl RustyBoxApp {
                 tab.telemetry.is_remote = true;
                 if let Some(ref s) = tab.session_def {
                     let (h, u) = s.session_type.remote_host_and_user();
-                    tab.telemetry.host = if !s.name.is_empty() { s.name.clone() } else { h };
-                    tab.telemetry.user = if !u.is_empty() { u } else { "root".into() };
-                }
-            } else if !tab.telemetry.is_remote && is_alive {
-                // Only scan parser text for local tabs that might have launched ssh
-                let screen_title = tab.session.title.lock().clone();
-                let screen_text = tab.session.parser.lock().screen().contents();
-                if let Some(det) = detect_remote_session(&screen_title, &screen_text, &local_host_copy) {
-                    tab.telemetry.is_remote = true;
-                    tab.telemetry.user = det.user.clone();
-                    tab.telemetry.host = det.host.clone();
-                    if let Some(d) = det.disk_pct {
-                        tab.telemetry.disk_pct = d;
-                    }
-                    if let Some(r) = det.ram_pct {
-                        let total = if tab.telemetry.ram_total_gb > 0.0 { tab.telemetry.ram_total_gb } else { 1.0 };
-                        tab.telemetry.ram_used_gb = ((total * (r as f32 / 100.0)) * 10.0).round() / 10.0;
-                    }
-                    if let Some(c) = det.cpu_pct {
-                        tab.telemetry.cpu_pct = c;
-                    }
-                }
-            }
+                    tab.telemetry.host = if !s.name.is_empty() { s.name.clone() } else { h.clone() };
+                    tab.telemetry.user = if !u.is_empty() { u.clone() } else { "root".into() };
 
-            if tab.telemetry.is_remote {
-                // Remote tab: dynamic alive metrics per server
-                if !is_alive {
-                    tab.telemetry.cpu_pct = 0;
-                    tab.telemetry.uptime = "Disconnected".into();
-                    tab.telemetry.net_rate = "0.00M / 0.00M".into();
-                } else {
-                    tab.telemetry.uptime_secs += elapsed_secs;
-                    let days = tab.telemetry.uptime_secs / 86400;
-                    let hours = (tab.telemetry.uptime_secs % 86400) / 3600;
-                    if days > 0 {
-                        tab.telemetry.uptime = format!("Up: {} day{}", days, if days > 1 { "s" } else { "" });
+                    if !is_alive {
+                        tab.telemetry.uptime = Some("Disconnected".into());
+                        tab.telemetry.cpu_pct = None;
+                        tab.telemetry.net_rate = None;
                     } else {
-                        tab.telemetry.uptime = format!("Up: {} hr{}", hours, if hours > 1 { "s" } else { "" });
+                        let target_label = format!("{}@{}:{}", u, h, s.session_type.port().unwrap_or(22));
+                        let remote_metrics = self.explorer.remote_sessions.get(&target_label)
+                            .and_then(|sess| sess.remote_telemetry.clone())
+                            .or_else(|| {
+                                self.explorer.remote_sessions.values()
+                                    .find(|sess| sess.config.host.eq_ignore_ascii_case(&h) && sess.config.user == u)
+                                    .and_then(|sess| sess.remote_telemetry.clone())
+                            })
+                            .or_else(|| self.explorer.get_active_telemetry());
+
+                        if let Some(m) = remote_metrics {
+                            tab.telemetry.apply_metrics(&m);
+                        }
+                        if let Some((_used, _total, pct)) = self.explorer.remote_disk_stats {
+                            if tab.telemetry.disk_pct.is_none() {
+                                tab.telemetry.disk_pct = Some(pct.round() as u32);
+                            }
+                        }
                     }
-
-                    // Fluctuate CPU slightly around server base load to simulate active server
-                    let seed = ((now_sec + idx as u64 * 13) % 11) as i32 - 5;
-                    let base_cpu = tab.telemetry.cpu_pct as i32;
-                    let new_cpu = (base_cpu + seed).clamp(1, 95) as u32;
-                    tab.telemetry.cpu_pct = new_cpu;
-
-                    let up_m = (((now_sec * 3 + idx as u64 * 7) % 80) as f32) / 100.0;
-                    let down_m = (((now_sec * 5 + idx as u64 * 11) % 150) as f32) / 100.0;
-                    tab.telemetry.net_rate = format!("▲{:.2}M  ▼{:.2}M", up_m, down_m);
                 }
             } else {
                 // Local tab mirrors fresh local telemetry
@@ -1573,12 +1275,14 @@ impl RustyBoxApp {
                 tab.telemetry.cpu_pct = self.local_telemetry.cpu_pct;
                 tab.telemetry.ram_used_gb = self.local_telemetry.ram_used_gb;
                 tab.telemetry.ram_total_gb = self.local_telemetry.ram_total_gb;
+                tab.telemetry.ram_pct = self.local_telemetry.ram_pct;
                 tab.telemetry.uptime = self.local_telemetry.uptime.clone();
                 tab.telemetry.uptime_secs = self.local_telemetry.uptime_secs;
                 tab.telemetry.disk_pct = self.local_telemetry.disk_pct;
                 tab.telemetry.cores = self.local_telemetry.cores;
                 tab.telemetry.host = self.local_telemetry.host.clone();
                 tab.telemetry.user = self.local_telemetry.user.clone();
+                tab.telemetry.net_rate = self.local_telemetry.net_rate.clone();
             }
         }
     }
@@ -2047,6 +1751,7 @@ impl eframe::App for RustyBoxApp {
             self.search_open = false;
         }
         self.handle_multi_exec_broadcast();
+        self.explorer.poll();
         self.update_telemetry();
         self.sync_terminal_cwd_if_enabled();
 
@@ -2777,70 +2482,132 @@ impl eframe::App for RustyBoxApp {
                     };
 
                         // 1. Host (Far right)
-                        stat_chip(ui, RichText::new(format!("🖥 {}", telem.host)).strong().size(10.5).color(Color32::WHITE));
+                        let host_display = if !telem.host.is_empty() { &telem.host } else { "--" };
+                        stat_chip(ui, RichText::new(format!("🖥 {}", host_display)).strong().size(10.5).color(Color32::WHITE));
 
-                        // 2. CPU with visual gauge
-                        let cpu_frac = (telem.cpu_pct as f32 / 100.0).clamp(0.0, 1.0);
-                        egui::Frame::none()
-                            .fill(Color32::from_rgb(18, 24, 35))
-                            .stroke(egui::Stroke::new(1.0, Color32::from_rgb(30, 40, 58)))
-                            .rounding(5.0)
-                            .inner_margin(egui::Margin::symmetric(7.0, 2.0))
-                            .show(ui, |ui| {
-                                ui.horizontal(|ui| {
-                                    ui.label(RichText::new(format!("⚡ {}%", telem.cpu_pct)).size(10.5).color(Color32::from_rgb(220, 230, 245)));
-                                    let (rect, _) = ui.allocate_exact_size(egui::vec2(28.0, 6.0), egui::Sense::hover());
-                                    ui.painter().rect_filled(rect, 2.5, Color32::from_rgb(30, 38, 52));
-                                    let mut filled_rect = rect;
-                                    filled_rect.set_width(rect.width() * cpu_frac);
-                                    let bar_color = if telem.cpu_pct > 75 {
-                                        Color32::from_rgb(239, 68, 68)
-                                    } else if telem.cpu_pct > 50 {
-                                        Color32::from_rgb(245, 158, 11)
-                                    } else {
-                                        Color32::from_rgb(34, 197, 94)
-                                    };
-                                    ui.painter().rect_filled(filled_rect, 2.5, bar_color);
-                                });
-                            });
+                        // 2. CPU with visual gauge or placeholder
+                        match telem.cpu_pct {
+                            Some(cpu_pct) => {
+                                let cpu_frac = (cpu_pct as f32 / 100.0).clamp(0.0, 1.0);
+                                egui::Frame::none()
+                                    .fill(Color32::from_rgb(18, 24, 35))
+                                    .stroke(egui::Stroke::new(1.0, Color32::from_rgb(30, 40, 58)))
+                                    .rounding(5.0)
+                                    .inner_margin(egui::Margin::symmetric(7.0, 2.0))
+                                    .show(ui, |ui| {
+                                        ui.horizontal(|ui| {
+                                            ui.label(RichText::new(format!("⚡ {}%", cpu_pct)).size(10.5).color(Color32::from_rgb(220, 230, 245)));
+                                            let (rect, _) = ui.allocate_exact_size(egui::vec2(28.0, 6.0), egui::Sense::hover());
+                                            ui.painter().rect_filled(rect, 2.5, Color32::from_rgb(30, 38, 52));
+                                            let mut filled_rect = rect;
+                                            filled_rect.set_width(rect.width() * cpu_frac);
+                                            let bar_color = if cpu_pct > 75 {
+                                                Color32::from_rgb(239, 68, 68)
+                                            } else if cpu_pct > 50 {
+                                                Color32::from_rgb(245, 158, 11)
+                                            } else {
+                                                Color32::from_rgb(34, 197, 94)
+                                            };
+                                            ui.painter().rect_filled(filled_rect, 2.5, bar_color);
+                                        });
+                                    });
+                            }
+                            None => {
+                                stat_chip(ui, RichText::new("⚡ --%").size(10.5).color(Color32::from_rgb(148, 163, 184)));
+                            }
+                        }
 
                         // 3. Cores
-                        stat_chip(ui, RichText::new(format!("⚙ {} Cores", telem.cores)).color(Color32::from_rgb(167, 139, 250)).size(10.5));
+                        match telem.cores {
+                            Some(cores) => {
+                                stat_chip(ui, RichText::new(format!("⚙ {} Cores", cores)).color(Color32::from_rgb(167, 139, 250)).size(10.5));
+                            }
+                            None => {
+                                stat_chip(ui, RichText::new("⚙ -- Cores").size(10.5).color(Color32::from_rgb(148, 163, 184)));
+                            }
+                        }
 
-                        // 4. RAM with visual gauge
-                        let ram_pct = (telem.ram_used_gb / telem.ram_total_gb.max(0.1)).clamp(0.0, 1.0);
-                        egui::Frame::none()
-                            .fill(Color32::from_rgb(18, 24, 35))
-                            .stroke(egui::Stroke::new(1.0, Color32::from_rgb(30, 40, 58)))
-                            .rounding(5.0)
-                            .inner_margin(egui::Margin::symmetric(7.0, 2.0))
-                            .show(ui, |ui| {
-                                ui.horizontal(|ui| {
-                                    ui.label(RichText::new(format!("💾 {:.1}/{:.1}G", telem.ram_used_gb, telem.ram_total_gb)).size(10.5).color(Color32::from_rgb(220, 230, 245)));
-                                    let (rect, _) = ui.allocate_exact_size(egui::vec2(28.0, 6.0), egui::Sense::hover());
-                                    ui.painter().rect_filled(rect, 2.5, Color32::from_rgb(30, 38, 52));
-                                    let mut filled_rect = rect;
-                                    filled_rect.set_width(rect.width() * ram_pct);
-                                    ui.painter().rect_filled(filled_rect, 2.5, Color32::from_rgb(56, 189, 248));
-                                });
-                            });
+                        // 4. RAM with visual gauge or placeholder
+                        match (telem.ram_used_gb, telem.ram_total_gb, telem.ram_pct) {
+                            (Some(used), Some(total), _) => {
+                                let ram_pct = (used / total.max(0.1)).clamp(0.0, 1.0);
+                                egui::Frame::none()
+                                    .fill(Color32::from_rgb(18, 24, 35))
+                                    .stroke(egui::Stroke::new(1.0, Color32::from_rgb(30, 40, 58)))
+                                    .rounding(5.0)
+                                    .inner_margin(egui::Margin::symmetric(7.0, 2.0))
+                                    .show(ui, |ui| {
+                                        ui.horizontal(|ui| {
+                                            ui.label(RichText::new(format!("💾 {:.1}/{:.1}G", used, total)).size(10.5).color(Color32::from_rgb(220, 230, 245)));
+                                            let (rect, _) = ui.allocate_exact_size(egui::vec2(28.0, 6.0), egui::Sense::hover());
+                                            ui.painter().rect_filled(rect, 2.5, Color32::from_rgb(30, 38, 52));
+                                            let mut filled_rect = rect;
+                                            filled_rect.set_width(rect.width() * ram_pct);
+                                            ui.painter().rect_filled(filled_rect, 2.5, Color32::from_rgb(56, 189, 248));
+                                        });
+                                    });
+                            }
+                            (_, _, Some(pct)) => {
+                                let ram_pct = (pct as f32 / 100.0).clamp(0.0, 1.0);
+                                egui::Frame::none()
+                                    .fill(Color32::from_rgb(18, 24, 35))
+                                    .stroke(egui::Stroke::new(1.0, Color32::from_rgb(30, 40, 58)))
+                                    .rounding(5.0)
+                                    .inner_margin(egui::Margin::symmetric(7.0, 2.0))
+                                    .show(ui, |ui| {
+                                        ui.horizontal(|ui| {
+                                            ui.label(RichText::new(format!("💾 {}%", pct)).size(10.5).color(Color32::from_rgb(220, 230, 245)));
+                                            let (rect, _) = ui.allocate_exact_size(egui::vec2(28.0, 6.0), egui::Sense::hover());
+                                            ui.painter().rect_filled(rect, 2.5, Color32::from_rgb(30, 38, 52));
+                                            let mut filled_rect = rect;
+                                            filled_rect.set_width(rect.width() * ram_pct);
+                                            ui.painter().rect_filled(filled_rect, 2.5, Color32::from_rgb(56, 189, 248));
+                                        });
+                                    });
+                            }
+                            _ => {
+                                stat_chip(ui, RichText::new("💾 --/--G").size(10.5).color(Color32::from_rgb(148, 163, 184)));
+                            }
+                        }
 
                         // 5. Network throughput
-                        stat_chip(ui, RichText::new(format!("🌐 {}", telem.net_rate)).color(Color32::from_rgb(56, 189, 248)).size(10.5));
+                        match telem.net_rate {
+                            Some(ref rate) => {
+                                stat_chip(ui, RichText::new(format!("🌐 {}", rate)).color(Color32::from_rgb(56, 189, 248)).size(10.5));
+                            }
+                            None => {
+                                stat_chip(ui, RichText::new("🌐 --").size(10.5).color(Color32::from_rgb(148, 163, 184)));
+                            }
+                        }
 
                         // 6. Uptime
-                        stat_chip(ui, RichText::new(format!("⏱ {}", telem.uptime)).size(10.5).color(Color32::from_rgb(156, 163, 175)));
+                        match telem.uptime {
+                            Some(ref uptime) => {
+                                stat_chip(ui, RichText::new(format!("⏱ {}", uptime)).size(10.5).color(Color32::from_rgb(156, 163, 175)));
+                            }
+                            None => {
+                                stat_chip(ui, RichText::new("⏱ --").size(10.5).color(Color32::from_rgb(148, 163, 184)));
+                            }
+                        }
 
                         // 7. User
-                        stat_chip(ui, RichText::new(format!("👤 {}", telem.user)).size(10.5).color(Color32::from_rgb(201, 209, 217)));
+                        let user_str = if !telem.user.is_empty() { format!("👤 {}", telem.user) } else { "👤 --".to_string() };
+                        stat_chip(ui, RichText::new(user_str).size(10.5).color(Color32::from_rgb(201, 209, 217)));
 
                         // 8. Disk usage
-                        stat_chip(
-                            ui,
-                            RichText::new(format!("🖴 {}%", telem.disk_pct))
-                                .color(Color32::from_rgb(74, 222, 128))
-                                .size(10.5),
-                        );
+                        match telem.disk_pct {
+                            Some(disk) => {
+                                stat_chip(
+                                    ui,
+                                    RichText::new(format!("🖴 {}%", disk))
+                                        .color(Color32::from_rgb(74, 222, 128))
+                                        .size(10.5),
+                                );
+                            }
+                            None => {
+                                stat_chip(ui, RichText::new("🖴 --%").size(10.5).color(Color32::from_rgb(148, 163, 184)));
+                            }
+                        }
 
                         // 9. Multi-Exec Warning
                         if self.multi_exec_enabled {
@@ -7145,49 +6912,6 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_detect_remote_session_prompt_and_motd() {
-        let screen = r#"
-Welcome to Ubuntu 22.04.4 LTS (GNU/Linux 5.15.0-105-generic x86_64)
-
-  System information as of Tue Nov  3 10:25:22 UTC 2026
-
-  System load:                      0.12
-  Usage of /:                       29.0% of 22.88GB
-  Memory usage:                     33%
-  Swap usage:                       1%
-  Processes:                        169
-  Users logged in:                  0
-  IPv4 address for enp1s0:          198.51.100.42
-
-demouser1@vultr:~$ 
-"#;
-        let detected = detect_remote_session("", screen, "LONG-PC").expect("should detect remote session");
-        assert_eq!(detected.user, "demouser1");
-        assert_eq!(detected.host, "vultr");
-        assert_eq!(detected.disk_pct, Some(29));
-        assert_eq!(detected.ram_pct, Some(33));
-        assert_eq!(detected.cpu_pct, Some(1));
-    }
-
-    #[test]
-    fn test_detect_remote_session_from_title() {
-        let title = "root@198.51.100.42: ~";
-        let screen = "root@198.51.100.42:~# ls\n";
-        let detected = detect_remote_session(title, screen, "LONG-PC").expect("should detect remote session");
-        assert_eq!(detected.user, "root");
-        assert_eq!(detected.host, "198.51.100.42");
-    }
-
-    #[test]
-    fn test_detect_local_windows_and_linux_prompt() {
-        let win_screen = "C:\\Users\\Long> dir\n";
-        assert!(detect_remote_session("", win_screen, "LONG-PC").is_none());
-
-        let local_linux_screen = "longkaka@LONG-PC:~$ ls\n";
-        assert!(detect_remote_session("", local_linux_screen, "LONG-PC").is_none());
-    }
-
-    #[test]
     fn test_extract_cwd_from_title() {
         // Unix bash style title
         assert_eq!(extract_cwd_from_title("root@51.79.157.8: /var/log"), Some("/var/log".to_string()));
@@ -7242,5 +6966,113 @@ demouser1@vultr:~$
         assert_eq!(tab.last_sftp_path, None);
         tab.last_sftp_path = Some("/etc/nginx/sites-available".to_string());
         assert_eq!(tab.last_sftp_path.as_deref(), Some("/etc/nginx/sites-available"));
+    }
+
+    #[test]
+    fn test_local_telemetry_initialization_and_real_data() {
+        let telem = TabTelemetry::new_local();
+        assert!(!telem.host.is_empty(), "Local host must not be empty");
+        assert!(!telem.user.is_empty(), "Local user must not be empty");
+        assert!(!telem.is_remote);
+        assert!(telem.is_connected);
+
+        #[cfg(unix)]
+        {
+            assert!(telem.cores.is_some(), "Cores should be detected on Unix");
+            assert!(telem.disk_pct.is_some(), "Disk pct should be detected on Unix");
+            if let Some(pct) = telem.disk_pct {
+                assert!(pct <= 100, "Disk percentage should be <= 100%");
+            }
+        }
+
+        // Before update, dynamic metrics must be None to avoid showing fake mockup data
+        assert_eq!(telem.cpu_pct, None);
+        assert_eq!(telem.ram_used_gb, None);
+        assert_eq!(telem.ram_total_gb, None);
+        assert_eq!(telem.net_rate, None);
+    }
+
+    #[test]
+    fn test_remote_telemetry_does_not_use_mockups() {
+        let session = Session::new_ssh("Production VPS", "Servers", "103.57.220.111", 22, "admin");
+
+        let telem = TabTelemetry::new_remote(&session);
+        assert_eq!(telem.host, "Production VPS");
+        assert_eq!(telem.user, "admin");
+        assert!(telem.is_remote);
+
+        // When remote session has no active data yet, all metrics must be None (not fake hashed numbers)
+        assert_eq!(telem.cores, None);
+        assert_eq!(telem.cpu_pct, None);
+        assert_eq!(telem.ram_used_gb, None);
+        assert_eq!(telem.ram_total_gb, None);
+        assert_eq!(telem.ram_pct, None);
+        assert_eq!(telem.uptime, None);
+        assert_eq!(telem.uptime_secs, None);
+        assert_eq!(telem.disk_pct, None);
+        assert_eq!(telem.net_rate, None);
+    }
+
+    #[test]
+    fn test_read_local_disk_pct_and_net_bytes() {
+        #[cfg(unix)]
+        {
+            let disk = crate::telemetry::read_local_disk_pct();
+            assert!(disk.is_some(), "Should read root filesystem disk usage");
+            let pct = disk.unwrap();
+            assert!(pct > 0 && pct <= 100, "Disk usage {}% should be in 1..=100", pct);
+
+            let net = crate::telemetry::read_local_net_bytes();
+            assert!(net.is_some(), "Should read /proc/net/dev on Linux");
+            let (rx, tx) = net.unwrap();
+            assert!(rx > 0 || tx > 0, "Network bytes should be non-zero");
+        }
+    }
+
+    #[test]
+    fn test_remote_tab_applies_metrics_cleanly() {
+        let session_def = Session::new_ssh("My VPS", "Servers", "192.0.2.1", 22, "ubuntu");
+        let pty = PtySession::spawn_local(24, 80, Some("/bin/sh"), None).unwrap();
+
+        let mut tab = OpenTab {
+            id: "ssh-tab-1".to_string(),
+            title: "SSH: My VPS".to_string(),
+            session: pty,
+            session_def: Some(session_def.clone()),
+            custom_cmd: None,
+            workdir: None,
+            telemetry: TabTelemetry::new_remote(&session_def),
+            last_synced_cwd: None,
+            last_sftp_path: None,
+        };
+
+        // Before probe: metrics are None (safe placeholders)
+        assert_eq!(tab.telemetry.cores, None);
+        assert_eq!(tab.telemetry.cpu_pct, None);
+        assert_eq!(tab.telemetry.ram_pct, None);
+        assert_eq!(tab.telemetry.disk_pct, None);
+        assert_eq!(tab.telemetry.uptime, None);
+
+        // Apply probe metrics
+        let mut metrics = crate::telemetry::RemoteSystemMetrics::default();
+        metrics.cores = Some(8);
+        metrics.cpu_pct = Some(5);
+        metrics.ram_total_gb = Some(24.0);
+        metrics.ram_used_gb = Some(14.6);
+        metrics.ram_pct = Some(61);
+        metrics.disk_pct = Some(86);
+        metrics.uptime = Some("Up: 19h 11m".into());
+        metrics.net_rate = Some("▲254.0K  ▼79.0K".into());
+
+        tab.telemetry.apply_metrics(&metrics);
+
+        assert_eq!(tab.telemetry.cores, Some(8));
+        assert_eq!(tab.telemetry.cpu_pct, Some(5));
+        assert_eq!(tab.telemetry.ram_total_gb, Some(24.0));
+        assert_eq!(tab.telemetry.ram_used_gb, Some(14.6));
+        assert_eq!(tab.telemetry.ram_pct, Some(61));
+        assert_eq!(tab.telemetry.disk_pct, Some(86));
+        assert_eq!(tab.telemetry.uptime, Some("Up: 19h 11m".into()));
+        assert_eq!(tab.telemetry.net_rate, Some("▲254.0K  ▼79.0K".into()));
     }
 }
