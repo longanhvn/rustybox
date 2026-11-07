@@ -175,7 +175,17 @@ pub struct RustyBoxConfig {
     pub remote_monitoring_enabled: bool,
     #[serde(default = "default_true")]
     pub follow_terminal_folder: bool,
+    #[serde(default)]
+    pub sftp_bookmarks: Vec<String>,
+    #[serde(default)]
+    pub auto_log_sessions: bool,
+    #[serde(default = "default_log_directory")]
+    pub default_log_directory: String,
     pub sessions: Vec<Session>,
+}
+
+fn default_log_directory() -> String {
+    "./logs".to_string()
 }
 
 impl Default for RustyBoxConfig {
@@ -199,6 +209,9 @@ impl Default for RustyBoxConfig {
             highlight_rules: crate::terminal::highlight::default_highlight_rules(),
             remote_monitoring_enabled: true,
             follow_terminal_folder: true,
+            sftp_bookmarks: Vec::new(),
+            auto_log_sessions: false,
+            default_log_directory: default_log_directory(),
             sessions: default_sessions_list(),
         }
     }
@@ -402,6 +415,19 @@ impl StorageManager {
         let mut cfg = self.load_config();
         cfg.remote_monitoring_enabled = remote_monitoring;
         cfg.follow_terminal_folder = follow_terminal;
+        self.save_config(&cfg)
+    }
+
+    pub fn save_sftp_bookmarks(&self, bookmarks: &[String]) -> Result<(), String> {
+        let mut cfg = self.load_config();
+        cfg.sftp_bookmarks = bookmarks.to_vec();
+        self.save_config(&cfg)
+    }
+
+    pub fn save_logging_settings(&self, auto_log: bool, default_dir: &str) -> Result<(), String> {
+        let mut cfg = self.load_config();
+        cfg.auto_log_sessions = auto_log;
+        cfg.default_log_directory = default_dir.to_string();
         self.save_config(&cfg)
     }
 
@@ -826,6 +852,14 @@ mod tests {
         assert!(loaded.save_key_passphrases);
         assert!(!loaded.remote_monitoring_enabled);
         assert!(!loaded.follow_terminal_folder);
+
+        // Test bookmarks and logging persistence
+        storage.save_sftp_bookmarks(&["/var/www/html".into(), "/etc/nginx".into()]).unwrap();
+        storage.save_logging_settings(true, "D:\\RustyBoxLogs").unwrap();
+        let updated = storage.load_config();
+        assert_eq!(updated.sftp_bookmarks, vec!["/var/www/html", "/etc/nginx"]);
+        assert!(updated.auto_log_sessions);
+        assert_eq!(updated.default_log_directory, "D:\\RustyBoxLogs");
 
         let _ = fs::remove_dir_all(&base);
     }

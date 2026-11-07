@@ -258,6 +258,8 @@ pub struct RustyBoxApp {
     pending_paste_text: Option<String>,
     paste_protection_enabled: bool,
     copy_on_select: bool,
+    auto_log_sessions: bool,
+    default_log_directory: String,
     // Settings & Hotkeys Dialogs (MobaXterm TFORMPARAMS & TFORMHOTKEYS)
     show_settings_dialog: bool,
     show_hotkeys_dialog: bool,
@@ -409,6 +411,9 @@ impl RustyBoxApp {
             config.quick_macros.clone()
         };
 
+        // Load SFTP bookmarks from storage
+        explorer.bookmarks = config.sftp_bookmarks;
+
         let mut app = Self {
             storage,
             sessions,
@@ -471,6 +476,8 @@ impl RustyBoxApp {
             pending_paste_text: None,
             paste_protection_enabled,
             copy_on_select,
+            auto_log_sessions: config.auto_log_sessions,
+            default_log_directory: config.default_log_directory,
             show_settings_dialog: false,
             show_hotkeys_dialog: false,
             show_manage_passwords: false,
@@ -670,15 +677,26 @@ impl RustyBoxApp {
         self.spawn_local_terminal_ext(title, shell, workdir, None);
     }
 
-    fn resolve_session_log_path(s: &Session) -> Option<std::path::PathBuf> {
-        if !s.log_terminal_output {
+    fn resolve_session_log_path(&self, s: &Session) -> Option<std::path::PathBuf> {
+        let should_log = s.log_terminal_output || self.auto_log_sessions;
+        if !should_log {
             return None;
         }
-        let dir = if s.log_directory.trim().is_empty() {
-            std::path::PathBuf::from("./logs")
-        } else {
+        let base_dir = if !s.log_directory.trim().is_empty() {
             std::path::PathBuf::from(s.log_directory.trim())
+        } else if !self.default_log_directory.trim().is_empty() {
+            std::path::PathBuf::from(self.default_log_directory.trim())
+        } else {
+            self.storage.data_dir().join("logs")
         };
+        // Organize logs into daily folders (YYYY-MM-DD)
+        let today_str = chrono::Local::now().format("%Y-%m-%d").to_string();
+        let daily_dir = base_dir.join(&today_str);
+        let _ = std::fs::create_dir_all(&daily_dir);
+
+        // Prune log folders older than 5 days
+        Self::cleanup_old_log_folders(&base_dir, 5);
+
         let safe_name: String = s
             .name
             .chars()
@@ -689,7 +707,62 @@ impl RustyBoxApp {
             if safe_name.is_empty() { "session" } else { &safe_name },
             chrono::Local::now().format("%Y%m%d_%H%M%S")
         );
-        Some(dir.join(filename))
+        Some(daily_dir.join(filename))
+    }
+
+    fn resolve_default_log_path(&self, title: &str) -> Option<std::path::PathBuf> {
+        if !self.auto_log_sessions {
+            return None;
+        }
+        let base_dir = if !self.default_log_directory.trim().is_empty() {
+            std::path::PathBuf::from(self.default_log_directory.trim())
+        } else {
+            self.storage.data_dir().join("logs")
+        };
+        // Organize logs into daily folders (YYYY-MM-DD)
+        let today_str = chrono::Local::now().format("%Y-%m-%d").to_string();
+        let daily_dir = base_dir.join(&today_str);
+        let _ = std::fs::create_dir_all(&daily_dir);
+
+        // Prune log folders older than 5 days
+        Self::cleanup_old_log_folders(&base_dir, 5);
+
+        let safe_title: String = title
+            .chars()
+            .map(|c| if c.is_ascii_alphanumeric() || c == '-' || c == '_' { c } else { '_' })
+            .collect();
+        let filename = format!(
+            "{}_{}.log",
+            if safe_title.is_empty() { "terminal" } else { &safe_title },
+            chrono::Local::now().format("%Y%m%d_%H%M%S")
+        );
+        Some(daily_dir.join(filename))
+    }
+
+    fn cleanup_old_log_folders(base_dir: &std::path::Path, max_days: u32) {
+        if let Ok(entries) = std::fs::read_dir(base_dir) {
+            let mut date_dirs = Vec::new();
+            for entry in entries.flatten() {
+                if let Ok(file_type) = entry.file_type() {
+                    if file_type.is_dir() {
+                        let name = entry.file_name().to_string_lossy().to_string();
+                        // Match YYYY-MM-DD format
+                        if chrono::NaiveDate::parse_from_str(&name, "%Y-%m-%d").is_ok() {
+                            date_dirs.push((name, entry.path()));
+                        }
+                    }
+                }
+            }
+            // Sort ascending by date string (oldest first)
+            date_dirs.sort_by(|a, b| a.0.cmp(&b.0));
+            // Keep at most max_days newest folders, remove older ones
+            if date_dirs.len() > max_days as usize {
+                let to_remove = date_dirs.len() - max_days as usize;
+                for (_, path) in date_dirs.into_iter().take(to_remove) {
+                    let _ = std::fs::remove_dir_all(path);
+                }
+            }
+        }
     }
 
     fn persist_preferences(&self) -> Result<(), String> {
@@ -703,7 +776,7 @@ impl RustyBoxApp {
         )
     }
 
-    fn build_ssh_spawn_config(s: &Session, tunnel_x11: bool) -> (Option<String>, crate::terminal::pty_session::SshSpawnConfig) {
+    fn build_ssh_spawn_config(&self, s: &Session, tunnel_x11: bool) -> (Option<String>, crate::terminal::pty_session::SshSpawnConfig) {
         let effective_jump = if let SessionType::Ssh { ref jump_host, .. } = s.session_type {
             jump_host.clone().filter(|j| !j.trim().is_empty())
         } else {
@@ -737,7 +810,7 @@ impl RustyBoxApp {
             } else {
                 None
             },
-            log_file_path: Self::resolve_session_log_path(s),
+            log_file_path: self.resolve_session_log_path(s),
         };
         (effective_jump, cfg)
     }
@@ -750,7 +823,10 @@ impl RustyBoxApp {
         session_def: Option<Session>,
     ) {
         self.is_home_active = false;
-        let log_path = session_def.as_ref().and_then(Self::resolve_session_log_path);
+        let log_path = match session_def.as_ref() {
+            Some(s) => self.resolve_session_log_path(s),
+            None => self.resolve_default_log_path(title),
+        };
         match PtySession::spawn_local_with_log(24, 80, shell, workdir, log_path) {
             Ok(session) => {
                 let telemetry = match &session_def {
@@ -833,7 +909,7 @@ impl RustyBoxApp {
 
             let final_password = decrypted_pw_buf.as_deref().or(final_password_str.as_deref());
 
-            let (effective_jump, ssh_cfg) = Self::build_ssh_spawn_config(&s, tunnel_x11);
+            let (effective_jump, ssh_cfg) = self.build_ssh_spawn_config(&s, tunnel_x11);
 
             match PtySession::spawn_ssh_with_config(
                 24,
@@ -1018,82 +1094,90 @@ impl RustyBoxApp {
     }
 
     pub fn restart_tab(&mut self, idx: usize) {
-        if let Some(tab) = self.open_tabs.get_mut(idx) {
-            if let Some(ref s) = tab.session_def {
-                if let SessionType::Ssh {
-                    ref host,
-                    port,
-                    ref user,
-                    ref key_path,
-                    tunnel_x11,
-                    ..
-                } = s.session_type
-                {
-                    let mut effective_password = s
-                        .password
-                        .as_deref()
-                        .filter(|p| !p.trim().is_empty())
-                        .or_else(|| {
-                            self.credentials
-                                .iter()
-                                .find(|c| {
-                                    (!c.username.is_empty() && c.username == *user)
-                                        || (!c.name.is_empty() && c.name == s.name)
-                                })
-                                .map(|c| c.password.as_str())
-                                .filter(|p| !p.trim().is_empty())
-                        });
+        let (session_def, custom_cmd, workdir) = match self.open_tabs.get(idx) {
+            Some(t) => (t.session_def.clone(), t.custom_cmd.clone(), t.workdir.clone()),
+            None => return,
+        };
 
-                    let mut decrypted_pw_buf: Option<String> = None;
-                    if let Some(pw) = effective_password {
-                        if is_encrypted(pw) {
-                            if self.storage.is_vault_unlocked() {
-                                if let Some(key) = self.storage.vault_key() {
-                                    if let Ok(dec) = decrypt_str(&key, pw) {
-                                        decrypted_pw_buf = Some(dec);
-                                    }
+        if let Some(ref s) = session_def {
+            if let SessionType::Ssh {
+                ref host,
+                port,
+                ref user,
+                ref key_path,
+                tunnel_x11,
+                ..
+            } = s.session_type
+            {
+                let mut effective_password = s
+                    .password
+                    .as_deref()
+                    .filter(|p| !p.trim().is_empty())
+                    .map(|p| p.to_string())
+                    .or_else(|| {
+                        self.credentials
+                            .iter()
+                            .find(|c| {
+                                (!c.username.is_empty() && c.username == *user)
+                                    || (!c.name.is_empty() && c.name == s.name)
+                            })
+                            .map(|c| c.password.clone())
+                            .filter(|p| !p.trim().is_empty())
+                    });
+
+                let mut decrypted_pw_buf: Option<String> = None;
+                if let Some(ref pw) = effective_password {
+                    if is_encrypted(pw) {
+                        if self.storage.is_vault_unlocked() {
+                            if let Some(key) = self.storage.vault_key() {
+                                if let Ok(dec) = decrypt_str(&key, pw) {
+                                    decrypted_pw_buf = Some(dec);
                                 }
-                            } else {
-                                self.show_vault = true;
-                                self.vault_status = Some(("🔒 Master Password Vault is locked. Please unlock to auto-submit saved password.".into(), true));
-                                effective_password = None;
                             }
+                        } else {
+                            self.show_vault = true;
+                            self.vault_status = Some(("🔒 Master Password Vault is locked. Please unlock to auto-submit saved password.".into(), true));
+                            effective_password = None;
                         }
                     }
+                }
 
-                    let final_password = if let Some(ref dec) = decrypted_pw_buf {
-                        Some(dec.as_str())
-                    } else {
-                        effective_password
-                    };
+                let final_password = if let Some(ref dec) = decrypted_pw_buf {
+                    Some(dec.as_str())
+                } else {
+                    effective_password.as_deref()
+                };
 
-                    let (effective_jump, ssh_cfg) = Self::build_ssh_spawn_config(s, tunnel_x11);
+                let (effective_jump, ssh_cfg) = self.build_ssh_spawn_config(s, tunnel_x11);
 
-                    if let Ok(session) = PtySession::spawn_ssh_with_config(
-                        24,
-                        80,
-                        host,
-                        port,
-                        user,
-                        key_path.as_deref(),
-                        effective_jump.as_deref(),
-                        final_password,
-                        &ssh_cfg,
-                    ) {
+                if let Ok(session) = PtySession::spawn_ssh_with_config(
+                    24,
+                    80,
+                    host,
+                    port,
+                    user,
+                    key_path.as_deref(),
+                    effective_jump.as_deref(),
+                    final_password,
+                    &ssh_cfg,
+                ) {
+                    if let Some(tab) = self.open_tabs.get_mut(idx) {
                         tab.session = session;
                         tab.telemetry.is_connected = true;
                         tab.telemetry.last_updated = std::time::Instant::now();
                     }
                 }
-            } else {
-                let log_path = tab.session_def.as_ref().and_then(Self::resolve_session_log_path);
-                if let Ok(session) = PtySession::spawn_local_with_log(
-                    24,
-                    80,
-                    tab.custom_cmd.as_deref(),
-                    tab.workdir.as_deref(),
-                    log_path,
-                ) {
+            }
+        } else {
+            let log_path = self.resolve_default_log_path("terminal");
+            if let Ok(session) = PtySession::spawn_local_with_log(
+                24,
+                80,
+                custom_cmd.as_deref(),
+                workdir.as_deref(),
+                log_path,
+            ) {
+                if let Some(tab) = self.open_tabs.get_mut(idx) {
                     tab.session = session;
                     tab.telemetry.is_connected = true;
                     tab.telemetry.last_updated = std::time::Instant::now();
@@ -1675,6 +1759,9 @@ impl RustyBoxApp {
         cfg.highlight_rules_enabled = self.highlight_rules_enabled;
         cfg.remote_monitoring_enabled = self.explorer.remote_monitoring_enabled;
         cfg.follow_terminal_folder = self.explorer.follow_terminal_folder;
+        cfg.sftp_bookmarks = self.explorer.bookmarks.clone();
+        cfg.auto_log_sessions = self.auto_log_sessions;
+        cfg.default_log_directory = self.default_log_directory.clone();
         cfg
     }
 
@@ -1722,6 +1809,13 @@ impl RustyBoxApp {
         self.paste_protection_enabled = imported.paste_protection_enabled;
         self.explorer.remote_monitoring_enabled = imported.remote_monitoring_enabled;
         self.explorer.follow_terminal_folder = imported.follow_terminal_folder;
+        if !imported.sftp_bookmarks.is_empty() {
+            self.explorer.bookmarks = imported.sftp_bookmarks.clone();
+        }
+        self.auto_log_sessions = imported.auto_log_sessions;
+        if !imported.default_log_directory.is_empty() {
+            self.default_log_directory = imported.default_log_directory.clone();
+        }
 
         if imported.vault.is_some() {
             self.storage.set_vault_key(None);
@@ -1835,6 +1929,7 @@ impl eframe::App for RustyBoxApp {
                         self.active_tab_idx = self.open_tabs.len() - 1;
                     }
                     self.sync_sidebar_with_active_tab();
+                    self.sidebar_tab = 0;
                 }
             }
         }
@@ -1867,6 +1962,10 @@ impl eframe::App for RustyBoxApp {
         }
         self.handle_multi_exec_broadcast();
         self.explorer.poll();
+        if self.explorer.bookmarks_changed {
+            self.explorer.bookmarks_changed = false;
+            let _ = self.storage.save_sftp_bookmarks(&self.explorer.bookmarks);
+        }
         self.update_telemetry();
         self.sync_terminal_cwd_if_enabled();
 
@@ -1955,7 +2054,7 @@ impl eframe::App for RustyBoxApp {
                         .inner_margin(egui::Margin::symmetric(5.0, 1.5))
                         .show(ui, |ui| {
                             ui.label(
-                                RichText::new("v1.3-88")
+                                RichText::new("v1.3-89")
                                     .color(Color32::from_rgb(147, 197, 253))
                                     .size(10.5)
                                     .strong(),
@@ -2042,6 +2141,7 @@ impl eframe::App for RustyBoxApp {
                                     self.active_tab_idx = self.open_tabs.len() - 1;
                                 }
                                 self.sync_sidebar_with_active_tab();
+                                self.sidebar_tab = 0;
                             }
                         }
                         ui.close_menu();
@@ -3604,6 +3704,7 @@ impl eframe::App for RustyBoxApp {
                             self.active_tab_idx = self.active_tab_idx.saturating_sub(1);
                         }
                         self.sync_sidebar_with_active_tab();
+                        self.sidebar_tab = 0;
                     }
                 }
 
@@ -4399,6 +4500,7 @@ impl eframe::App for RustyBoxApp {
                             self.active_tab_idx = self.open_tabs.len() - 1;
                         }
                         self.sync_sidebar_with_active_tab();
+                        self.sidebar_tab = 0;
                     }
                 }
             }
@@ -6721,6 +6823,47 @@ impl eframe::App for RustyBoxApp {
                                 let _ = self.persist_preferences();
                             }
                             ui.add_space(6.0);
+                            if ui.checkbox(&mut self.auto_log_sessions, "Automatically log all terminal sessions to file").changed() {
+                                let _ = self.storage.save_logging_settings(self.auto_log_sessions, &self.default_log_directory);
+                            }
+                            if self.auto_log_sessions {
+                                ui.horizontal(|ui| {
+                                    let placeholder = self.storage.data_dir().join("logs").to_string_lossy().to_string();
+                                    ui.label("Log directory:");
+                                    let log_dir_resp = ui.add(
+                                        TextEdit::singleline(&mut self.default_log_directory)
+                                            .hint_text(&placeholder)
+                                            .desired_width(260.0)
+                                    );
+                                    if log_dir_resp.lost_focus() || log_dir_resp.changed() {
+                                        let _ = self.storage.save_logging_settings(self.auto_log_sessions, &self.default_log_directory);
+                                    }
+                                    if ui.small_button("📂 Open Logs").on_hover_text("Open log folder in File Explorer").clicked() {
+                                        let target = if !self.default_log_directory.trim().is_empty() {
+                                            std::path::PathBuf::from(self.default_log_directory.trim())
+                                        } else {
+                                            self.storage.data_dir().join("logs")
+                                        };
+                                        let _ = std::fs::create_dir_all(&target);
+                                        #[cfg(windows)]
+                                        {
+                                            use std::os::windows::process::CommandExt;
+                                            let _ = std::process::Command::new("explorer.exe")
+                                                .arg(&target)
+                                                .creation_flags(0x08000000)
+                                                .spawn();
+                                        }
+                                        #[cfg(not(windows))]
+                                        {
+                                            let _ = std::process::Command::new("xdg-open")
+                                                .arg(&target)
+                                                .spawn();
+                                        }
+                                    }
+                                });
+                                ui.label(RichText::new("ℹ Logs are organized by day (YYYY-MM-DD) and retained for up to 5 days.").weak().size(11.0));
+                            }
+                            ui.add_space(6.0);
                             ui.horizontal(|ui| {
                                 let mut hl_en = self.highlight_rules_enabled;
                                 if ui.checkbox(&mut hl_en, "Enable Auto-Highlight Keywords in Terminal (ZOC Style)").changed() {
@@ -7253,5 +7396,42 @@ mod tests {
         assert_eq!(tab.telemetry.disk_pct, Some(86));
         assert_eq!(tab.telemetry.uptime, Some("Up: 19h 11m".into()));
         assert_eq!(tab.telemetry.net_rate, Some("▲254.0K  ▼79.0K".into()));
+    }
+
+    #[test]
+    fn test_cleanup_old_log_folders() {
+        let base = std::env::temp_dir().join(format!("test_logs_clean_{}", uuid::Uuid::new_v4()));
+        let _ = std::fs::create_dir_all(&base);
+        // Create 7 day folders
+        let days = vec![
+            "2026-11-01",
+            "2026-11-02",
+            "2026-11-03",
+            "2026-11-04",
+            "2026-11-05",
+            "2026-11-06",
+            "2026-11-07",
+        ];
+        for d in &days {
+            let p = base.join(d);
+            std::fs::create_dir_all(&p).unwrap();
+            std::fs::write(p.join("sample.log"), "log text").unwrap();
+        }
+
+        // Keep max 5 days
+        RustyBoxApp::cleanup_old_log_folders(&base, 5);
+
+        // Check: 2026-11-01 and 2026-11-02 should be pruned
+        assert!(!base.join("2026-11-01").exists());
+        assert!(!base.join("2026-11-02").exists());
+
+        // Newest 5 days should remain
+        assert!(base.join("2026-11-03").exists());
+        assert!(base.join("2026-11-04").exists());
+        assert!(base.join("2026-11-05").exists());
+        assert!(base.join("2026-11-06").exists());
+        assert!(base.join("2026-11-07").exists());
+
+        let _ = std::fs::remove_dir_all(&base);
     }
 }

@@ -122,12 +122,19 @@ pub struct FileExplorer {
     pub follow_terminal_folder: bool,
     pub remote_monitoring_enabled: bool,
     pub active_remote_label: Option<String>,
+    // Bookmarks list
+    pub bookmarks: Vec<String>,
+    pub bookmarks_changed: bool,
     // Modal quick editor
     pub editor_open: bool,
     pub editor_file_path: Option<PathBuf>,
     pub editor_remote_label: Option<String>,
     pub editor_content: String,
     pub editor_status: Option<String>,
+    pub editor_font_size: f32,
+    pub editor_search_query: String,
+    pub editor_search_matches: usize,
+    pub editor_show_search: bool,
     // Modal Chmod (RustyBox TFORMCHMOD)
     pub chmod_open: bool,
     pub chmod_target: Option<PathBuf>,
@@ -200,11 +207,17 @@ impl FileExplorer {
             follow_terminal_folder: false,
             remote_monitoring_enabled: true,
             active_remote_label: None,
+            bookmarks: Vec::new(),
+            bookmarks_changed: false,
             editor_open: false,
             editor_file_path: None,
             editor_remote_label: None,
             editor_content: String::new(),
             editor_status: None,
+            editor_font_size: 13.0,
+            editor_search_query: String::new(),
+            editor_search_matches: 0,
+            editor_show_search: false,
             chmod_open: false,
             chmod_target: None,
             chmod_remote_label: None,
@@ -956,6 +969,24 @@ impl FileExplorer {
             return !entry.is_dir;
         }
         !self.is_remote && selected.is_file()
+    }
+
+    pub fn toggle_bookmark(&mut self, path_str: &str) {
+        let clean = path_str.trim();
+        if clean.is_empty() {
+            return;
+        }
+        if let Some(pos) = self.bookmarks.iter().position(|b| b == clean) {
+            self.bookmarks.remove(pos);
+        } else {
+            self.bookmarks.push(clean.to_string());
+        }
+        self.bookmarks_changed = true;
+    }
+
+    pub fn is_bookmarked(&self, path_str: &str) -> bool {
+        let clean = path_str.trim();
+        self.bookmarks.iter().any(|b| b == clean)
     }
 
     pub fn open_editor(&mut self, path: PathBuf) {
@@ -2317,5 +2348,24 @@ mod tests {
         explorer.poll();
         let suppressed_cmd = cmd_rx.try_recv();
         assert!(suppressed_cmd.is_err(), "Telemetry poll must be suppressed during active file transfer");
+    }
+
+    #[test]
+    fn test_sftp_bookmarks_toggle_and_check() {
+        let mut explorer = FileExplorer::new();
+        assert!(!explorer.is_bookmarked("/var/log"));
+
+        explorer.toggle_bookmark("/var/log");
+        assert!(explorer.is_bookmarked("/var/log"));
+        assert!(explorer.bookmarks_changed);
+        assert_eq!(explorer.bookmarks, vec!["/var/log"]);
+
+        explorer.toggle_bookmark("/etc/nginx");
+        assert_eq!(explorer.bookmarks.len(), 2);
+
+        // Toggle existing removes it
+        explorer.toggle_bookmark("/var/log");
+        assert!(!explorer.is_bookmarked("/var/log"));
+        assert_eq!(explorer.bookmarks, vec!["/etc/nginx"]);
     }
 }

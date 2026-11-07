@@ -503,8 +503,8 @@ fn run_sftp_worker(
                     match std::fs::File::open(&local_path) {
                         Ok(lf) => match sftp.create(Path::new(&remote_path)) {
                             Ok(mut rf) => {
-                                let mut lf = std::io::BufReader::with_capacity(256 * 1024, lf);
-                                let mut buffer = [0u8; 256 * 1024];
+                                let mut lf = std::io::BufReader::with_capacity(512 * 1024, lf);
+                                let mut buffer = [0u8; 512 * 1024];
                                 let mut transferred = 0u64;
                                 let start_time = Instant::now();
                                 let mut last_report = Instant::now();
@@ -622,8 +622,8 @@ fn run_sftp_worker(
                     match sftp.open(p) {
                         Ok(mut rf) => match std::fs::File::create(&local_path) {
                             Ok(lf) => {
-                                let mut lf = std::io::BufWriter::with_capacity(256 * 1024, lf);
-                                let mut buffer = [0u8; 256 * 1024];
+                                let mut lf = std::io::BufWriter::with_capacity(512 * 1024, lf);
+                                let mut buffer = [0u8; 512 * 1024];
                                 let mut transferred = 0u64;
                                 let start_time = Instant::now();
                                 let mut last_report = Instant::now();
@@ -772,13 +772,13 @@ fn upload_dir_recursive(
 
         let lf = std::fs::File::open(&src)
             .map_err(|e| format!("Cannot read local file '{}': {}", src.display(), e))?;
-        let mut lf = std::io::BufReader::with_capacity(256 * 1024, lf);
+        let mut lf = std::io::BufReader::with_capacity(512 * 1024, lf);
 
         let mut rf = sftp
             .create(Path::new(&dest_str))
             .map_err(|e| format!("Cannot create remote file '{}': {}", dest_str, e))?;
 
-        let mut buffer = [0u8; 256 * 1024];
+        let mut buffer = [0u8; 512 * 1024];
         loop {
             if cancel_flag.load(Ordering::Relaxed) {
                 return Err("Upload cancelled by user.".to_string());
@@ -888,9 +888,9 @@ fn download_dir_recursive(
 
         let lf = std::fs::File::create(&loc_f)
             .map_err(|e| format!("Cannot create local file '{}': {}", loc_f.display(), e))?;
-        let mut lf = std::io::BufWriter::with_capacity(256 * 1024, lf);
+        let mut lf = std::io::BufWriter::with_capacity(512 * 1024, lf);
 
-        let mut buffer = [0u8; 256 * 1024];
+        let mut buffer = [0u8; 512 * 1024];
         loop {
             if cancel_flag.load(Ordering::Relaxed) {
                 return Err("Download cancelled by user.".to_string());
@@ -1034,8 +1034,8 @@ fn connect_sftp(cfg: &SftpTargetConfig) -> Result<(ssh2::Session, ssh2::Sftp), S
     let _ = tcp.set_write_timeout(Some(Duration::from_secs(15)));
     let _ = tcp.set_nodelay(true);
     let sock = socket2::SockRef::from(&tcp);
-    let _ = sock.set_send_buffer_size(1024 * 1024);
-    let _ = sock.set_recv_buffer_size(1024 * 1024);
+    let _ = sock.set_send_buffer_size(2 * 1024 * 1024);
+    let _ = sock.set_recv_buffer_size(2 * 1024 * 1024);
 
     let mut sess = ssh2::Session::new().map_err(|e| format!("Failed to create SSH session: {}", e))?;
     sess.set_tcp_stream(tcp);

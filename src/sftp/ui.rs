@@ -260,18 +260,54 @@ pub fn render_sftp_sidebar(ui: &mut Ui, explorer: &mut FileExplorer) {
             }
         }
 
-        // 2. PATH BAR WITH DROPDOWN HISTORY (Exact pixel-aligned row like `/home/ruby/ [▾]`)
+        // 2. PATH BAR WITH BOOKMARK & DROPDOWN (Pixel-aligned row: `[★] /home/ruby/ [▾]`)
         let path_h = 25.0;
         let (path_row, _) = ui.allocate_exact_size(vec2(ui.available_width(), path_h), Sense::hover());
+        let star_w = 22.0;
         let drop_w = 24.0;
+        let star_rect = Rect::from_min_max(
+            path_row.min,
+            pos2(path_row.min.x + star_w, path_row.bottom()),
+        );
         let drop_rect = Rect::from_min_max(
             pos2(path_row.right() - drop_w, path_row.top()),
             path_row.max,
         );
         let input_rect = Rect::from_min_max(
-            path_row.min,
+            pos2(star_rect.right() + 3.0, path_row.top()),
             pos2(drop_rect.left() - 4.0, path_row.bottom()),
         );
+
+        let current_path_str = explorer.current_path.to_string_lossy().to_string();
+        let is_current_bookmarked = explorer.is_bookmarked(&current_path_str);
+        let star_resp = ui.interact(star_rect, ui.id().with("sftp_star_btn"), Sense::click());
+        if star_resp.hovered() {
+            ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+        }
+        {
+            let p = ui.painter();
+            let bg = if star_resp.hovered() {
+                Color32::from_rgb(48, 54, 61)
+            } else {
+                Color32::from_rgb(33, 38, 45)
+            };
+            p.rect(star_rect, Rounding::same(4.0), bg, Stroke::new(1.0, Color32::from_rgb(48, 54, 61)));
+            let star_color = if is_current_bookmarked {
+                Color32::from_rgb(250, 204, 21) // Gold
+            } else {
+                Color32::from_rgb(107, 114, 128) // Dim gray
+            };
+            p.text(
+                star_rect.center(),
+                egui::Align2::CENTER_CENTER,
+                "★",
+                FontId::proportional(13.0),
+                star_color,
+            );
+        }
+        if star_resp.on_hover_text(if is_current_bookmarked { "Remove from SFTP Bookmarks" } else { "Bookmark this directory (⭐)" }).clicked() {
+            explorer.toggle_bookmark(&current_path_str);
+        }
 
         let path_resp = ui.put(
             input_rect,
@@ -310,19 +346,35 @@ pub fn render_sftp_sidebar(ui: &mut Ui, explorer: &mut FileExplorer) {
             p.line_segment([pos2(dc.x - 3.5, dc.y - 1.5), pos2(dc.x, dc.y + 2.0)], cs);
             p.line_segment([pos2(dc.x, dc.y + 2.0), pos2(dc.x + 3.5, dc.y - 1.5)], cs);
         }
-        let drop_resp = drop_resp.on_hover_text("Recent & Quick Paths");
+        let drop_resp = drop_resp.on_hover_text("Recent & Bookmarked Paths");
         if drop_resp.clicked() {
             ui.memory_mut(|m| m.toggle_popup(drop_id));
         }
 
         let mut jump_to: Option<PathBuf> = None;
+        let mut remove_bookmark: Option<String> = None;
         egui::popup::popup_below_widget(
             ui,
             drop_id,
             &drop_resp,
             egui::PopupCloseBehavior::CloseOnClickOutside,
             |ui| {
-                ui.set_min_width(210.0);
+                ui.set_min_width(230.0);
+                if !explorer.bookmarks.is_empty() {
+                    ui.label(RichText::new("⭐ Bookmarked Directories").size(11.0).color(Color32::from_rgb(250, 204, 21)).strong());
+                    for bm in explorer.bookmarks.clone() {
+                        ui.horizontal(|ui| {
+                            if ui.button(RichText::new(&bm).monospace().size(11.0)).clicked() {
+                                jump_to = Some(PathBuf::from(&bm));
+                            }
+                            if ui.small_button("🗑").on_hover_text("Remove bookmark").clicked() {
+                                remove_bookmark = Some(bm);
+                            }
+                        });
+                    }
+                    ui.separator();
+                }
+
                 ui.label(RichText::new("Quick Jump").size(11.0).weak());
                 if let Some(home) = dirs::home_dir() {
                     if ui.button(format!("Home ({})", home.display())).clicked() {
@@ -335,6 +387,12 @@ pub fn render_sftp_sidebar(ui: &mut Ui, explorer: &mut FileExplorer) {
                 if ui.button("/tmp").clicked() {
                     jump_to = Some(PathBuf::from("/tmp"));
                 }
+                if ui.button("/var/log").clicked() {
+                    jump_to = Some(PathBuf::from("/var/log"));
+                }
+                if ui.button("/etc").clicked() {
+                    jump_to = Some(PathBuf::from("/etc"));
+                }
                 if !explorer.path_history.is_empty() {
                     ui.separator();
                     ui.label(RichText::new("Recent Directories").size(11.0).weak());
@@ -346,6 +404,9 @@ pub fn render_sftp_sidebar(ui: &mut Ui, explorer: &mut FileExplorer) {
                 }
             },
         );
+        if let Some(bm_to_del) = remove_bookmark {
+            explorer.toggle_bookmark(&bm_to_del);
+        }
         if let Some(target) = jump_to {
             explorer.set_path(target);
         }
@@ -1269,7 +1330,7 @@ pub fn render_sftp_sidebar(ui: &mut Ui, explorer: &mut FileExplorer) {
         explorer.handle_dropped_paths(dropped_paths);
     }
 
-    // Modal File Editor
+    // Modal File Editor (Built-in Code/Text Editor with Line Numbers, Ctrl+S, Ctrl+F, Font Zoom)
     if explorer.editor_open {
         let mut open = explorer.editor_open;
         let file_name = explorer
@@ -1280,30 +1341,123 @@ pub fn render_sftp_sidebar(ui: &mut Ui, explorer: &mut FileExplorer) {
             .unwrap_or_else(|| "Editor".to_string());
 
         let mut close_editor = false;
-        egui::Window::new(format!("Quick Editor - {}", file_name))
+        let ctx = ui.ctx().clone();
+
+        // Check Ctrl+S and Ctrl+F shortcuts inside Editor
+        let mut trigger_save = false;
+        if ctx.input_mut(|i| i.consume_key(egui::Modifiers::CTRL, egui::Key::S)) {
+            trigger_save = true;
+        }
+        if ctx.input_mut(|i| i.consume_key(egui::Modifiers::CTRL, egui::Key::F)) {
+            explorer.editor_show_search = !explorer.editor_show_search;
+        }
+
+        egui::Window::new(format!("📝 Built-in Editor — {}", file_name))
             .open(&mut open)
             .collapsible(false)
-            .default_size(Vec2::new(620.0, 460.0))
-            .show(ui.ctx(), |ui| {
+            .default_size(Vec2::new(720.0, 520.0))
+            .show(&ctx, |ui| {
                 ui.horizontal(|ui| {
-                    if ui.button("💾 Save File").clicked() {
+                    if ui.button("💾 Save (Ctrl+S)").clicked() || trigger_save {
                         explorer.save_editor();
+                    }
+                    if ui.button("🔍 Find (Ctrl+F)").clicked() {
+                        explorer.editor_show_search = !explorer.editor_show_search;
+                    }
+                    if ui.small_button("➖").on_hover_text("Zoom out font").clicked() && explorer.editor_font_size > 9.0 {
+                        explorer.editor_font_size -= 1.0;
+                    }
+                    ui.label(RichText::new(format!("{:.0}px", explorer.editor_font_size)).size(11.0).monospace());
+                    if ui.small_button("➕").on_hover_text("Zoom in font").clicked() && explorer.editor_font_size < 28.0 {
+                        explorer.editor_font_size += 1.0;
                     }
                     if ui.button("✖ Close").clicked() {
                         close_editor = true;
                     }
                     if let Some(ref st) = explorer.editor_status {
-                        ui.label(RichText::new(st).color(Color32::from_rgb(63, 185, 80)));
+                        ui.label(RichText::new(st).color(Color32::from_rgb(63, 185, 80)).strong());
                     }
                 });
+
+                if explorer.editor_show_search {
+                    ui.add_space(3.0);
+                    ui.horizontal(|ui| {
+                        ui.label(RichText::new("Find:").size(11.5).strong());
+                        let search_resp = ui.add(
+                            TextEdit::singleline(&mut explorer.editor_search_query)
+                                .hint_text("Type keyword...")
+                                .desired_width(180.0),
+                        );
+                        if search_resp.changed() {
+                            let q = explorer.editor_search_query.trim();
+                            if !q.is_empty() {
+                                explorer.editor_search_matches = explorer.editor_content.matches(q).count();
+                            } else {
+                                explorer.editor_search_matches = 0;
+                            }
+                        }
+                        if !explorer.editor_search_query.trim().is_empty() {
+                            let match_color = if explorer.editor_search_matches > 0 {
+                                Color32::from_rgb(52, 211, 153)
+                            } else {
+                                Color32::from_rgb(248, 113, 113)
+                            };
+                            ui.label(RichText::new(format!("{} match(es)", explorer.editor_search_matches)).color(match_color).size(11.0));
+                        }
+                    });
+                }
+
                 ui.separator();
-                ScrollArea::both().max_height(370.0).show(ui, |ui| {
-                    ui.add(
-                        TextEdit::multiline(&mut explorer.editor_content)
-                            .font(egui::TextStyle::Monospace)
-                            .desired_width(f32::INFINITY)
-                            .code_editor(),
-                    );
+
+                // Compute line numbers
+                let line_count = explorer.editor_content.lines().count().max(1);
+                let digits = line_count.to_string().len().max(2);
+                let line_numbers_text = (1..=line_count)
+                    .map(|n| format!("{:>width$}", n, width = digits))
+                    .collect::<Vec<String>>()
+                    .join("\n");
+
+                let total_chars = explorer.editor_content.len();
+                let editor_font = FontId::monospace(explorer.editor_font_size);
+
+                ScrollArea::both()
+                    .max_height(ui.available_height() - 24.0)
+                    .show(ui, |ui| {
+                        ui.horizontal_top(|ui| {
+                            // Left gutter: Line numbers
+                            let line_w = (digits as f32 * 8.5 * (explorer.editor_font_size / 13.0)).max(28.0);
+                            ui.add_sized(
+                                [line_w, ui.available_height()],
+                                egui::Label::new(
+                                    RichText::new(line_numbers_text)
+                                        .font(editor_font.clone())
+                                        .color(Color32::from_rgb(100, 116, 139)),
+                                )
+                                .selectable(false),
+                            );
+
+                            ui.separator();
+
+                            // Main code editor area
+                            ui.add(
+                                TextEdit::multiline(&mut explorer.editor_content)
+                                    .font(editor_font)
+                                    .desired_width(f32::INFINITY)
+                                    .desired_rows(22)
+                                    .code_editor(),
+                            );
+                        });
+                    });
+
+                // Status bar at bottom
+                ui.separator();
+                ui.horizontal(|ui| {
+                    ui.label(RichText::new(format!("Lines: {}  |  Length: {} bytes", line_count, total_chars)).size(11.0).weak());
+                    if let Some(ref p) = explorer.editor_file_path {
+                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                            ui.label(RichText::new(p.to_string_lossy()).size(10.5).color(Color32::from_rgb(148, 163, 184)));
+                        });
+                    }
                 });
             });
         explorer.editor_open = open && !close_editor;

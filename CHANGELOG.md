@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [v1.3-89] - 2026-11-07
+### Added & Improved (SFTP Speed Optimization, Advanced Internal Editor, Auto Session Logging & SFTP Bookmarks)
+- **Tối ưu hóa băng thông SFTP Transfer (512KB Buffer & 2MB Socket)**:
+  - Tăng dung lượng bộ đệm `BufReader` / `BufWriter` và mảng buffer truyền tải SFTP từ 256KB lên 512KB.
+  - Tăng kích thước bộ đệm socket TCP cấp hệ thống (`set_send_buffer_size` & `set_recv_buffer_size`) lên 2MB kết hợp cờ `TCP_NODELAY = true`, tối ưu hóa tối đa thông lượng upload/download trên kết nối VPS băng thông cao và độ trễ lớn.
+- **Tự động chuyển Sidebar về tab Sessions khi đóng Tab Terminal**:
+  - Khi đóng tab (qua phím tắt `Ctrl+Shift+W`, nút `X`, menu chuột phải hoặc thanh tác vụ), ứng dụng tự động chuyển `sidebar_tab = 0` (Sessions Tree) giúp người dùng ngay lập tức thấy danh sách máy chủ/phiên để tiếp tục kết nối.
+- **Tự động ghi Log Terminal ra tệp theo ngày và xoay vòng 5 ngày (Session Logging to File)**:
+  - Thư mục log động chuẩn hóa theo thư mục dữ liệu ứng dụng: `<data_dir>/logs/` (mặc định đặt ngay cạnh file cấu hình `data/logs/`, hỗ trợ cả chế độ portable).
+  - Phân loại thư mục con theo từng ngày (`YYYY-MM-DD/`).
+  - Cơ chế tự động dọn dẹp (auto-prune): Chỉ giữ lại tối đa 5 ngày gần nhất, các thư mục log cũ hơn 5 ngày sẽ được tự động xóa sạch để giải phóng dung lượng đĩa.
+  - Bổ sung nút bấm `📂 Open Logs` trong cài đặt để mở nhanh thư mục log bằng Windows File Explorer.
+  - Tự động đồng bộ và lưu trữ cấu hình vào `RustyBox.json`.
+  - Bổ sung cột số dòng (Line Numbers) tự động căn chỉnh và đồng bộ theo cỡ chữ.
+  - Hỗ trợ phím tắt `Ctrl + S` lưu ngay lập tức (ghi đè và tự upload lên VPS), phím tắt `Ctrl + F` mở thanh tìm kiếm từ khóa kèm đếm số lượt khớp (match count).
+  - Nút thu phóng cỡ chữ nhanh (`➖` / `➕`) từ 9px đến 28px.
+  - Thanh trạng thái chân trang hiển thị chi tiết số dòng, độ dài bytes và đường dẫn tệp đầy đủ.
+- **Trình biên tập tệp từ xa tích hợp nâng cao (Built-in Code/Text Editor)**:
+- **SFTP Bookmarks & Quick Jump thư mục yêu thích**:
+  - Bổ sung nút ⭐ Bookmark ngay trên thanh Path bar SFTP để lưu nhanh/xóa thư mục hiện tại.
+  - Danh mục `⭐ Bookmarked Directories` hiển thị trực tiếp trong menu popup dropdown `[▾]` kèm nút xóa 🗑️.
+  - Đồng bộ và lưu trữ danh sách Bookmarks vào `RustyBox.json`.
+
+---
+
 ## [v1.3-88] - 2026-11-07
 ### Added & Improved (Merge PR #7 & PR #8 from david-roark)
 - **Tích hợp PR #7: Đo đạc Telemetry hệ thống từ xa thời gian thực qua SSH Worker**:
