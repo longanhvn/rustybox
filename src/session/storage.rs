@@ -159,6 +159,8 @@ pub struct RustyBoxConfig {
     pub theme_name: String,
     #[serde(default = "default_true")]
     pub paste_protection_enabled: bool,
+    #[serde(default = "default_true")]
+    pub copy_on_select: bool,
     #[serde(default = "default_quick_macros")]
     pub quick_macros: Vec<(String, String)>,
     #[serde(default = "crate::snippets::default_snippets")]
@@ -189,6 +191,7 @@ impl Default for RustyBoxConfig {
             terminal_font_family: default_terminal_font_family(),
             theme_name: default_theme_name(),
             paste_protection_enabled: true,
+            copy_on_select: true,
             quick_macros: default_quick_macros(),
             snippets: crate::snippets::default_snippets(),
             tunnels: crate::tunneling::default_tunnels(),
@@ -351,6 +354,7 @@ impl StorageManager {
         terminal_font_family: &str,
         theme_name: &str,
         paste_protection: bool,
+        copy_on_select: bool,
     ) -> Result<(), String> {
         let mut cfg = self.load_config();
         cfg.ui_scale = ui_scale;
@@ -358,6 +362,7 @@ impl StorageManager {
         cfg.terminal_font_family = terminal_font_family.to_string();
         cfg.theme_name = theme_name.to_string();
         cfg.paste_protection_enabled = paste_protection;
+        cfg.copy_on_select = copy_on_select;
         self.save_config(&cfg)
     }
 
@@ -804,7 +809,7 @@ mod tests {
         assert_eq!(cfg.terminal_font_family, "noto_sans_mono");
 
         // Update preferences
-        storage.save_preferences(1.25, 16.0, "ubuntu_mono", "Dracula", false).unwrap();
+        storage.save_preferences(1.25, 16.0, "ubuntu_mono", "Dracula", false, false).unwrap();
         storage.save_quick_macros(&[("my_top".into(), "htop -d 5\n".into())]).unwrap();
         storage.save_password_settings(2, true).unwrap();
         storage.save_sftp_preferences(false, false).unwrap();
@@ -815,6 +820,7 @@ mod tests {
         assert_eq!(loaded.terminal_font_family, "ubuntu_mono");
         assert_eq!(loaded.theme_name, "Dracula");
         assert_eq!(loaded.paste_protection_enabled, false);
+        assert_eq!(loaded.copy_on_select, false);
         assert_eq!(loaded.quick_macros, vec![("my_top".into(), "htop -d 5\n".into())]);
         assert_eq!(loaded.password_save_mode, 2);
         assert!(loaded.save_key_passphrases);
