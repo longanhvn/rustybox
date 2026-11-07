@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [v1.3-88] - 2026-11-07
+### Added & Improved (Merge PR #7 & PR #8 from david-roark)
+- **Tích hợp PR #7: Đo đạc Telemetry hệ thống từ xa thời gian thực qua SSH Worker**:
+  - Bổ sung module `src/telemetry/mod.rs` thu thập số liệu chuẩn xác: CPU %, Cores, RAM Used/Total (GB & %), Root Disk %, Real-time Net Upload/Download rate (▲/▼), và Uptime từ các tệp `/proc/stat`, `/proc/meminfo`, `/proc/net/dev`, `df -k /`, `uptime -p`.
+  - Thay thế hoàn toàn cơ chế regex quét màn hình terminal và mockup cũ; hiển thị an toàn ký tự `--` khi chưa có dữ liệu hoặc phiên ngắt kết nối.
+  - SSH background worker định kỳ thăm dò telemetry mỗi 2.5s khi rảnh và tự động ngắt thăm dò khi đang upload/download tệp để bảo vệ băng thông mạng.
+- **Tích hợp PR #8: Tùy biến tùy chọn Copy-on-select trên Terminal**:
+  - Thêm cấu hình `copy_on_select` (mặc định `true`) vào `RustyBoxConfig` và lưu trữ bền vững vào `RustyBox.json`.
+  - Thêm checkbox bật/tắt trong `Settings & Preferences -> Terminal`: `Automatically copy selected text to clipboard (Copy on select)`.
+  - Trên Linux: khi tắt copy-on-select, vùng bôi đen chỉ cập nhật `PRIMARY` selection (hỗ trợ paste chuột giữa) mà không ghi đè `CLIPBOARD` hệ thống (Ctrl+V); trên Windows: chỉ bôi đen trực quan mà không chạm vào bộ nhớ tạm.
+
+---
+
 ## [v1.3-87] - 2026-11-07
 ### Fixed & Improved (Full Codebase Stability Audit: Lifecycle Cleanup, POSIX SFTP Paths & Config Persistence)
 - **Thu hồi triệt để tiến trình nền và kết nối khi thoát ứng dụng (`eframe::App::on_exit`)**:
