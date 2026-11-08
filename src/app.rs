@@ -600,6 +600,11 @@ impl RustyBoxApp {
         visuals.widgets.active.fg_stroke = egui::Stroke::new(1.0, Color32::WHITE);
         visuals.widgets.active.rounding = egui::Rounding::same(6.0);
         visuals.window_rounding = egui::Rounding::same(10.0);
+
+        // Enforce dark theme across all platforms regardless of OS system Light/Dark appearance
+        cc.egui_ctx.set_theme(egui::ThemePreference::Dark);
+        cc.egui_ctx.set_visuals_of(egui::Theme::Dark, visuals.clone());
+        cc.egui_ctx.set_visuals_of(egui::Theme::Light, visuals.clone());
         cc.egui_ctx.set_visuals(visuals);
 
         // Note: Do not spawn a background local terminal on startup to avoid
@@ -1890,6 +1895,11 @@ impl RustyBoxApp {
 
 impl eframe::App for RustyBoxApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        // Enforce dark theme mode across all frames regardless of OS appearance events
+        if ctx.theme() != egui::Theme::Dark {
+            ctx.set_theme(egui::ThemePreference::Dark);
+        }
+
         // Enforce Window Maximized on launch
         if !self.is_maximized_requested {
             ctx.send_viewport_cmd(egui::ViewportCommand::Maximized(true));
@@ -2098,7 +2108,7 @@ impl eframe::App for RustyBoxApp {
                         .inner_margin(egui::Margin::symmetric(5.0, 1.5))
                         .show(ui, |ui| {
                             ui.label(
-                                RichText::new("v1.3-90")
+                                RichText::new("v1.3-95")
                                     .color(Color32::from_rgb(147, 197, 253))
                                     .size(10.5)
                                     .strong(),
@@ -2748,6 +2758,7 @@ impl eframe::App for RustyBoxApp {
 
                 // RIGHT: LIVE SYSTEM TELEMETRY MONITOR (per active tab / server)
                 let mut telem_ui = ui.new_child(egui::UiBuilder::new().max_rect(telem_rect).layout(Layout::right_to_left(Align::Center)));
+                telem_ui.set_clip_rect(telem_rect);
                 {
                     let ui = &mut telem_ui;
                     let telem = self.get_active_telemetry();
@@ -3349,7 +3360,9 @@ impl eframe::App for RustyBoxApp {
         // 6. CENTER WORKSPACE (Tabs Header, Search Bar & Terminals Grid)
         let mut triggered_action = TerminalAction::None;
 
-        egui::CentralPanel::default().show(ctx, |ui| {
+        let center_frame = egui::Frame::central_panel(&ctx.style())
+            .fill(Color32::from_rgb(15, 18, 26));
+        egui::CentralPanel::default().frame(center_frame).show(ctx, |ui| {
             // TAB BAR HEADER (Full-width Tabs strip + optional Tab Switcher dropdown)
             let strip_height = 28.0;
             let (strip_rect, _) = ui.allocate_exact_size(vec2(ui.available_width(), strip_height), egui::Sense::hover());
@@ -7104,7 +7117,7 @@ impl eframe::App for RustyBoxApp {
                         ui.heading("🚀 RustyBox");
                         ui.label(RichText::new("Complete Remote Toolbox & Terminal Suite in Pure Rust").strong());
                         ui.add_space(4.0);
-                        ui.label(RichText::new("Version v1.3-94").color(Color32::from_rgb(147, 197, 253)).strong());
+                        ui.label(RichText::new("Version v1.3-95").color(Color32::from_rgb(147, 197, 253)).strong());
                         ui.add_space(8.0);
                         ui.label("High-performance, zero-install, lightweight remote terminal toolbox.");
                         ui.label("Runs natively on Windows, macOS, and Linux.");

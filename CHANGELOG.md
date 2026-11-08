@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [v1.3-95] - 2026-11-09
+### Fixed & Improved (Universal Dark Mode Enforcement across OS Appearances & Standalone macOS Builds)
+- **Khóa cứng Dark Mode trên toàn bộ nền tảng (macOS, Windows, Linux)**:
+  - Khắc phục triệt để lỗi vùng làm việc trung tâm (`CentralPanel`) và các ô nhập liệu (`Quick Connect`, tìm kiếm) bị màu trắng trên macOS runner hoặc khi hệ điều hành đang bật Light Mode.
+  - Thiết lập cứng `egui::ThemePreference::Dark` và áp dụng bộ visuals tối đồng bộ cho cả `Theme::Dark` và `Theme::Light` trong `eframe`, đảm bảo giao diện luôn giữ tone màu xanh đen sâu (`#0F121A`) đồng nhất, chữ sáng rõ ràng và không bao giờ bị chói mắt.
+  - Gán màu nền tường minh cho khung làm việc trung tâm (`central_panel`) và ngăn chặn tràn lấn layout của thanh telemetry dưới đáy.
+- **Tích hợp OpenSSL Vendored độc lập cho macOS (`ssh2 vendored-openssl`)**:
+  - Nhúng tĩnh thư viện OpenSSL vào binary thực thi của macOS (`aarch64-apple-darwin` và `x86_64-apple-darwin`), giúp ứng dụng chạy độc lập (standalone portable) trên macOS mà không cần cài đặt OpenSSL hoặc Homebrew.
+- **Sửa nhãn hiển thị phiên bản**:
+  - Cập nhật đồng bộ nhãn phiên bản trên thanh công cụ và hộp thoại About thành `v1.3-95`.
+
+---
+
 ## [v1.3-94] - 2026-11-08
 ### Fixed & Improved (Native macOS Compatibility, Cmd vs Ctrl Keybindings, Telemetry & GitHub Actions macOS Runner)
 - **Tương thích hoàn chỉnh với hệ điều hành macOS (Apple Silicon & Intel)**:
