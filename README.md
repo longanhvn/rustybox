@@ -158,5 +158,5 @@ cargo test --bin rust-remote-toolbox -- --test-threads=4
 ## 🔗 Liên kết & Thông tin dự án
 
 * **GitHub Repository:** [https://github.com/longanhvn/rustybox](https://github.com/longanhvn/rustybox)
-* **Tác giả:** Long Anh (`longanhvn`)
+* **Tác giả:** Long kakaka (longanhvn)
 * **Giấy phép mã nguồn (License):** Dự án được phát hành theo giấy phép mã nguồn mở [MIT License](LICENSE). Hoàn toàn tự do sử dụng, chỉnh sửa và phân phối.

@@ -7089,6 +7089,11 @@ impl eframe::App for RustyBoxApp {
                         ui.label("Runs natively on Windows, macOS, and Linux.");
                         ui.add_space(8.0);
                         ui.horizontal(|ui| {
+                            ui.label(RichText::new("Tác giả:").strong());
+                            ui.label("Long kakaka (longanhvn)");
+                        });
+                        ui.add_space(3.0);
+                        ui.horizontal(|ui| {
                             ui.label(RichText::new("GitHub Repository:").strong());
                             ui.hyperlink_to(
                                 RichText::new("https://github.com/longanhvn/rustybox")

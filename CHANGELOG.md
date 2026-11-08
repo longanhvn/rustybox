@@ -8,14 +8,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ---
 
 ## [v1.3-92] - 2026-11-08
-### Fixed & Improved (Built-in Editor Auto-Centering & SSH Login Default to Terminal + SFTP)
+### Fixed & Improved (Built-in Editor Auto-Centering, Fixed 80% Height & SSH Login Default to Terminal + SFTP)
+- **Cố định chiều cao Editor Built-in chuẩn 80% màn hình & triệt tiêu lỗi phình chiều cao khi co kéo**:
+  - Khóa cứng chiều cao cửa sổ ở đúng **80% chiều cao màn hình** (`screen.height() * 0.80`), căn giữa hoàn hảo (`pivot(CENTER_CENTER)`).
+  - Khi người dùng kéo co hẹp chiều rộng cửa sổ ("kéo ngắn lại"), chiều cao cửa sổ vẫn giữ nguyên cố định 80%, không bao giờ bị phình dài ra hay tràn mép dưới màn hình.
+  - Người dùng có thể tự do co giãn chiều ngang (từ 420px đến gần trọn màn hình) rất mượt mà.
 - **Tự động chuyển đến Terminal và mở SFTP Explorer tương ứng khi đăng nhập SSH thành công**:
   - Khi phiên SSH được khởi tạo và kết nối thành công, ứng dụng tự động hiển thị tab Terminal của phiên đó đồng thời chuyển thanh điều hướng trái sang tab **SFTP Explorer** (`sidebar_tab = 1`) bám sát đúng máy chủ từ xa.
   - Tự động bắt sự kiện `SftpEvent::Connected` từ tiến trình nền để đảm bảo cây thư mục SFTP của VPS hiển thị tức thời ngay khi xác thực thành công.
-- **Khắc phục triệt để lỗi Editor Built-in bị quá dài và tràn mép dưới màn hình**:
-  - Căn giữa màn hình chuẩn xác (`pivot(CENTER_CENTER)` và `default_pos(screen.center())`).
-  - Thiết lập giới hạn màn hình nghiêm ngặt (`constrain_to(screen.shrink(20.0))` và `max_size`), đảm bảo cửa sổ soạn thảo luôn cách các cạnh màn hình ít nhất 20px, không bao giờ bị tràn xuống dưới thanh Taskbar.
-  - Điều chỉnh kích thước mặc định cân đối theo độ phân giải màn hình (~58% chiều cao màn hình, tối đa 440px), giảm `desired_rows` về 10 dòng để nội dung vừa vặn và thoáng mắt trên mọi loại màn hình.
+- **Cập nhật thông tin tác giả**:
+  - Cập nhật hiển thị tên tác giả theo nickname: `Long kakaka (longanhvn)` trong hộp thoại About và `README.md`.
 
 ---
 
