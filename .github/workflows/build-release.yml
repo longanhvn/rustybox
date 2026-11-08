@@ -28,8 +28,8 @@ jobs:
             artifact_name: RustyBox-macos-arm64
             binary_path: target/aarch64-apple-darwin/release/rust-remote-toolbox
 
-          # macOS Intel x64
-          - os: macos-13
+          # macOS Intel x64 (cross-compiled on macos-15)
+          - os: macos-15
             target: x86_64-apple-darwin
             artifact_name: RustyBox-macos-x64
             binary_path: target/x86_64-apple-darwin/release/rust-remote-toolbox
