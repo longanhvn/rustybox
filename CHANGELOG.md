@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [v1.3-92] - 2026-11-08
+### Fixed & Improved (Built-in Editor Auto-Centering & SSH Login Default to Terminal + SFTP)
+- **Tự động chuyển đến Terminal và mở SFTP Explorer tương ứng khi đăng nhập SSH thành công**:
+  - Khi phiên SSH được khởi tạo và kết nối thành công, ứng dụng tự động hiển thị tab Terminal của phiên đó đồng thời chuyển thanh điều hướng trái sang tab **SFTP Explorer** (`sidebar_tab = 1`) bám sát đúng máy chủ từ xa.
+  - Tự động bắt sự kiện `SftpEvent::Connected` từ tiến trình nền để đảm bảo cây thư mục SFTP của VPS hiển thị tức thời ngay khi xác thực thành công.
+- **Khắc phục triệt để lỗi Editor Built-in bị quá dài và tràn mép dưới màn hình**:
+  - Căn giữa màn hình chuẩn xác (`pivot(CENTER_CENTER)` và `default_pos(screen.center())`).
+  - Thiết lập giới hạn màn hình nghiêm ngặt (`constrain_to(screen.shrink(20.0))` và `max_size`), đảm bảo cửa sổ soạn thảo luôn cách các cạnh màn hình ít nhất 20px, không bao giờ bị tràn xuống dưới thanh Taskbar.
+  - Điều chỉnh kích thước mặc định cân đối theo độ phân giải màn hình (~58% chiều cao màn hình, tối đa 440px), giảm `desired_rows` về 10 dòng để nội dung vừa vặn và thoáng mắt trên mọi loại màn hình.
+
+---
+
 ## [v1.3-91] - 2026-11-08
 ### Fixed & Improved (Multi-Tab Management, Sessions Auto-Switch, SFTP Editor Overhaul & About Repo Link)
 - **Quản lý đa tab thông minh khi mở 10–20+ Tab cùng lúc**:

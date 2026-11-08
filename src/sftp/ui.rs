@@ -1352,12 +1352,22 @@ pub fn render_sftp_sidebar(ui: &mut Ui, explorer: &mut FileExplorer) {
             explorer.editor_show_search = !explorer.editor_show_search;
         }
 
+        let screen = ctx.screen_rect();
+        let max_w = (screen.width() - 48.0).max(400.0);
+        let max_h = (screen.height() - 64.0).max(280.0);
+        let def_w = (screen.width() * 0.75).clamp(480.0, 820.0).min(max_w);
+        let def_h = (screen.height() * 0.58).clamp(280.0, 440.0).min(max_h);
+
         egui::Window::new(format!("📝 Built-in Editor — {}", file_name))
             .open(&mut open)
             .collapsible(false)
             .resizable(true)
-            .default_size(Vec2::new(860.0, 580.0))
-            .min_size(Vec2::new(520.0, 360.0))
+            .default_size(Vec2::new(def_w, def_h))
+            .min_size(Vec2::new(400.0, 240.0))
+            .max_size(Vec2::new(max_w, max_h))
+            .constrain_to(screen.shrink(20.0))
+            .pivot(egui::Align2::CENTER_CENTER)
+            .default_pos(screen.center())
             .show(&ctx, |ui| {
                 ui.horizontal(|ui| {
                     if ui.button("💾 Save (Ctrl+S)").clicked() || trigger_save {
@@ -1463,7 +1473,7 @@ pub fn render_sftp_sidebar(ui: &mut Ui, explorer: &mut FileExplorer) {
                                 TextEdit::multiline(&mut explorer.editor_content)
                                     .font(editor_font)
                                     .desired_width(edit_width)
-                                    .desired_rows(22)
+                                    .desired_rows(10)
                                     .lock_focus(true)
                                     .code_editor(),
                             );

@@ -942,7 +942,10 @@ impl RustyBoxApp {
                     self.open_tabs.push(tab);
                     self.active_tab_idx = self.open_tabs.len() - 1;
                     self.sync_sidebar_with_active_tab();
-                    self.sidebar_tab = 0;
+                    if s.auto_sftp {
+                        self.sidebar_tab = 1;
+                        self.show_sftp_sidebar = true;
+                    }
                     self.scroll_active_tab_into_view = true;
                 }
                 Err(e) => {
@@ -976,6 +979,13 @@ impl RustyBoxApp {
     pub fn sync_sidebar_with_active_tab(&mut self) {
         // Poll background SFTP events so status is fresh
         self.explorer.poll();
+        if self.explorer.just_connected {
+            self.explorer.just_connected = false;
+            if !self.is_home_active {
+                self.sidebar_tab = 1;
+                self.show_sftp_sidebar = true;
+            }
+        }
 
         if self.is_home_active || self.open_tabs.is_empty() {
             self.selected_sidebar_session_id = None;
@@ -1071,6 +1081,7 @@ impl RustyBoxApp {
 
                     if s.auto_sftp {
                         self.show_sftp_sidebar = true;
+                        self.sidebar_tab = 1;
                     }
                 }
             }
@@ -1324,6 +1335,13 @@ impl RustyBoxApp {
 
     fn update_telemetry(&mut self) {
         self.explorer.poll();
+        if self.explorer.just_connected {
+            self.explorer.just_connected = false;
+            if !self.is_home_active {
+                self.sidebar_tab = 1;
+                self.show_sftp_sidebar = true;
+            }
+        }
 
         let elapsed = self.last_telemetry_time.elapsed();
         if elapsed < std::time::Duration::from_millis(1500) {
@@ -7065,7 +7083,7 @@ impl eframe::App for RustyBoxApp {
                         ui.heading("🚀 RustyBox");
                         ui.label(RichText::new("Complete Remote Toolbox & Terminal Suite in Pure Rust").strong());
                         ui.add_space(4.0);
-                        ui.label(RichText::new("Version v1.3-91").color(Color32::from_rgb(147, 197, 253)).strong());
+                        ui.label(RichText::new("Version v1.3-92").color(Color32::from_rgb(147, 197, 253)).strong());
                         ui.add_space(8.0);
                         ui.label("High-performance, zero-install, lightweight remote terminal toolbox.");
                         ui.label("Runs natively on Windows, macOS, and Linux.");

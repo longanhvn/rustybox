@@ -107,6 +107,7 @@ pub struct FileExplorer {
     // Remote SFTP State & Multi-Server Pool
     pub is_remote: bool,
     pub is_loading: bool,
+    pub just_connected: bool,
     pub remote_label: Option<String>,
     pub remote_client: Option<Arc<Mutex<RemoteSftpClient>>>,
     pub remote_disk_stats: Option<(u64, u64, f32)>,
@@ -194,6 +195,7 @@ impl FileExplorer {
             status_message: None,
             is_remote: false,
             is_loading: false,
+            just_connected: false,
             remote_label: None,
             remote_client: None,
             remote_disk_stats: None,
@@ -513,6 +515,7 @@ impl FileExplorer {
                     SftpEvent::Connected { initial_dir, .. } => {
                         sess.is_connected = true;
                         sess.is_loading = false;
+                        self.just_connected = true;
                         let init_path = PathBuf::from(&initial_dir);
                         sess.remote_home_dir = Some(init_path.clone());
                         sess.current_path = init_path.clone();
