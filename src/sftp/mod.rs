@@ -82,6 +82,7 @@ pub struct RemoteSessionState {
     pub remote_home_dir: Option<PathBuf>,
     pub last_synced_terminal_cwd: Option<PathBuf>,
     pub selected_file: Option<PathBuf>,
+    pub selected_files: Vec<PathBuf>,
     pub remote_disk_stats: Option<(u64, u64, f32)>,
     pub remote_telemetry: Option<crate::telemetry::RemoteSystemMetrics>,
     pub last_telemetry_poll: Option<Instant>,
@@ -102,6 +103,9 @@ pub struct FileExplorer {
     pub path_history: Vec<PathBuf>,
     pub entries: Vec<FileEntry>,
     pub selected_file: Option<PathBuf>,
+    pub selected_files: Vec<PathBuf>,
+    pub selection_anchor: Option<PathBuf>,
+    pub drag_select_start: Option<egui::Pos2>,
     pub error_message: Option<String>,
     pub status_message: Option<String>,
     // Remote SFTP State & Multi-Server Pool
@@ -156,6 +160,7 @@ pub struct FileExplorer {
     pub show_new_file: bool,
     pub new_file_name: String,
     pub pending_delete: Option<PathBuf>,
+    pub pending_delete_many: Vec<PathBuf>,
     // Modal rename dialog
     pub show_rename: bool,
     pub rename_target: Option<PathBuf>,
@@ -191,6 +196,9 @@ impl FileExplorer {
             path_history: vec![initial_path],
             entries: Vec::new(),
             selected_file: None,
+            selected_files: Vec::new(),
+            selection_anchor: None,
+            drag_select_start: None,
             error_message: None,
             status_message: None,
             is_remote: false,
@@ -239,6 +247,7 @@ impl FileExplorer {
             show_new_file: false,
             new_file_name: "new_file.txt".into(),
             pending_delete: None,
+            pending_delete_many: Vec::new(),
             show_rename: false,
             rename_target: None,
             rename_new_name: String::new(),
@@ -287,6 +296,7 @@ impl FileExplorer {
             sess.remote_home_dir = self.remote_home_dir.clone();
             sess.last_synced_terminal_cwd = self.last_synced_terminal_cwd.clone();
             sess.selected_file = self.selected_file.clone();
+            sess.selected_files = self.selected_files.clone();
             sess.remote_disk_stats = self.remote_disk_stats;
             sess.remote_telemetry = self.remote_telemetry.clone();
             sess.error_message = self.error_message.clone();
@@ -308,6 +318,7 @@ impl FileExplorer {
             self.remote_home_dir = sess.remote_home_dir;
             self.last_synced_terminal_cwd = sess.last_synced_terminal_cwd;
             self.selected_file = sess.selected_file;
+            self.selected_files = sess.selected_files;
             self.remote_disk_stats = sess.remote_disk_stats;
             self.remote_telemetry = sess.remote_telemetry;
             self.error_message = sess.error_message;
@@ -361,6 +372,7 @@ impl FileExplorer {
             remote_home_dir: Some(default_dir),
             last_synced_terminal_cwd: None,
             selected_file: None,
+            selected_files: Vec::new(),
             remote_disk_stats: None,
             remote_telemetry: None,
             last_telemetry_poll: None,
@@ -471,6 +483,80 @@ impl FileExplorer {
                 self.selected_file = None;
             }
         }
+        self.selected_files.retain(|p| self.entries.iter().any(|e| &e.path == p));
+        if self.selected_file.is_none() && !self.selected_files.is_empty() {
+            self.selected_file = self.selected_files.last().cloned();
+        }
+    }
+
+    pub fn is_entry_selected(&self, path: &Path) -> bool {
+        self.selected_files.iter().any(|p| p == path)
+            || self.selected_file.as_deref() == Some(path)
+    }
+
+    pub fn get_selected_paths(&self) -> Vec<PathBuf> {
+        if !self.selected_files.is_empty() {
+            self.selected_files.clone()
+        } else if let Some(ref sel) = self.selected_file {
+            vec![sel.clone()]
+        } else {
+            Vec::new()
+        }
+    }
+
+    pub fn select_single(&mut self, path: PathBuf) {
+        self.selected_files.clear();
+        self.selected_files.push(path.clone());
+        self.selected_file = Some(path.clone());
+        self.selection_anchor = Some(path);
+    }
+
+    pub fn toggle_select(&mut self, path: PathBuf) {
+        if let Some(pos) = self.selected_files.iter().position(|p| p == &path) {
+            self.selected_files.remove(pos);
+            self.selected_file = self.selected_files.last().cloned();
+        } else {
+            if self.selected_files.is_empty() {
+                if let Some(prev) = self.selected_file.clone() {
+                    if prev != path {
+                        self.selected_files.push(prev);
+                    }
+                }
+            }
+            self.selected_files.push(path.clone());
+            self.selected_file = Some(path.clone());
+            self.selection_anchor = Some(path);
+        }
+    }
+
+    pub fn select_range_to(&mut self, target_path: PathBuf) {
+        let anchor = self
+            .selection_anchor
+            .clone()
+            .or_else(|| self.selected_file.clone())
+            .unwrap_or_else(|| target_path.clone());
+        let idx_a = self.entries.iter().position(|e| e.path == anchor);
+        let idx_b = self.entries.iter().position(|e| e.path == target_path);
+        if let (Some(a), Some(b)) = (idx_a, idx_b) {
+            let start = a.min(b);
+            let end = a.max(b);
+            self.selected_files.clear();
+            for i in start..=end {
+                self.selected_files.push(self.entries[i].path.clone());
+            }
+            self.selected_file = Some(target_path);
+            if self.selection_anchor.is_none() {
+                self.selection_anchor = Some(anchor);
+            }
+        } else {
+            self.select_single(target_path);
+        }
+    }
+
+    pub fn clear_selection(&mut self) {
+        self.selected_files.clear();
+        self.selected_file = None;
+        self.selection_anchor = None;
     }
 
     pub fn toggle_show_hidden(&mut self) {
@@ -655,6 +741,7 @@ impl FileExplorer {
     }
 
     pub fn set_path(&mut self, path: PathBuf) {
+        self.clear_selection();
         if self.is_remote {
             self.current_path = path.clone();
             self.path_input = Self::format_display_path(&self.current_path);
@@ -1089,6 +1176,7 @@ impl FileExplorer {
             if self.selected_file.as_deref() == Some(path) {
                 self.selected_file = None;
             }
+            self.selected_files.retain(|p| p != path);
             self.save_active_remote_state();
             return;
         }
@@ -1104,7 +1192,14 @@ impl FileExplorer {
             if self.selected_file.as_deref() == Some(path) {
                 self.selected_file = None;
             }
+            self.selected_files.retain(|p| p != path);
             self.refresh();
+        }
+    }
+
+    pub fn delete_entries(&mut self, paths: &[PathBuf]) {
+        for p in paths {
+            self.delete_entry(p);
         }
     }
 
@@ -2247,6 +2342,7 @@ mod tests {
             remote_home_dir: Some(PathBuf::from("/home/ubuntu")),
             last_synced_terminal_cwd: None,
             selected_file: None,
+            selected_files: Vec::new(),
             remote_disk_stats: None,
             remote_telemetry: None,
             last_telemetry_poll: None,
@@ -2320,6 +2416,7 @@ mod tests {
             remote_home_dir: Some(PathBuf::from("/home/ubuntu")),
             last_synced_terminal_cwd: None,
             selected_file: None,
+            selected_files: Vec::new(),
             remote_disk_stats: None,
             remote_telemetry: None,
             last_telemetry_poll: None,
@@ -2372,5 +2469,47 @@ mod tests {
         explorer.toggle_bookmark("/var/log");
         assert!(!explorer.is_bookmarked("/var/log"));
         assert_eq!(explorer.bookmarks, vec!["/etc/nginx"]);
+    }
+
+    #[test]
+    fn test_sftp_multi_select_range_toggle_and_batch_delete() {
+        let temp_dir = std::env::temp_dir().join(format!("sftp_multi_test_{}", uuid::Uuid::new_v4()));
+        let _ = fs::create_dir_all(&temp_dir);
+        let f1 = temp_dir.join("a.txt");
+        let f2 = temp_dir.join("b.txt");
+        let f3 = temp_dir.join("c.txt");
+        let f4 = temp_dir.join("d.txt");
+        let _ = fs::write(&f1, "1");
+        let _ = fs::write(&f2, "2");
+        let _ = fs::write(&f3, "3");
+        let _ = fs::write(&f4, "4");
+
+        let mut explorer = FileExplorer::new();
+        explorer.set_path(temp_dir.clone());
+        assert_eq!(explorer.entries.len(), 4);
+
+        // Single select a.txt
+        explorer.select_single(f1.clone());
+        assert_eq!(explorer.get_selected_paths(), vec![f1.clone()]);
+
+        // Shift+Click range to c.txt -> selects a.txt, b.txt, c.txt
+        explorer.select_range_to(f3.clone());
+        assert_eq!(explorer.get_selected_paths(), vec![f1.clone(), f2.clone(), f3.clone()]);
+
+        // Ctrl+Click toggle b.txt off, d.txt on
+        explorer.toggle_select(f2.clone());
+        explorer.toggle_select(f4.clone());
+        assert_eq!(explorer.get_selected_paths(), vec![f1.clone(), f3.clone(), f4.clone()]);
+
+        // Batch delete selected
+        let to_del = explorer.get_selected_paths();
+        explorer.delete_entries(&to_del);
+        assert!(!f1.exists());
+        assert!(f2.exists());
+        assert!(!f3.exists());
+        assert!(!f4.exists());
+        assert!(explorer.get_selected_paths().is_empty());
+
+        let _ = fs::remove_dir_all(&temp_dir);
     }
 }

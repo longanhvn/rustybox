@@ -223,22 +223,36 @@ pub fn render_sftp_sidebar(ui: &mut Ui, explorer: &mut FileExplorer) {
                     }
                 }
                 2 => {
-                    if let Some(ref selected) = explorer.selected_file.clone() {
-                        if let Some(dest_dir) = rfd::FileDialog::new().pick_folder() {
-                            let file_name = selected
-                                .file_name()
-                                .map(|n| n.to_string_lossy().to_string())
-                                .unwrap_or_else(|| "downloaded_file".to_string());
-                            explorer.download_file(&selected, dest_dir.join(file_name));
+                    let selected_paths = explorer.get_selected_paths();
+                    if !selected_paths.is_empty() {
+                        if let Some(dest_dir) = rfd::FileDialog::new().set_title("Select Destination Folder").pick_folder() {
+                            for path in selected_paths {
+                                let file_name = path
+                                    .file_name()
+                                    .map(|n| n.to_string_lossy().to_string())
+                                    .unwrap_or_else(|| "downloaded_file".to_string());
+                                explorer.download_file(&path, dest_dir.join(file_name));
+                            }
                         }
                     }
                 }
                 3 => explorer.refresh(),
-                4 => explorer.show_new_folder = !explorer.show_new_folder,
-                5 => explorer.show_new_file = !explorer.show_new_file,
+                4 => {
+                    explorer.show_new_folder = true;
+                    explorer.new_folder_name = "new_folder".to_string();
+                }
+                5 => {
+                    explorer.show_new_file = true;
+                    explorer.new_file_name = "new_file.txt".to_string();
+                }
                 6 => {
-                    if let Some(ref selected) = explorer.selected_file {
-                        explorer.pending_delete = Some(selected.clone());
+                    let selected_paths = explorer.get_selected_paths();
+                    if selected_paths.len() > 1 {
+                        explorer.pending_delete = None;
+                        explorer.pending_delete_many = selected_paths;
+                    } else if let Some(first) = selected_paths.into_iter().next() {
+                        explorer.pending_delete_many.clear();
+                        explorer.pending_delete = Some(first);
                     }
                 }
                 7 => {
@@ -501,37 +515,6 @@ pub fn render_sftp_sidebar(ui: &mut Ui, explorer: &mut FileExplorer) {
             );
         }
 
-        // Inline input for New Folder / New File / Safe Delete Confirmation
-        if explorer.show_new_folder {
-            ui.horizontal(|ui| {
-                ui.label(RichText::new("Folder:").size(11.5));
-                ui.add(TextEdit::singleline(&mut explorer.new_folder_name).desired_width(115.0));
-                if ui.small_button("Create").clicked() {
-                    let name = explorer.new_folder_name.clone();
-                    explorer.create_folder(&name);
-                    explorer.show_new_folder = false;
-                }
-                if ui.small_button("✕").clicked() {
-                    explorer.show_new_folder = false;
-                }
-            });
-        }
-
-        if explorer.show_new_file {
-            ui.horizontal(|ui| {
-                ui.label(RichText::new("File:").size(11.5));
-                ui.add(TextEdit::singleline(&mut explorer.new_file_name).desired_width(125.0));
-                if ui.small_button("Create").clicked() {
-                    let name = explorer.new_file_name.clone();
-                    explorer.create_file(&name);
-                    explorer.show_new_file = false;
-                }
-                if ui.small_button("✕").clicked() {
-                    explorer.show_new_file = false;
-                }
-            });
-        }
-
         if let Some(ref prog) = explorer.transfer_progress.clone() {
             egui::Frame::none()
                 .fill(Color32::from_rgb(22, 27, 34))
@@ -581,60 +564,6 @@ pub fn render_sftp_sidebar(ui: &mut Ui, explorer: &mut FileExplorer) {
                 });
         }
 
-        if let Some(ref conflict) = explorer.pending_conflict.clone() {
-            egui::Frame::none()
-                .fill(Color32::from_rgba_unmultiplied(245, 158, 11, 25))
-                .stroke(Stroke::new(1.0, Color32::from_rgb(245, 158, 11)))
-                .rounding(Rounding::same(5.0))
-                .inner_margin(Margin::symmetric(6.0, 5.0))
-                .show(ui, |ui| {
-                    ui.vertical(|ui| {
-                        let action = if conflict.is_upload { "upload destination" } else { "download location" };
-                        ui.label(RichText::new("⚠️ File already exists!").strong().size(11.5).color(Color32::from_rgb(251, 191, 36)));
-                        ui.label(RichText::new(format!("'{}' exists in {}.", conflict.file_name, action)).size(10.5));
-                        ui.horizontal(|ui| {
-                            if ui.button(RichText::new("Overwrite").size(10.5).color(Color32::WHITE)).clicked() {
-                                explorer.resolve_conflict_overwrite();
-                            }
-                            if ui.button(RichText::new("Rename (Keep both)").size(10.5)).clicked() {
-                                explorer.resolve_conflict_rename();
-                            }
-                            if ui.button(RichText::new("Skip").size(10.5)).clicked() {
-                                explorer.resolve_conflict_skip();
-                            }
-                        });
-                    });
-                });
-        }
-
-        if let Some(del_target) = explorer.pending_delete.clone() {
-            let del_name = del_target
-                .file_name()
-                .map(|n| n.to_string_lossy().to_string())
-                .unwrap_or_else(|| del_target.display().to_string());
-            egui::Frame::none()
-                .fill(Color32::from_rgba_unmultiplied(248, 81, 73, 30))
-                .stroke(Stroke::new(1.0, Color32::from_rgb(248, 81, 73)))
-                .rounding(Rounding::same(5.0))
-                .inner_margin(Margin::symmetric(6.0, 4.0))
-                .show(ui, |ui| {
-                    ui.horizontal(|ui| {
-                        ui.label(
-                            RichText::new(format!("Delete '{}'?", del_name))
-                                .size(11.5)
-                                .color(Color32::from_rgb(255, 180, 175)),
-                        );
-                        if ui.small_button("Confirm").clicked() {
-                            explorer.delete_entry(&del_target);
-                            explorer.pending_delete = None;
-                        }
-                        if ui.small_button("Cancel").clicked() {
-                            explorer.pending_delete = None;
-                        }
-                    });
-                });
-        }
-
         if let Some(ref err) = explorer.error_message {
             ui.colored_label(Color32::from_rgb(248, 81, 73), RichText::new(err).size(11.0));
         }
@@ -668,9 +597,11 @@ pub fn render_sftp_sidebar(ui: &mut Ui, explorer: &mut FileExplorer) {
                 let mut double_clicked_file: Option<PathBuf> = None;
                 let mut context_chmod: Option<PathBuf> = None;
                 let mut context_del: Option<PathBuf> = None;
+                let mut context_del_many: Vec<PathBuf> = Vec::new();
                 let mut context_rename: Option<PathBuf> = None;
                 let mut context_properties: Option<FileEntry> = None;
                 let mut context_download: Option<PathBuf> = None;
+                let mut context_download_many: Vec<PathBuf> = Vec::new();
                 let mut context_new_folder = false;
                 let mut context_new_file = false;
                 let mut context_refresh = false;
@@ -683,6 +614,21 @@ pub fn render_sftp_sidebar(ui: &mut Ui, explorer: &mut FileExplorer) {
                 let mut context_open_external: Option<(PathBuf, ExternalOpenMode)> = None;
                 let mut context_compare: Option<PathBuf> = None;
                 let mut go_parent = false;
+
+                let (ctrl_held, shift_held, primary_down, primary_released, pointer_pos) = ui.ctx().input(|i| {
+                    (
+                        i.modifiers.ctrl || i.modifiers.command,
+                        i.modifiers.shift,
+                        i.pointer.primary_down(),
+                        i.pointer.primary_released(),
+                        i.pointer.interact_pos().or_else(|| i.pointer.hover_pos()),
+                    )
+                });
+                let mut row_bounds: Vec<(Rect, PathBuf)> = Vec::with_capacity(explorer.entries.len());
+                let mut click_single: Option<PathBuf> = None;
+                let mut click_toggle: Option<PathBuf> = None;
+                let mut click_range: Option<PathBuf> = None;
+                let mut clear_sel = false;
 
                 ScrollArea::horizontal()
                     .id_salt("sftp_horiz_scroll")
@@ -861,9 +807,10 @@ pub fn render_sftp_sidebar(ui: &mut Ui, explorer: &mut FileExplorer) {
                                 });
 
                                 for entry in &explorer.entries {
-                                    let is_selected = explorer.selected_file.as_ref() == Some(&entry.path);
+                                    let is_selected = explorer.is_entry_selected(&entry.path);
                                     let (row_rect, resp) =
-                                        ui.allocate_exact_size(vec2(table_w, 22.0), Sense::click());
+                                        ui.allocate_exact_size(vec2(table_w, 22.0), Sense::click_and_drag());
+                                    row_bounds.push((row_rect, entry.path.clone()));
                                     if resp.hovered() {
                                         ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
                                     }
@@ -989,7 +936,19 @@ pub fn render_sftp_sidebar(ui: &mut Ui, explorer: &mut FileExplorer) {
                                     );
 
                                     if resp.clicked() {
-                                        explorer.selected_file = Some(entry.path.clone());
+                                        if ctrl_held {
+                                            click_toggle = Some(entry.path.clone());
+                                        } else if shift_held {
+                                            click_range = Some(entry.path.clone());
+                                        } else {
+                                            click_single = Some(entry.path.clone());
+                                        }
+                                    }
+                                    if resp.secondary_clicked() && !is_selected {
+                                        click_single = Some(entry.path.clone());
+                                    }
+                                    if resp.drag_started_by(egui::PointerButton::Primary) {
+                                        explorer.drag_select_start = pointer_pos.or(Some(row_rect.center()));
                                     }
                                     if resp.middle_clicked() {
                                         context_terminal_paste_path = Some(entry.path.to_string_lossy().to_string());
@@ -1016,6 +975,50 @@ pub fn render_sftp_sidebar(ui: &mut Ui, explorer: &mut FileExplorer) {
                                     let is_dir_entry = entry.is_dir;
                                     let entry_clone = entry.clone();
                                     resp.on_hover_text(tip).context_menu(|ui| {
+                                        let sel_paths = explorer.get_selected_paths();
+                                        let multi_count = if sel_paths.contains(&path_clone) {
+                                            sel_paths.len()
+                                        } else {
+                                            1
+                                        };
+
+                                        if multi_count > 1 {
+                                            ui.label(
+                                                RichText::new(format!("📑 {} items selected", multi_count))
+                                                    .strong()
+                                                    .color(Color32::from_rgb(56, 189, 248)),
+                                            );
+                                            ui.separator();
+                                            if ui.button(format!("📥  Download {} selected items...", multi_count)).clicked() {
+                                                context_download_many = sel_paths.clone();
+                                                ui.close_menu();
+                                            }
+                                            if ui.button(format!("🗑  Delete {} selected items...", multi_count)).clicked() {
+                                                context_del_many = sel_paths.clone();
+                                                ui.close_menu();
+                                            }
+                                            ui.separator();
+                                            if ui.button(format!("📋  Copy {} file paths", multi_count)).clicked() {
+                                                let joined = sel_paths
+                                                    .iter()
+                                                    .map(|p| p.to_string_lossy().to_string())
+                                                    .collect::<Vec<_>>()
+                                                    .join("\n");
+                                                context_copy_text = Some(joined);
+                                                ui.close_menu();
+                                            }
+                                            if ui.button("🖥  Paste selected paths to terminal").clicked() {
+                                                let joined = sel_paths
+                                                    .iter()
+                                                    .map(|p| format!("\"{}\"", p.to_string_lossy()))
+                                                    .collect::<Vec<_>>()
+                                                    .join(" ");
+                                                context_terminal_paste_path = Some(joined);
+                                                ui.close_menu();
+                                            }
+                                            return;
+                                        }
+
                                 if is_dir_entry {
                                     if ui.button("📂  Open").clicked() {
                                         clicked_dir = Some(path_clone.clone());
@@ -1124,9 +1127,15 @@ pub fn render_sftp_sidebar(ui: &mut Ui, explorer: &mut FileExplorer) {
                             });
                         }
 
-                        // Background empty space for Folder Context Menu (Matches MobaXterm 100%)
+                        // Background empty space for Folder Context Menu & Rubber-band Start
                         let avail_h = ui.available_height().max(50.0);
-                        let (_, bg_resp) = ui.allocate_exact_size(vec2(table_w, avail_h), Sense::click());
+                        let (bg_rect, bg_resp) = ui.allocate_exact_size(vec2(table_w, avail_h), Sense::click_and_drag());
+                        if bg_resp.clicked() && !ctrl_held && !shift_held {
+                            clear_sel = true;
+                        }
+                        if bg_resp.drag_started_by(egui::PointerButton::Primary) {
+                            explorer.drag_select_start = pointer_pos.or(Some(bg_rect.min));
+                        }
                         bg_resp.context_menu(|ui| {
                             if ui.button("⬆  Parent directory").clicked() {
                                 go_parent = true;
@@ -1176,6 +1185,81 @@ pub fn render_sftp_sidebar(ui: &mut Ui, explorer: &mut FileExplorer) {
                     });
                 });
 
+                // Rubber-band (Marquee) drag multi-selection & Click selection state updates
+                if let Some(start_pos) = explorer.drag_select_start {
+                    if primary_down {
+                        if let Some(curr_pos) = pointer_pos {
+                            if start_pos.distance(curr_pos) > 4.0 {
+                                let sel_rect = Rect::from_two_pos(start_pos, curr_pos);
+                                let fg = ui.ctx().layer_painter(egui::LayerId::new(
+                                    egui::Order::Foreground,
+                                    egui::Id::new("sftp_marquee_select"),
+                                ));
+                                fg.rect(
+                                    sel_rect,
+                                    Rounding::same(2.0),
+                                    Color32::from_rgba_unmultiplied(56, 189, 248, 35),
+                                    Stroke::new(1.0, Color32::from_rgb(56, 189, 248)),
+                                );
+
+                                let min_y = sel_rect.top();
+                                let max_y = sel_rect.bottom();
+                                let mut swept_paths = Vec::new();
+                                for (r_rect, p_buf) in &row_bounds {
+                                    if r_rect.bottom() >= min_y && r_rect.top() <= max_y {
+                                        swept_paths.push(p_buf.clone());
+                                    }
+                                }
+                                if !ctrl_held {
+                                    explorer.selected_files = swept_paths;
+                                    explorer.selected_file = explorer.selected_files.last().cloned();
+                                } else {
+                                    for sp in swept_paths {
+                                        if !explorer.selected_files.contains(&sp) {
+                                            explorer.selected_files.push(sp.clone());
+                                            explorer.selected_file = Some(sp);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    if primary_released || !primary_down {
+                        explorer.drag_select_start = None;
+                    }
+                }
+
+                // Ctrl+A & Delete keyboard shortcuts when SFTP panel has no active text input
+                if !ui.ctx().wants_keyboard_input() {
+                    if ui.ctx().input_mut(|i| i.consume_key(egui::Modifiers::CTRL, egui::Key::A)) {
+                        explorer.selected_files = explorer.entries.iter().map(|e| e.path.clone()).collect();
+                        explorer.selected_file = explorer.selected_files.last().cloned();
+                    }
+                    if ui.ctx().input_mut(|i| i.consume_key(egui::Modifiers::NONE, egui::Key::Delete)) {
+                        let sel = explorer.get_selected_paths();
+                        if sel.len() > 1 {
+                            explorer.pending_delete = None;
+                            explorer.pending_delete_many = sel;
+                        } else if let Some(first) = sel.into_iter().next() {
+                            explorer.pending_delete_many.clear();
+                            explorer.pending_delete = Some(first);
+                        }
+                    }
+                }
+
+                if clear_sel {
+                    explorer.clear_selection();
+                }
+                if let Some(p) = click_single {
+                    explorer.select_single(p);
+                }
+                if let Some(p) = click_toggle {
+                    explorer.toggle_select(p);
+                }
+                if let Some(p) = click_range {
+                    explorer.select_range_to(p);
+                }
+
                 if go_parent {
                     explorer.go_up();
                 }
@@ -1189,7 +1273,12 @@ pub fn render_sftp_sidebar(ui: &mut Ui, explorer: &mut FileExplorer) {
                     explorer.open_chmod(target);
                 }
                 if let Some(target) = context_del {
+                    explorer.pending_delete_many.clear();
                     explorer.pending_delete = Some(target);
+                }
+                if !context_del_many.is_empty() {
+                    explorer.pending_delete = None;
+                    explorer.pending_delete_many = context_del_many;
                 }
                 if let Some(target) = context_rename {
                     explorer.open_rename(target);
@@ -1210,6 +1299,17 @@ pub fn render_sftp_sidebar(ui: &mut Ui, explorer: &mut FileExplorer) {
                         }
                     } else if let Some(dest) = rfd::FileDialog::new().set_file_name(&name).save_file() {
                         explorer.download_file(&target, dest);
+                    }
+                }
+                if !context_download_many.is_empty() {
+                    if let Some(dest_dir) = rfd::FileDialog::new().set_title("Select Destination Folder").pick_folder() {
+                        for path in context_download_many {
+                            let name = path
+                                .file_name()
+                                .map(|n| n.to_string_lossy().to_string())
+                                .unwrap_or_else(|| "download".to_string());
+                            explorer.download_file(&path, dest_dir.join(name));
+                        }
                     }
                 }
                 if context_new_folder {
@@ -1722,6 +1822,247 @@ pub fn render_sftp_sidebar(ui: &mut Ui, explorer: &mut FileExplorer) {
                 });
             });
         explorer.diff_open = open && !close_diff;
+    }
+
+    // Modal Delete Confirmation Popup (Single or Multi-Select)
+    let has_single_del = explorer.pending_delete.is_some();
+    let has_many_del = !explorer.pending_delete_many.is_empty();
+    if has_single_del || has_many_del {
+        let mut open = true;
+        let mut confirmed = false;
+        let mut cancelled = false;
+
+        egui::Window::new("⚠️ Xác nhận xóa (Confirm Delete)")
+            .open(&mut open)
+            .collapsible(false)
+            .resizable(false)
+            .default_size(Vec2::new(380.0, 175.0))
+            .anchor(egui::Align2::CENTER_CENTER, Vec2::ZERO)
+            .show(ui.ctx(), |ui| {
+                ui.add_space(4.0);
+                if has_many_del {
+                    let count = explorer.pending_delete_many.len();
+                    ui.label(
+                        RichText::new(format!("Bạn có chắc chắn muốn xóa {} mục đã chọn?", count))
+                            .strong()
+                            .size(13.0)
+                            .color(Color32::from_rgb(248, 113, 113)),
+                    );
+                    ui.add_space(6.0);
+                    egui::Frame::none()
+                        .fill(Color32::from_rgb(13, 17, 23))
+                        .stroke(Stroke::new(1.0, Color32::from_rgb(48, 54, 61)))
+                        .rounding(Rounding::same(4.0))
+                        .inner_margin(Margin::symmetric(8.0, 6.0))
+                        .show(ui, |ui| {
+                            ui.set_width(ui.available_width());
+                            ScrollArea::vertical().max_height(110.0).show(ui, |ui| {
+                                for p in &explorer.pending_delete_many {
+                                    let name = p
+                                        .file_name()
+                                        .map(|n| n.to_string_lossy().to_string())
+                                        .unwrap_or_else(|| p.display().to_string());
+                                    ui.label(RichText::new(format!("• {}", name)).monospace().size(11.5));
+                                }
+                            });
+                        });
+                } else if let Some(ref del_target) = explorer.pending_delete {
+                    let del_name = del_target
+                        .file_name()
+                        .map(|n| n.to_string_lossy().to_string())
+                        .unwrap_or_else(|| del_target.display().to_string());
+                    ui.label(
+                        RichText::new(format!("Bạn có chắc chắn muốn xóa '{}'?", del_name))
+                            .strong()
+                            .size(13.0)
+                            .color(Color32::from_rgb(248, 113, 113)),
+                    );
+                    ui.add_space(4.0);
+                    ui.label(
+                        RichText::new(del_target.to_string_lossy())
+                            .monospace()
+                            .size(11.0)
+                            .color(Color32::from_rgb(139, 148, 158)),
+                    );
+                }
+
+                ui.add_space(6.0);
+                ui.label(
+                    RichText::new("Hành động này không thể hoàn tác (This action cannot be undone).")
+                        .size(11.0)
+                        .weak(),
+                );
+                ui.add_space(8.0);
+                ui.separator();
+                ui.add_space(4.0);
+
+                if ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+                    confirmed = true;
+                }
+                if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
+                    cancelled = true;
+                }
+
+                let (ok, cancel) = crate::session::ui::rusty_ok_cancel_buttons(ui, "🗑 Xóa (Delete)", "✖ Hủy (Cancel)");
+                if ok {
+                    confirmed = true;
+                }
+                if cancel {
+                    cancelled = true;
+                }
+            });
+
+        if confirmed {
+            if has_many_del {
+                let targets = std::mem::take(&mut explorer.pending_delete_many);
+                explorer.delete_entries(&targets);
+            } else if let Some(target) = explorer.pending_delete.take() {
+                explorer.delete_entry(&target);
+            }
+        } else if !open || cancelled {
+            explorer.pending_delete = None;
+            explorer.pending_delete_many.clear();
+        }
+    }
+
+    // Modal File Conflict Resolution Popup
+    if let Some(conflict) = explorer.pending_conflict.clone() {
+        let mut open = true;
+        let mut do_overwrite = false;
+        let mut do_rename = false;
+        let mut do_skip = false;
+
+        egui::Window::new("⚠️ Trùng tên tệp (File Already Exists)")
+            .open(&mut open)
+            .collapsible(false)
+            .resizable(false)
+            .default_size(Vec2::new(410.0, 175.0))
+            .anchor(egui::Align2::CENTER_CENTER, Vec2::ZERO)
+            .show(ui.ctx(), |ui| {
+                let action = if conflict.is_upload {
+                    "thư mục đích trên Server (Upload destination)"
+                } else {
+                    "thư mục tải về trên máy (Download location)"
+                };
+                ui.add_space(4.0);
+                ui.label(
+                    RichText::new(format!("Tệp '{}' đã tồn tại trong {}!", conflict.file_name, action))
+                        .strong()
+                        .size(12.5)
+                        .color(Color32::from_rgb(251, 191, 36)),
+                );
+                ui.add_space(4.0);
+                ui.label(
+                    RichText::new(conflict.dest_path.to_string_lossy())
+                        .monospace()
+                        .size(11.0)
+                        .color(Color32::from_rgb(139, 148, 158)),
+                );
+                if !explorer.pending_conflicts.is_empty() {
+                    ui.add_space(2.0);
+                    ui.label(
+                        RichText::new(format!("(+{} tệp trùng tên khác đang chờ xử lý)", explorer.pending_conflicts.len()))
+                            .size(10.5)
+                            .weak(),
+                    );
+                }
+                ui.add_space(10.0);
+                ui.separator();
+                ui.add_space(6.0);
+                ui.horizontal(|ui| {
+                    if ui.button(RichText::new("🔄 Ghi đè (Overwrite)").strong().color(Color32::from_rgb(248, 113, 113))).clicked() {
+                        do_overwrite = true;
+                    }
+                    if ui.button(RichText::new("📝 Đổi tên (Keep both)").strong().color(Color32::from_rgb(56, 189, 248))).clicked() {
+                        do_rename = true;
+                    }
+                    if ui.button("⏭ Bỏ qua (Skip)").clicked() {
+                        do_skip = true;
+                    }
+                });
+            });
+
+        if do_overwrite {
+            explorer.resolve_conflict_overwrite();
+        } else if do_rename {
+            explorer.resolve_conflict_rename();
+        } else if do_skip || !open {
+            explorer.resolve_conflict_skip();
+        }
+    }
+
+    // Modal Create New Folder Popup
+    if explorer.show_new_folder {
+        let mut open = explorer.show_new_folder;
+        let mut close_dlg = false;
+        let mut do_create = false;
+        egui::Window::new("📁 Tạo thư mục mới (New Directory)")
+            .open(&mut open)
+            .collapsible(false)
+            .resizable(false)
+            .default_size(Vec2::new(340.0, 135.0))
+            .anchor(egui::Align2::CENTER_CENTER, Vec2::ZERO)
+            .show(ui.ctx(), |ui| {
+                ui.label(RichText::new("Nhập tên thư mục mới:").strong());
+                let resp = ui.add(
+                    TextEdit::singleline(&mut explorer.new_folder_name)
+                        .desired_width(f32::INFINITY)
+                        .hint_text("new_folder"),
+                );
+                if resp.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+                    do_create = true;
+                }
+                ui.add_space(6.0);
+                ui.separator();
+                ui.add_space(4.0);
+                let (ok, cancel) = crate::session::ui::rusty_ok_cancel_buttons(ui, "✔ Tạo (Create)", "✖ Hủy");
+                if ok || do_create {
+                    let name = explorer.new_folder_name.clone();
+                    explorer.create_folder(&name);
+                    close_dlg = true;
+                }
+                if cancel {
+                    close_dlg = true;
+                }
+            });
+        explorer.show_new_folder = open && !close_dlg;
+    }
+
+    // Modal Create New File Popup
+    if explorer.show_new_file {
+        let mut open = explorer.show_new_file;
+        let mut close_dlg = false;
+        let mut do_create = false;
+        egui::Window::new("📄 Tạo tệp mới (New Empty File)")
+            .open(&mut open)
+            .collapsible(false)
+            .resizable(false)
+            .default_size(Vec2::new(340.0, 135.0))
+            .anchor(egui::Align2::CENTER_CENTER, Vec2::ZERO)
+            .show(ui.ctx(), |ui| {
+                ui.label(RichText::new("Nhập tên tệp mới:").strong());
+                let resp = ui.add(
+                    TextEdit::singleline(&mut explorer.new_file_name)
+                        .desired_width(f32::INFINITY)
+                        .hint_text("new_file.txt"),
+                );
+                if resp.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+                    do_create = true;
+                }
+                ui.add_space(6.0);
+                ui.separator();
+                ui.add_space(4.0);
+                let (ok, cancel) = crate::session::ui::rusty_ok_cancel_buttons(ui, "✔ Tạo (Create)", "✖ Hủy");
+                if ok || do_create {
+                    let name = explorer.new_file_name.clone();
+                    explorer.create_file(&name);
+                    close_dlg = true;
+                }
+                if cancel {
+                    close_dlg = true;
+                }
+            });
+        explorer.show_new_file = open && !close_dlg;
     }
 }
 

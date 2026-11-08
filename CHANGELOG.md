@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [v1.3-93] - 2026-11-08
+### Added & Improved (SFTP Multi-Select Marquee Drag & Centered Modal Confirmation Popups)
+- **Hỗ trợ chọn nhiều tệp/thư mục trong SFTP Explorer (Multi-Select)**:
+  - **Kéo quét chuột (Rubber-band / Marquee Selection):** Nhấn giữ chuột trái và kéo quét dọc danh sách hoặc từ vùng trống bên dưới để tô khung xanh chọn hàng loạt tệp/thư mục cùng lúc.
+  - **Phím tắt tiêu chuẩn:** Hỗ trợ đầy đủ `Ctrl + Click` (chọn/bỏ chọn lẻ), `Shift + Click` (chọn theo dải liền mạch), `Ctrl + A` (chọn tất cả), và phím `Delete` (mở hộp thoại xóa hàng loạt).
+  - **Thao tác hàng loạt (Batch Actions):** Menu chuột phải và thanh công cụ SFTP hỗ trợ **Download hàng loạt**, **Delete hàng loạt**, **Copy toàn bộ đường dẫn**, và **Paste danh sách đường dẫn vào Terminal**.
+- **Chuyển toàn bộ hộp thoại xác nhận & nhập liệu SFTP sang Popup giữa màn hình**:
+  - Loại bỏ các thanh hỏi nhỏ chèn ở phía trên sidebar SFTP, thay bằng các cửa sổ Modal Popup căn giữa màn hình rõ ràng, trực quan:
+    - **⚠️ Xác nhận xóa (`Confirm Delete`):** Hiển thị rõ tên tệp hoặc danh sách cuộn các mục khi xóa nhiều mục cùng lúc; hỗ trợ phím `Enter` để xác nhận và `Esc` để hủy.
+    - **⚠️ Xử lý trùng tên tệp (`File Already Exists`):** Cửa sổ Popup nổi bật khi Upload/Download trùng tên với 3 nút: `🔄 Ghi đè (Overwrite)`, `📝 Đổi tên (Keep both)`, `⏭ Bỏ qua (Skip)`.
+    - **📁 Tạo thư mục mới / 📄 Tạo tệp mới:** Chuyển sang cửa sổ Popup nhập tên trực quan, hỗ trợ nhấn `Enter` tạo nhanh.
+
+---
+
 ## [v1.3-92] - 2026-11-08
 ### Fixed & Improved (Built-in Editor Auto-Centering, Fixed 80% Height & SSH Login Default to Terminal + SFTP)
 - **Cố định chiều cao Editor Built-in chuẩn 80% màn hình & triệt tiêu lỗi phình chiều cao khi co kéo**:
