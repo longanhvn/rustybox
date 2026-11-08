@@ -162,7 +162,7 @@ pub fn detect_terminal_cwd(tab: &OpenTab) -> Option<String> {
                     let s = String::from_utf8_lossy(&out.stdout);
                     for line in s.lines() {
                         if let Some(p) = line.strip_prefix('n') {
-                            let path = PathBuf::from(p.trim());
+                            let path = std::path::PathBuf::from(p.trim());
                             if path.is_dir() {
                                 return Some(p.trim().to_string());
                             }
@@ -7448,7 +7448,9 @@ mod tests {
             assert!(disk.is_some(), "Should read root filesystem disk usage");
             let pct = disk.unwrap();
             assert!(pct > 0 && pct <= 100, "Disk usage {}% should be in 1..=100", pct);
-
+        }
+        #[cfg(target_os = "linux")]
+        {
             let net = crate::telemetry::read_local_net_bytes();
             assert!(net.is_some(), "Should read /proc/net/dev on Linux");
             let (rx, tx) = net.unwrap();
