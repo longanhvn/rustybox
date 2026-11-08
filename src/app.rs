@@ -140,13 +140,34 @@ pub fn detect_terminal_cwd(tab: &OpenTab) -> Option<String> {
         }
     }
 
-    // 2. If local shell on Unix/WSL, check /proc/{pid}/cwd
-    #[cfg(unix)]
+    // 2. If local shell on Unix/WSL, check /proc/{pid}/cwd (or lsof on macOS)
+    #[cfg(all(unix, not(target_os = "macos")))]
     if !tab.session.is_ssh {
         if let Some(pid) = tab.session.child_pid {
             if let Ok(target) = std::fs::read_link(format!("/proc/{}/cwd", pid)) {
                 if target.is_dir() {
                     return Some(target.to_string_lossy().to_string());
+                }
+            }
+        }
+    }
+    #[cfg(target_os = "macos")]
+    if !tab.session.is_ssh {
+        if let Some(pid) = tab.session.child_pid {
+            if let Ok(out) = std::process::Command::new("lsof")
+                .args(["-a", "-p", &pid.to_string(), "-d", "cwd", "-Fn"])
+                .output()
+            {
+                if out.status.success() {
+                    let s = String::from_utf8_lossy(&out.stdout);
+                    for line in s.lines() {
+                        if let Some(p) = line.strip_prefix('n') {
+                            let path = PathBuf::from(p.trim());
+                            if path.is_dir() {
+                                return Some(p.trim().to_string());
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -7083,7 +7104,7 @@ impl eframe::App for RustyBoxApp {
                         ui.heading("🚀 RustyBox");
                         ui.label(RichText::new("Complete Remote Toolbox & Terminal Suite in Pure Rust").strong());
                         ui.add_space(4.0);
-                        ui.label(RichText::new("Version v1.3-93").color(Color32::from_rgb(147, 197, 253)).strong());
+                        ui.label(RichText::new("Version v1.3-94").color(Color32::from_rgb(147, 197, 253)).strong());
                         ui.add_space(8.0);
                         ui.label("High-performance, zero-install, lightweight remote terminal toolbox.");
                         ui.label("Runs natively on Windows, macOS, and Linux.");

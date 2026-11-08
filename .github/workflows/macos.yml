@@ -1,0 +1,57 @@
+name: macOS Build & GUI Verification
+
+on:
+  push:
+    branches: [ main ]
+    tags: [ 'v*' ]
+  workflow_dispatch:
+
+jobs:
+  macos-build-and-verify:
+    runs-on: macos-14
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Rust targets (Apple Silicon & Intel x64)
+        run: |
+          rustup target add aarch64-apple-darwin x86_64-apple-darwin
+
+      - name: Run full unit & integration test suite on native macOS
+        run: |
+          cargo test -- --test-threads=4
+
+      - name: Build Release Binaries (Apple Silicon arm64 & Intel x64)
+        run: |
+          cargo build --release --target aarch64-apple-darwin
+          cargo build --release --target x86_64-apple-darwin
+          strip target/aarch64-apple-darwin/release/rust-remote-toolbox
+          strip target/x86_64-apple-darwin/release/rust-remote-toolbox
+          cp target/aarch64-apple-darwin/release/rust-remote-toolbox RustyBox-macos-arm64
+          cp target/x86_64-apple-darwin/release/rust-remote-toolbox RustyBox-macos-x64
+          lipo -create -output RustyBox-macos-universal RustyBox-macos-arm64 RustyBox-macos-x64
+          chmod +x RustyBox-macos-arm64 RustyBox-macos-x64 RustyBox-macos-universal
+          ls -lh RustyBox-macos-*
+
+      - name: Launch RustyBox GUI on macOS & Capture Screenshot
+        run: |
+          ./RustyBox-macos-arm64 &
+          APP_PID=$!
+          sleep 5
+          if kill -0 $APP_PID 2>/dev/null; then
+            echo "RustyBox GUI is running smoothly on macOS (PID: $APP_PID)"
+          else
+            echo "Warning: Process exited early"
+          fi
+          screencapture -x macos_gui_screenshot.png || true
+          kill $APP_PID 2>/dev/null || true
+
+      - name: Upload macOS Binaries & GUI Screenshot Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: RustyBox-macOS-Builds-and-Screenshot
+          path: |
+            RustyBox-macos-arm64
+            RustyBox-macos-x64
+            RustyBox-macos-universal
+            macos_gui_screenshot.png

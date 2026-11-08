@@ -58,7 +58,22 @@ impl TabTelemetry {
             if let Ok(h) = std::env::var("COMPUTERNAME") { host = h; }
             if let Ok(u) = std::env::var("USERNAME") { user = u; }
         }
-        #[cfg(not(target_os = "windows"))]
+        #[cfg(target_os = "macos")]
+        {
+            if let Ok(out) = std::process::Command::new("scutil").args(["--get", "LocalHostName"]).output() {
+                let hc = String::from_utf8_lossy(&out.stdout).trim().to_string();
+                if !hc.is_empty() {
+                    host = hc.to_uppercase();
+                }
+            } else if let Ok(out) = std::process::Command::new("hostname").arg("-s").output() {
+                let hc = String::from_utf8_lossy(&out.stdout).trim().to_string();
+                if !hc.is_empty() {
+                    host = hc.to_uppercase();
+                }
+            }
+            if let Ok(u) = std::env::var("USER") { user = u; }
+        }
+        #[cfg(all(not(target_os = "windows"), not(target_os = "macos")))]
         {
             if let Ok(h) = std::fs::read_to_string("/proc/sys/kernel/hostname") {
                 let hc = h.trim();
@@ -390,7 +405,83 @@ pub fn collect_local_telemetry(
         if let Ok(u) = std::env::var("USERNAME") { local.user = u; }
         local.cores = std::thread::available_parallelism().map(|n| n.get() as u32).ok();
     }
-    #[cfg(not(target_os = "windows"))]
+    #[cfg(target_os = "macos")]
+    {
+        if let Ok(u) = std::env::var("USER") {
+            local.user = u;
+        }
+        let cores_opt = std::thread::available_parallelism().map(|n| n.get() as u32).ok();
+        local.cores = cores_opt;
+        local.disk_pct = read_local_disk_pct();
+
+        if let Ok(out) = std::process::Command::new("sysctl")
+            .args(["-n", "hw.memsize", "vm.loadavg", "kern.boottime"])
+            .output()
+        {
+            let s = String::from_utf8_lossy(&out.stdout);
+            let lines: Vec<&str> = s.lines().collect();
+            if let Some(mem_bytes) = lines.first().and_then(|l| l.trim().parse::<u64>().ok()) {
+                let total_gb = mem_bytes as f32 / (1024.0 * 1024.0 * 1024.0);
+                local.ram_total_gb = Some((total_gb * 10.0).round() / 10.0);
+                if let Ok(vm_out) = std::process::Command::new("vm_stat").output() {
+                    let vm_s = String::from_utf8_lossy(&vm_out.stdout);
+                    let mut page_size = 4096u64;
+                    let mut free_pages = 0u64;
+                    let mut speculative_pages = 0u64;
+                    let mut inactive_pages = 0u64;
+                    for vl in vm_s.lines() {
+                        if let Some(idx) = vl.find("page size of ") {
+                            let rest = &vl[idx + 13..];
+                            if let Some(ps) = rest.split_whitespace().next().and_then(|v| v.parse::<u64>().ok()) {
+                                page_size = ps;
+                            }
+                        } else if vl.starts_with("Pages free:") {
+                            free_pages = vl.split(':').nth(1).and_then(|v| v.trim().trim_end_matches('.').parse().ok()).unwrap_or(0);
+                        } else if vl.starts_with("Pages speculative:") {
+                            speculative_pages = vl.split(':').nth(1).and_then(|v| v.trim().trim_end_matches('.').parse().ok()).unwrap_or(0);
+                        } else if vl.starts_with("Pages inactive:") {
+                            inactive_pages = vl.split(':').nth(1).and_then(|v| v.trim().trim_end_matches('.').parse().ok()).unwrap_or(0);
+                        }
+                    }
+                    let avail_bytes = (free_pages + speculative_pages + inactive_pages).saturating_mul(page_size);
+                    let used_bytes = mem_bytes.saturating_sub(avail_bytes);
+                    let used_gb = used_bytes as f32 / (1024.0 * 1024.0 * 1024.0);
+                    local.ram_used_gb = Some((used_gb * 10.0).round() / 10.0);
+                    local.ram_pct = Some(((used_gb / total_gb.max(0.1)) * 100.0).round() as u32);
+                }
+            }
+            if let Some(load_line) = lines.get(1) {
+                let cleaned = load_line.trim().trim_matches(|c| c == '{' || c == '}').trim();
+                if let Some(val) = cleaned.split_whitespace().next().and_then(|v| v.parse::<f32>().ok()) {
+                    let cores_cnt = cores_opt.unwrap_or(1) as f32;
+                    let pct = ((val / cores_cnt) * 100.0).round() as u32;
+                    local.cpu_pct = Some(pct.clamp(1, 99));
+                }
+            }
+            if let Some(boot_line) = lines.get(2) {
+                if let Some(sec_pos) = boot_line.find("sec = ") {
+                    let rest = &boot_line[sec_pos + 6..];
+                    if let Some(boot_ts) = rest.split(|c: char| !c.is_ascii_digit()).next().and_then(|v| v.parse::<u64>().ok()) {
+                        if let Ok(now_dur) = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH) {
+                            let total_s = now_dur.as_secs().saturating_sub(boot_ts);
+                            local.uptime_secs = Some(total_s);
+                            let days = total_s / 86400;
+                            let hours = (total_s % 86400) / 3600;
+                            let mins = (total_s % 3600) / 60;
+                            if days > 0 {
+                                local.uptime = Some(format!("Up: {} day{}", days, if days > 1 { "s" } else { "" }));
+                            } else if hours > 0 {
+                                local.uptime = Some(format!("Up: {} hr{}", hours, if hours > 1 { "s" } else { "" }));
+                            } else {
+                                local.uptime = Some(format!("Up: {} min{}", mins, if mins > 1 { "s" } else { "" }));
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    #[cfg(all(not(target_os = "windows"), not(target_os = "macos")))]
     {
         if let Ok(h) = std::fs::read_to_string("/proc/sys/kernel/hostname") {
             let h_clean = h.trim();

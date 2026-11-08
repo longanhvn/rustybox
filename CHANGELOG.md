@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [v1.3-94] - 2026-11-08
+### Fixed & Improved (Native macOS Compatibility, Cmd vs Ctrl Keybindings, Telemetry & GitHub Actions macOS Runner)
+- **Tương thích hoàn chỉnh với hệ điều hành macOS (Apple Silicon & Intel)**:
+  - **Phím tắt `Cmd` vs `Control` chuẩn macOS (`src/terminal/widget.rs`):** Tách riêng phím `Command (⌘)` và `Control (⌃)` trên macOS: `Cmd + C` chỉ sao chép vùng chọn (không bao giờ gửi nhầm `SIGINT \x03` làm ngắt tiến trình đang chạy khi chưa chọn văn bản), `Cmd + V` dán từ Clipboard, `Cmd + K` xóa màn hình, trong khi `Ctrl + C/D/Z/L/R` giữ nguyên là phím điều khiển Terminal thực thụ.
+  - **Khởi tạo Login Shell & đường dẫn Homebrew (`src/terminal/pty_session.rs`):** Tự động mở `/bin/zsh -l` và bổ sung `/opt/homebrew/bin`, `/usr/local/bin` vào `PATH` để ứng dụng chạy từ Finder vẫn gọi đầy đủ các công cụ hệ thống.
+  - **Tự động xử lý Gatekeeper AppTranslocation (`src/session/storage.rs`):** Tự động lưu cấu hình vào `~/Library/Application Support/RustyBox/data` nếu ứng dụng được mở từ ổ đĩa ảo chỉ đọc (`.dmg` hoặc `/AppTranslocation/`).
+  - **Đồng bộ CWD & Telemetry trên macOS (`src/app.rs`, `src/telemetry/mod.rs`):** Sử dụng `lsof`, `sysctl`, `vm_stat` và `scutil` để hiển thị đầy đủ Hostname, CPU, RAM, Uptime và đồng bộ thư mục hiện tại của Local Terminal trên macOS.
+  - **GitHub Actions macOS CI/CD (`.github/workflows/macos.yml`):** Tự động biên dịch, chạy bộ kiểm thử và khởi chạy GUI trên máy chủ macOS 14 (Apple Silicon).
+
+---
+
 ## [v1.3-93] - 2026-11-08
 ### Added & Improved (SFTP Multi-Select Marquee Drag & Centered Modal Confirmation Popups)
 - **Hỗ trợ chọn nhiều tệp/thư mục trong SFTP Explorer (Multi-Select)**:

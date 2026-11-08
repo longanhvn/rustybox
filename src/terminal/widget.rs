@@ -942,7 +942,11 @@ impl<'a> TerminalWidget<'a> {
                         modifiers,
                         ..
                     } => {
+                        #[cfg(target_os = "macos")]
+                        let ctrl = modifiers.ctrl;
+                        #[cfg(not(target_os = "macos"))]
                         let ctrl = modifiers.ctrl || modifiers.command;
+                        let cmd_or_ctrl = modifiers.ctrl || modifiers.command;
                         let alt = modifiers.alt;
                         let shift = modifiers.shift;
 
@@ -968,7 +972,7 @@ impl<'a> TerminalWidget<'a> {
                                 }
                             }
                             Key::Tab => {
-                                if ctrl {
+                                if cmd_or_ctrl {
                                     action = if shift { TerminalAction::PrevTab } else { TerminalAction::NextTab };
                                 } else if shift {
                                     input_bytes.extend_from_slice(b"\x1b[Z"); // Shift+Tab (Backtab)
@@ -996,7 +1000,7 @@ impl<'a> TerminalWidget<'a> {
                                 }
                             }
                             Key::PageUp => {
-                                if ctrl {
+                                if cmd_or_ctrl {
                                     action = TerminalAction::PrevTab;
                                 } else if shift {
                                     scroll_delta_lines += (rows as isize / 2).max(5);
@@ -1005,7 +1009,7 @@ impl<'a> TerminalWidget<'a> {
                                 }
                             }
                             Key::PageDown => {
-                                if ctrl {
+                                if cmd_or_ctrl {
                                     action = TerminalAction::NextTab;
                                 } else if shift {
                                     scroll_delta_lines -= (rows as isize / 2).max(5);
@@ -1055,7 +1059,7 @@ impl<'a> TerminalWidget<'a> {
                                     }
                                 }
                             }
-                            Key::Insert if ctrl => {
+                            Key::Insert if cmd_or_ctrl => {
                                 // Ctrl+Insert: Copy
                                 let mut parser = self.session.parser.lock();
                                 let text = if let Some((s, e)) = selection {
@@ -1075,12 +1079,61 @@ impl<'a> TerminalWidget<'a> {
                                 clear_selection_in_ui(ui);
                             }
                             Key::Insert => input_bytes.extend_from_slice(b"\x1b[2~"),
-                            Key::F if ctrl && !shift => action = TerminalAction::OpenSearch,
-                            Key::Plus if ctrl => action = TerminalAction::ZoomIn,
-                            Key::Equals if ctrl => action = TerminalAction::ZoomIn,
-                            Key::Minus if ctrl => action = TerminalAction::ZoomOut,
-                            Key::Num0 if ctrl => action = TerminalAction::ZoomReset,
-                            Key::C if ctrl && shift => {
+                            Key::F if cmd_or_ctrl && !shift => action = TerminalAction::OpenSearch,
+                            Key::Plus if cmd_or_ctrl => action = TerminalAction::ZoomIn,
+                            Key::Equals if cmd_or_ctrl => action = TerminalAction::ZoomIn,
+                            Key::Minus if cmd_or_ctrl => action = TerminalAction::ZoomOut,
+                            Key::Num0 if cmd_or_ctrl => action = TerminalAction::ZoomReset,
+                            #[cfg(target_os = "macos")]
+                            Key::K if modifiers.command && !modifiers.ctrl => {
+                                // Cmd+K on macOS clears screen
+                                input_bytes.extend_from_slice(b"\x0c");
+                            }
+                            #[cfg(target_os = "macos")]
+                            Key::C if modifiers.command && !modifiers.ctrl => {
+                                // Cmd+C on macOS: Copy selection only (NEVER send SIGINT)
+                                copy_or_sigint_handled = true;
+                                let mut parser = self.session.parser.lock();
+                                let text = if let Some((s, e)) = selection {
+                                    extract_selection_text_with_scrollback(
+                                        parser.screen_mut(),
+                                        s,
+                                        e,
+                                    )
+                                } else {
+                                    String::new()
+                                };
+                                drop(parser);
+                                if !text.is_empty() {
+                                    copy_text_to_clipboard(ui, &text);
+                                }
+                                selection = None;
+                                clear_selection_in_ui(ui);
+                            }
+                            #[cfg(target_os = "macos")]
+                            Key::V if modifiers.command && !modifiers.ctrl => {
+                                // Cmd+V on macOS: Paste from Clipboard
+                                if !paste_handled {
+                                    paste_handled = true;
+                                    let text_opt = get_clipboard_text(ui, false);
+                                    if let Some(text) = text_opt {
+                                        if text.contains('\n') {
+                                            paste_text_to_check = Some(text);
+                                        } else {
+                                            let bracketed = self
+                                                .session
+                                                .parser
+                                                .lock()
+                                                .screen()
+                                                .bracketed_paste();
+                                            input_bytes.extend_from_slice(&format_paste_bytes(
+                                                &text, bracketed,
+                                            ));
+                                        }
+                                    }
+                                }
+                            }
+                            Key::C if cmd_or_ctrl && shift => {
                                 // Ctrl+Shift+C: Copy Selection
                                 copy_or_sigint_handled = true;
                                 let mut parser = self.session.parser.lock();
@@ -1100,7 +1153,7 @@ impl<'a> TerminalWidget<'a> {
                                 selection = None;
                                 clear_selection_in_ui(ui);
                             }
-                            Key::V if ctrl && shift => {
+                            Key::V if cmd_or_ctrl && shift => {
                                 // Ctrl+Shift+V: Paste from Clipboard
                                 if !paste_handled {
                                     paste_handled = true;
@@ -1156,7 +1209,7 @@ impl<'a> TerminalWidget<'a> {
                                     }
                                 }
                             }
-                            Key::W if ctrl && (shift || !self.session.is_alive()) => {
+                            Key::W if cmd_or_ctrl && (shift || !self.session.is_alive()) => {
                                 action = TerminalAction::CloseTab;
                             }
                             _ => {
@@ -1191,8 +1244,9 @@ impl<'a> TerminalWidget<'a> {
                                 // Clear selection after copying so subsequent Ctrl+C sends SIGINT
                                 selection = None;
                                 clear_selection_in_ui(ui);
-                            } else {
+                            } else if !cfg!(target_os = "macos") || !current_modifiers.command {
                                 // No selection: Ctrl+C sends SIGINT (\x03) to interrupt running command (docker logs, ping, etc.)
+                                // On macOS, Cmd+C without selection must NOT send SIGINT.
                                 self.session.parser.lock().screen_mut().set_scrollback(0);
                                 let _ = self.session.send_sigint();
                                 ui.ctx().request_repaint();

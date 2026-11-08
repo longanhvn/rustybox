@@ -241,6 +241,25 @@ impl StorageManager {
             .and_then(|p| p.parent().map(|d| d.to_path_buf()))
             .unwrap_or_else(|| PathBuf::from("."));
 
+        #[cfg(target_os = "macos")]
+        let data_dir = {
+            let candidate = exe_dir.join("data");
+            let exe_str = exe_dir.to_string_lossy();
+            let is_readonly_bundle = exe_str.contains("/AppTranslocation/")
+                || exe_str.starts_with("/Volumes/")
+                || (exe_str.contains(".app/Contents/MacOS")
+                    && std::fs::create_dir_all(&candidate).is_err());
+            if is_readonly_bundle || std::fs::create_dir_all(&candidate).is_err() {
+                dirs::data_local_dir()
+                    .or_else(dirs::home_dir)
+                    .unwrap_or_else(|| PathBuf::from("."))
+                    .join("RustyBox")
+                    .join("data")
+            } else {
+                candidate
+            }
+        };
+        #[cfg(not(target_os = "macos"))]
         let data_dir = exe_dir.join("data");
         let file_path = data_dir.join("RustyBox.json");
 

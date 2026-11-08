@@ -145,7 +145,34 @@ impl PtySession {
                 let shell = std::env::var("COMSPEC").unwrap_or_else(|_| "cmd.exe".to_string());
                 CommandBuilder::new(&shell)
             }
-            #[cfg(not(target_os = "windows"))]
+            #[cfg(target_os = "macos")]
+            {
+                let shell = std::env::var("SHELL").unwrap_or_else(|_| {
+                    if std::path::Path::new("/bin/zsh").exists() {
+                        "/bin/zsh".to_string()
+                    } else {
+                        "/bin/bash".to_string()
+                    }
+                });
+                let mut c = CommandBuilder::new(&shell);
+                c.arg("-l");
+                c.env("TERM", "xterm-256color");
+                c.env("COLORTERM", "truecolor");
+                c.env("LANG", std::env::var("LANG").unwrap_or_else(|_| "en_US.UTF-8".to_string()));
+                if let Ok(path_env) = std::env::var("PATH") {
+                    let mut parts: Vec<String> = path_env.split(':').map(|s| s.to_string()).collect();
+                    for extra in ["/opt/homebrew/bin", "/opt/homebrew/sbin", "/usr/local/bin", "/usr/bin", "/bin", "/usr/sbin", "/sbin"] {
+                        if !parts.iter().any(|p| p == extra) {
+                            parts.push(extra.to_string());
+                        }
+                    }
+                    c.env("PATH", parts.join(":"));
+                } else {
+                    c.env("PATH", "/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin");
+                }
+                c
+            }
+            #[cfg(all(not(target_os = "windows"), not(target_os = "macos")))]
             {
                 let shell = std::env::var("SHELL").unwrap_or_else(|_| "/bin/bash".to_string());
                 let mut c = CommandBuilder::new(&shell);
