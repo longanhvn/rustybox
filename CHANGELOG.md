@@ -23,7 +23,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Cuộn hai chiều mượt mà (`ScrollArea::both`) cho cả dòng văn bản dài và file nhiều trang.
 - **Cập nhật Hộp thoại About RustyBox**:
   - Thêm liên kết trực tiếp đến GitHub Repository chính thức: `https://github.com/longanhvn/rustybox`.
-  - Cập nhật số hiệu phiên bản `v1.3-90` và danh mục tính năng hoàn chỉnh.
+  - Cập nhật số hiệu phiên bản `v1.3-91` và danh mục tính năng hoàn chỉnh.
 - **Làm mới toàn bộ tài liệu `README.md`**:
   - Đồng bộ đầy đủ các tính năng hiện tại của ứng dụng.
   - Cập nhật chính xác địa chỉ repository và số lượng kiểm thử tự động (160/160 unit tests).
