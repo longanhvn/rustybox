@@ -1,55 +1,80 @@
-# ⚡ RustyBox - Cross-Platform Remote Terminal Toolbox (Pure Rust)
+# ⚡ RustyBox - Cross-Platform Remote Terminal & SSH Toolbox (Pure Rust)
 
 [![Rust Version](https://img.shields.io/badge/rust-2024%20edition-orange.svg)](https://www.rust-lang.org/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20Linux%20%7C%20macOS-lightgrey.svg)]()
 [![Pure Rust](https://img.shields.io/badge/100%25-Native%20Rust-red.svg)]()
+[![GitHub Repo](https://img.shields.io/badge/GitHub-longanhvn%2Frustybox-blue?logo=github)](https://github.com/longanhvn/rustybox)
 
-> **RustyBox** là bộ công cụ Remote Terminal & SSH Toolbox đa nền tảng hiện đại, hiệu năng cao, viết 100% bằng **Rust**. Ứng dụng hoạt động độc lập (Portable), khởi động tức thì, dung lượng siêu nhẹ (~12 MB), không phụ thuộc runtime cồng kềnh, được thiết kế làm giải pháp thay thế mạnh mẽ cho MobaXterm, Termius và PuTTY.
-
-![RustyBox Preview](docs/screenshots/rustybox_preview.png)
+> **RustyBox** là bộ công cụ Remote Terminal, SSH Client & SFTP Toolbox đa nền tảng hiện đại, hiệu năng cực cao, viết 100% bằng **Rust** (sử dụng framework đồ họa `egui`/`eframe`). 
+> Ứng dụng hoạt động hoàn toàn độc lập (**Portable**), khởi động tức thì, dung lượng siêu nhẹ (~10 MB sau khi strip), không phụ thuộc runtime cồng kềnh, được thiết kế làm giải pháp thay thế mạnh mẽ, bảo mật và hiện đại cho MobaXterm, Termius và PuTTY.
 
 ---
 
 ## 📸 Điểm nổi bật & Tính năng chính
 
-### 1. 🖥️ Multi-Terminal & Đa bố cục (Split Views)
-- **Quản lý đa tab mượt mà:** Khởi tạo không giới hạn các phiên Local Terminal (PowerShell, CMD, Bash, WSL) và phiên SSH từ xa.
+### 1. 🖥️ Multi-Terminal & Đa bố cục (Split Views & 20+ Tabs Management)
+- **Quản lý dải Tab mượt mà khi mở 10–20+ Tab:**
+  - Thanh tab hỗ trợ **cuộn ngang linh hoạt (`ScrollArea::horizontal`)**, tự động cuộn đến tab đang hoạt động (`auto-scroll into view`).
+  - **Menu chuyển tab nhanh (`📑 N ▾` Tab Switcher):** Nút dropdown thông minh hiển thị danh sách toàn bộ tab đang mở kèm icon phân loại (Local, SSH, WSL, Telnet), cho phép chuyển tab hoặc đóng tab đơn lẻ tức thì.
+  - Tự động chuyển sidebar bên trái sang tab **Sessions** ngay khi mở bất kỳ tab mới nào.
 - **Bố cục chia màn hình tức thì (Layout Switcher):**
   - `Single`: Chế độ xem 1 màn hình chuẩn.
   - `2-Cols (Horizontal)`: Chia đôi trái/phải xem đồng thời 2 máy chủ.
   - `2-Rows (Vertical)`: Chia đôi trên/dưới.
   - `2x2 Grid`: Chia 4 góc xem đồng thời 4 máy chủ cùng lúc.
 - **Bộ giả lập VT100 / Xterm hoàn chỉnh:** Hỗ trợ đầy đủ bảng màu 256 ANSI, 24-bit TrueColor, con trỏ mượt mà, đầy đủ các tổ hợp phím tắt chuẩn terminal (`Ctrl+C`, `Ctrl+D`, `Ctrl+Z`, `Ctrl+L`...).
+- **Khởi động không chớp đen (Zero-Flicker):** Tối ưu hóa native viewport `with_transparent(false)` và cơ chế `Lazy Spawning` Local Terminal, loại bỏ hoàn toàn hiện tượng nháy đen màn hình khi mở ứng dụng trên Windows.
 
 ### 2. ⚡ Multi-Execution (Phát lệnh đồng thời)
-- Nút gạt **`⚡ Multi-Exec`** tích hợp trực tiếp trên thanh công cụ chính.
+- Công tắc **`⚡ Multi-Exec`** tích hợp trực tiếp trên thanh công cụ chính.
 - Khi bật, mọi câu lệnh bạn gõ trên tab hiện tại sẽ được **tự động phát thanh (broadcast) đến toàn bộ các tab server đang mở cùng lúc** mà không bị nghẽn hay trễ tín hiệu, hỗ trợ bảo trì hàng loạt máy chủ trong tích tắc.
 
-### 3. 🎨 Giao diện Sleek Modern Dark UI
-- **Thiết kế công nghệ cao:** Tone màu Slate/Zinc sâu lắng (`#0A0E17`, `#10141D`), độ tương phản chuẩn nét (`#F0F6FC`), viền mảnh phản quang (`#222A3A`) và bo góc mềm mại 6px–8px.
-- **Home Welcome Dashboard:** Trang chào đón trung tâm với khối Quick Connect và hệ thống **6 Action Cards (lưới 3x2)** tích hợp icon badge màu chuyên biệt (*Local Terminal, SSH Client, SFTP Browser, NetScan, Tunnels, Daemons*).
-- **Thanh Telemetry đáy:** Hiển thị trực quan trạng thái hệ thống theo thời gian thực (*Host, User, CPU load, CPU cores, RAM gauge, Net I/O, Uptime*) cùng dàn phím tắt Quick commands (*htop, docker ps, df -h, free -m, netstat, systemctl, ...*).
+### 3. 🛡️ An toàn dòng lệnh (Multi-line Paste Safety Confirmation)
+- Hộp thoại cảnh báo an toàn tự động xuất hiện khi dán đoạn văn bản có chứa nhiều dòng hoặc ký tự xuống dòng (`\n`).
+- Cho phép xem trước chính xác nội dung câu lệnh trước khi thực thi để ngăn ngừa việc vô tình chạy nhầm lệnh phá hủy hệ thống.
 
-### 4. 📁 Dual-Pane Graphical SFTP Browser & Editor
-- **Tự động bám theo Session:** Khi mở kết nối SSH, sidebar bên trái chuyển đổi linh hoạt sang trình duyệt tệp đồ họa SFTP.
-- **Thao tác tệp trực quan:** Tải lên (`Upload`), Tải về (`Download`), Tạo thư mục, Xóa tệp, Đổi tên, và thanh Breadcrumbs điều hướng nhanh.
-- **Trình soạn thảo nhanh tích hợp:** Xem và chỉnh sửa trực tiếp các tệp cấu hình trên server từ xa với tính năng lưu (`Save`) tức thời mà không cần cài thêm công cụ phụ.
+### 4. 🎨 Themes & Tùy biến Font Terminal
+- **6 Bảng màu Terminal chuyên nghiệp:** *RustyBox Dark*, *Dracula*, *Solarized Dark*, *Monokai*, *Nord*, và *Hacker Matrix*.
+- **Hỗ trợ phông chữ lập trình đa dạng:** Cascadia Code, JetBrains Mono, Fira Code, Consolas, Courier New, MesloLGS NF, DejaVu Sans Mono kèm thanh trượt cỡ chữ và độ mờ nền (Background Opacity).
 
-### 5. 🔐 Bảo mật Master Password Vault (Argon2id + AES-256-GCM)
+### 5. 📁 High-Speed Graphical SFTP Browser & Built-in Editor
+- **Truyền tải tệp siêu tốc:** Bộ đệm đọc/ghi tối ưu hóa 512 KB kèm socket buffer 2 MB giúp đạt tốc độ truyền tải tối đa trên đường truyền mạng.
+- **Trình duyệt tệp đồ họa tiện ích:** Tải lên (`Upload`), Tải về (`Download`), Tạo thư mục, Xóa tệp, Đổi tên, và thanh Breadcrumbs điều hướng nhanh.
+- **Trình soạn thảo mã nguồn nâng cao (Built-in Code Editor):**
+  - Cửa sổ co giãn tự do (`resizable`), tự động điều chỉnh theo kích thước màn hình.
+  - **Công tắc bật/tắt bẻ dòng (`↩ Wrap: ON / OFF`):** Chống tràn chiều ngang khi mở các tệp có dòng siêu dài (JSON nén, minified log, base64).
+  - Cột đánh số dòng (Line Numbers Gutter) chuẩn xác, phông Monospace rõ nét, thanh cuộn hai chiều (`ScrollArea::both`).
+  - Thanh công cụ tích hợp lưu phím tắt `Ctrl+S`, tìm kiếm từ khóa `Ctrl+F` (đếm số match theo thời gian thực), tăng/giảm cỡ chữ và thanh trạng thái hiển thị số dòng, dung lượng tệp.
+
+### 6. ⏱️ Widget Đồng hồ số & Uptime siêu gọn
+- Tích hợp widget đồng hồ số thời gian thực (`⏱ HH:MM:SS`) ngay trên thanh tiêu đề.
+- Click để chuyển đổi tức thì sang thời gian ứng dụng hoạt động (`⏳ Uptime`).
+- Hover chuột hiển thị tooltip chi tiết: giờ hệ thống, ngày tháng, thời gian uptime và tổng số tab đang mở.
+
+### 7. 📜 Ghi log phiên tự động xoay vòng (5-Day Auto-Rotating Logs)
+- Tự động ghi lại toàn bộ nội dung xuất ra terminal theo từng phiên làm việc vào thư mục `./data/logs/`.
+- Cơ chế xoay vòng tự động duy trì log trong vòng **5 ngày gần nhất** và tự dọn dẹp các tệp log cũ hơn, đảm bảo không làm đầy ổ cứng.
+- Nút bấm truy cập nhanh thư mục log trực tiếp từ giao diện.
+
+### 8. ⌨️ Quick Macros & Sysadmin Toolbar
+- Thanh công cụ phím tắt lệnh nhanh (Sysadmin Toolbar) tích hợp các lệnh phổ biến: `htop`, `docker ps`, `df -h`, `free -m`, `netstat`, `systemctl status`...
+- **Macro Manager:** Cho phép người dùng tự do tạo, chỉnh sửa, lưu trữ và kích hoạt các đoạn kịch bản / lệnh shell thường dùng chỉ với 1 click.
+
+### 9. 🔐 Bảo mật Master Password Vault (Argon2id + AES-256-GCM)
 - **Chuẩn mã hóa chứng thực quân sự (AEAD):**
   - **Argon2id:** Dẫn xuất khóa 256-bit an toàn với Salt ngẫu nhiên 16 bytes sinh từ phần cứng, chống tấn công brute-force/GPU.
   - **AES-256-GCM:** Mã hóa toàn bộ mật khẩu phiên và danh bạ thông tin xác thực (`Credential Store`) với Nonce 12 bytes ngẫu nhiên độc lập cho từng trường dữ liệu.
 - **Không rò rỉ dữ liệu:** Toàn bộ mật khẩu trên đĩa lưu dưới dạng `enc:v1:<nonce>:<ciphertext>`.
 - **Cơ chế Khóa theo nhu cầu (On-Demand Lazy Lock):** Mở app an toàn, không làm phiền người dùng khi chỉ dùng local terminal. Khi kết nối SSH, app giải mã an toàn trong bộ nhớ RAM và inject vào PTY mà không sinh file tạm ra đĩa.
 
-### 6. 🗄️ Lưu trữ Portable & Tự phục hồi dữ liệu (Self-Healing)
+### 10. 🗄️ Lưu trữ Portable & Tự phục hồi dữ liệu (Self-Healing)
 - **Kiến trúc Portable 100%:** Toàn bộ cấu hình và danh bạ lưu trữ gọn gàng tại thư mục `./data/RustyBox.json` ngay cạnh file thực thi. Không ghi file rác vào registry hay AppData hệ thống.
 - **Cơ chế sao lưu xoay vòng (Rolling Backups):** Tự động tạo bản sao lưu snapshot (`RustyBox.json.<unixtime>`) trước mỗi lần ghi đĩa và duy trì tối đa **3 bản sao lưu mới nhất**.
 - **Tự động khôi phục khi lỗi (Self-Healing):** Nếu file JSON chính bị lỗi hỏng đột ngột do mất nguồn, RustyBox tự động phát hiện và phục hồi từ bản backup hợp lệ gần nhất.
 
-### 7. 🛠️ Tiện ích & Công cụ mạng tích hợp
-- **Network Scanner:** Quét IP dải mạng nội bộ (Subnet Discovery), kiểm tra cổng dịch vụ bất đồng bộ (Async TCP Port Scan) kèm đo độ trễ mạng ms.
+### 11. 🛠️ Tiện ích & Dịch vụ mạng tích hợp
+- **Network Scanner (NetScan):** Quét IP dải mạng nội bộ (Subnet Discovery), kiểm tra cổng dịch vụ bất đồng bộ (Async TCP Port Scan) kèm đo độ trễ mạng ms.
 - **SSH Tunnels Manager:** Quản lý trực quan Local Port Forwarding, Remote Forwarding và SOCKS5 Dynamic Proxy với công tắc kích hoạt tức thì.
 - **Embedded Network Daemons:** Tích hợp sẵn Micro HTTP File Server, TFTP Server và Syslog Server phục vụ cứu hộ thiết bị mạng và truyền file nhanh.
 - **SSH Key Generator:** Tạo cặp khóa SSH chuẩn OpenSSH (Ed25519, RSA 2048/4096-bit) kèm comment và fingerprint.
@@ -62,11 +87,11 @@
 
 ```text
 rust-remote-toolbox/
-├── Cargo.toml                  # Khai báo dependencies (eframe, portable-pty, vt100, argon2, aes-gcm...)
+├── Cargo.toml                  # Cấu hình dependencies (eframe, portable-pty, vt100, argon2, aes-gcm, chrono...)
 ├── src/
 │   ├── main.rs                 # Điểm khởi chạy ứng dụng, thiết lập native window qua eframe
 │   ├── lib.rs                  # Module declarations phục vụ unit testing
-│   ├── app.rs                  # Bộ điều khiển chính (RustyBoxApp), giao diện UI, layout, tabs, modals
+│   ├── app.rs                  # Bộ điều khiển chính (RustyBoxApp), giao diện UI, layout, tabs, modals, clock
 │   ├── session/
 │   │   ├── mod.rs              # Kiểu dữ liệu Session, SessionType, Credential
 │   │   ├── storage.rs          # Quản lý lưu trữ Portable, sao lưu xoay vòng 3 bản, mã hóa Argon2id + AES-256-GCM
@@ -74,16 +99,23 @@ rust-remote-toolbox/
 │   │   └── import_export.rs    # Parser import cấu hình MobaXterm (.txt, .ini) và JSON
 │   ├── terminal/
 │   │   ├── pty_session.rs      # Quản lý tiến trình terminal PTY (ConPTY Windows & POSIX PTY Linux/macOS)
-│   │   └── vt_screen.rs        # Bộ phân tích chuỗi thoát VT100/ANSI, render 256 màu, TrueColor
+│   │   ├── vt_screen.rs        # Bộ phân tích chuỗi thoát VT100/ANSI, render 256 màu, TrueColor
+│   │   ├── themes.rs           # Quản lý các bộ bảng màu terminal (Dracula, Nord, Matrix, Solarized...)
+│   │   └── fonts.rs            # Quản lý phông chữ terminal tùy chỉnh
 │   ├── sftp/
-│   │   ├── mod.rs              # Cấu trúc dữ liệu và logic kết nối duyệt tệp SFTP
-│   │   └── ui.rs               # Giao diện SFTP Explorer đồ họa và trình soạn thảo văn bản
+│   │   ├── mod.rs              # Cấu trúc dữ liệu, buffer truyền tải 512KB, trạng thái editor
+│   │   └── ui.rs               # Giao diện SFTP Explorer đồ họa và Advanced Built-in Code Editor
 │   ├── network_tools/
 │   │   └── mod.rs              # Tokio async Port Scanner, Ping, Subnet Discovery
-│   └── tunneling/
-│       └── mod.rs              # Trình quản lý SSH Tunnels (Local, Remote, SOCKS5)
+│   ├── tunneling/
+│   │   └── mod.rs              # Trình quản lý SSH Tunnels (Local, Remote, SOCKS5)
+│   ├── macros/
+│   │   └── mod.rs              # Quản lý kịch bản lệnh nhanh Quick Macros & Sysadmin Toolbar
+│   └── daemons/
+│       └── mod.rs              # Micro HTTP File Server, TFTP Server và Syslog Server
 ├── data/
-│   └── RustyBox.json           # File lưu trữ dữ liệu phiên và mật khẩu mã hóa ở chế độ Portable
+│   ├── RustyBox.json           # File lưu trữ dữ liệu phiên và mật khẩu mã hóa ở chế độ Portable
+│   └── logs/                   # Thư mục lưu log terminal tự động xoay vòng 5 ngày
 └── tests/                      # Bộ kiểm thử tự động (Unit & Integration tests)
 ```
 
@@ -97,8 +129,8 @@ rust-remote-toolbox/
 
 ### 1. Chạy trên Linux / macOS
 ```bash
-git clone https://github.com/longkaka/rust-remote-toolbox.git
-cd rust-remote-toolbox
+git clone https://github.com/longanhvn/rustybox.git
+cd rustybox
 
 # Chạy trực tiếp ở chế độ phát triển
 cargo run
@@ -120,13 +152,16 @@ x86_64-w64-mingw32-strip target/x86_64-pc-windows-gnu/release/rust-remote-toolbo
 ```
 
 ### 3. Chạy kiểm thử tự động (Test Suite)
-Dự án có bộ test tự động kiểm tra chặt chẽ luồng mã hóa đĩa, cơ chế xoay vòng backup và phát hiện prompt SSH:
+Dự án có bộ test tự động kiểm tra chặt chẽ luồng mã hóa đĩa, cơ chế xoay vòng backup, terminal PTY và các module mạng:
 ```bash
-cargo test
+cargo test --bin rust-remote-toolbox -- --test-threads=4
 ```
-*Kết quả yêu cầu: 9/9 tests passed.*
+*Kết quả yêu cầu: 160/160 unit tests passed.*
 
 ---
 
-## 📜 Giấy phép mã nguồn (License)
-Dự án được phát hành theo giấy phép mã nguồn mở [MIT License](LICENSE). Hoàn toàn tự do sử dụng, chỉnh sửa và phân phối.
+## 🔗 Liên kết & Thông tin dự án
+
+* **GitHub Repository:** [https://github.com/longanhvn/rustybox](https://github.com/longanhvn/rustybox)
+* **Tác giả:** Long Anh (`longanhvn`)
+* **Giấy phép mã nguồn (License):** Dự án được phát hành theo giấy phép mã nguồn mở [MIT License](LICENSE). Hoàn toàn tự do sử dụng, chỉnh sửa và phân phối.

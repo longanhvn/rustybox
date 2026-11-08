@@ -286,6 +286,10 @@ pub struct RustyBoxApp {
     quick_connect_input: String,
     home_session_filter: String,
     is_home_active: bool,
+    // Status Bar & Clock Widget
+    launch_time: std::time::Instant,
+    clock_shows_uptime: bool,
+    scroll_active_tab_into_view: bool,
     // Live System Telemetry Dashboard
     last_telemetry_time: std::time::Instant,
     local_telemetry: TabTelemetry,
@@ -499,6 +503,9 @@ impl RustyBoxApp {
             quick_connect_input: String::new(),
             home_session_filter: String::new(),
             is_home_active: false,
+            launch_time: std::time::Instant::now(),
+            clock_shows_uptime: false,
+            scroll_active_tab_into_view: false,
             last_telemetry_time: std::time::Instant::now() - std::time::Duration::from_secs(10),
             local_telemetry: TabTelemetry::new_local(),
             last_local_net_bytes: None,
@@ -579,8 +586,8 @@ impl RustyBoxApp {
         visuals.window_rounding = egui::Rounding::same(10.0);
         cc.egui_ctx.set_visuals(visuals);
 
-        // Open an initial local shell tab on launch in the background, keeping Home Dashboard active
-        app.spawn_local_terminal("Local Terminal", None, None);
+        // Note: Do not spawn a background local terminal on startup to avoid
+        // any brief console flash (conhost.exe) on Windows. The user starts at Home Dashboard.
         app.is_home_active = true;
 
         // Auto-prompt Master Password Vault on startup if vault is configured and locked
@@ -847,6 +854,8 @@ impl RustyBoxApp {
                 self.open_tabs.push(tab);
                 self.active_tab_idx = self.open_tabs.len() - 1;
                 self.sync_sidebar_with_active_tab();
+                self.sidebar_tab = 0;
+                self.scroll_active_tab_into_view = true;
             }
             Err(e) => {
                 eprintln!("Failed to spawn local terminal: {}", e);
@@ -938,6 +947,8 @@ impl RustyBoxApp {
                     self.open_tabs.push(tab);
                     self.active_tab_idx = self.open_tabs.len() - 1;
                     self.sync_sidebar_with_active_tab();
+                    self.sidebar_tab = 0;
+                    self.scroll_active_tab_into_view = true;
                 }
                 Err(e) => {
                     eprintln!("Failed to spawn SSH session: {}", e);
@@ -1065,7 +1076,6 @@ impl RustyBoxApp {
 
                     if s.auto_sftp {
                         self.show_sftp_sidebar = true;
-                        self.sidebar_tab = 1;
                     }
                 }
             }
@@ -2054,7 +2064,7 @@ impl eframe::App for RustyBoxApp {
                         .inner_margin(egui::Margin::symmetric(5.0, 1.5))
                         .show(ui, |ui| {
                             ui.label(
-                                RichText::new("v1.3-89")
+                                RichText::new("v1.3-90")
                                     .color(Color32::from_rgb(147, 197, 253))
                                     .size(10.5)
                                     .strong(),
@@ -3306,12 +3316,14 @@ impl eframe::App for RustyBoxApp {
         let mut triggered_action = TerminalAction::None;
 
         egui::CentralPanel::default().show(ctx, |ui| {
-            // TAB BAR HEADER (Explicitly partitioned into dedicated Tabs strip and Quick Connect area)
+            // TAB BAR HEADER (Tabs strip + Compact Real-Time Clock / Uptime widget + Tab Switcher)
             let strip_height = 28.0;
             let (strip_rect, _) = ui.allocate_exact_size(vec2(ui.available_width(), strip_height), egui::Sense::hover());
-            let quick_w = 265.0f32;
-            let tabs_rect = egui::Rect::from_min_max(strip_rect.min, pos2(strip_rect.max.x - quick_w - 6.0, strip_rect.max.y));
-            let quick_rect = egui::Rect::from_min_max(pos2(strip_rect.max.x - quick_w, strip_rect.min.y), strip_rect.max);
+            let tab_count = self.open_tabs.len();
+            let switcher_w = if tab_count > 1 { 56.0f32 } else { 0.0f32 };
+            let right_w = 96.0f32 + switcher_w;
+            let tabs_rect = egui::Rect::from_min_max(strip_rect.min, pos2(strip_rect.max.x - right_w - 6.0, strip_rect.max.y));
+            let right_rect = egui::Rect::from_min_max(pos2(strip_rect.max.x - right_w, strip_rect.min.y), strip_rect.max);
 
             let mut close_tab_idx: Option<usize> = None;
             let mut switch_to_tab: Option<usize> = None;
@@ -3321,14 +3333,14 @@ impl eframe::App for RustyBoxApp {
             // Dynamic tab width: smoothly scales so all tabs fit cleanly without clipping
             let avail_tabs_w = (tabs_rect.width() - 85.0).max(60.0);
             let num_tabs = self.open_tabs.len().max(1);
-            let dynamic_tab_w = ((avail_tabs_w - 20.0) / num_tabs as f32).clamp(100.0, 180.0);
+            let dynamic_tab_w = ((avail_tabs_w - 20.0) / num_tabs as f32).clamp(80.0, 180.0);
 
             // 1. TABS AREA (Home + Scrollable tab strip)
             let mut tabs_ui = ui.new_child(egui::UiBuilder::new().max_rect(tabs_rect).layout(Layout::left_to_right(Align::Center)));
             ScrollArea::horizontal()
                 .id_salt("tabs_scroll_area")
                 .auto_shrink([false, false])
-                .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysHidden)
+                .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::VisibleWhenNeeded)
                 .show(&mut tabs_ui, |ui| {
                     ui.horizontal(|ui| {
                         // Home Tab (Engineered inside the exact same row as all other tabs)
@@ -3404,6 +3416,10 @@ impl eframe::App for RustyBoxApp {
                                 );
                                 let tab_rect = egui::Rect::from_min_max(title_rect.min, close_rect.max);
                                 let tab_hovered = title_resp.hovered() || close_resp.hovered();
+
+                                if is_active && self.scroll_active_tab_into_view {
+                                    title_resp.scroll_to_me(Some(egui::Align::Center));
+                                }
 
                                 let (fill, stroke, text_color) = if is_active {
                                     (
@@ -3535,6 +3551,7 @@ impl eframe::App for RustyBoxApp {
             if let Some(idx) = switch_to_tab {
                 self.is_home_active = false;
                 self.active_tab_idx = idx;
+                self.scroll_active_tab_into_view = true;
                 self.selected_sidebar_session_id = self.open_tabs.get(idx).and_then(|t| t.session_def.as_ref()).map(|def| def.id.clone());
                 self.sync_active_tab_sftp();
                 ctx.memory_mut(|m| {
@@ -3544,41 +3561,112 @@ impl eframe::App for RustyBoxApp {
                 });
             }
 
-            // 2. QUICK CONNECT AREA (Visible on terminal tabs, hidden on Home Dashboard to avoid duplicate)
-            let mut quick_ui = ui.new_child(egui::UiBuilder::new().max_rect(quick_rect).layout(Layout::right_to_left(Align::Center)));
-            if !self.is_home_active {
-                let run_btn = egui::Button::new(RichText::new("▶ Connect").color(Color32::WHITE).size(11.5).strong())
-                    .fill(Color32::from_rgb(37, 99, 235))
-                    .stroke(egui::Stroke::new(1.0, Color32::from_rgb(96, 165, 250)))
-                    .rounding(5.0);
-                if quick_ui.add(run_btn).on_hover_text("Quick Connect to user@host:port or local shell").clicked() {
-                    self.handle_quick_connect();
-                }
-
-                egui::Frame::none()
-                    .fill(Color32::from_rgb(16, 21, 30))
-                    .stroke(egui::Stroke::new(1.0, Color32::from_rgb(32, 42, 60)))
-                    .rounding(5.0)
-                    .inner_margin(egui::Margin::symmetric(8.0, 2.0))
-                    .show(&mut quick_ui, |ui| {
-                        ui.horizontal(|ui| {
-                            ui.label(RichText::new("⚡").color(Color32::from_rgb(56, 189, 248)).size(11.0));
-                            let q_edit = ui.add_sized(
-                                egui::vec2(140.0, 18.0),
-                                TextEdit::singleline(&mut self.quick_connect_input)
-                                    .hint_text("user@host:port...")
-                                    .frame(false)
-                            );
-                            if q_edit.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
-                                self.handle_quick_connect();
-                            }
-                        });
-                    });
+            // 2. RIGHT COMPACT CLOCK & UPTIME WIDGET + TAB SWITCHER DROPDOWN
+            let mut right_ui = ui.new_child(egui::UiBuilder::new().max_rect(right_rect).layout(Layout::right_to_left(Align::Center)));
+            let now = chrono::Local::now();
+            let elapsed = self.launch_time.elapsed().as_secs();
+            let hours = elapsed / 3600;
+            let mins = (elapsed % 3600) / 60;
+            let secs = elapsed % 60;
+            let uptime_str = if hours > 0 {
+                format!("{:02}:{:02}:{:02}", hours, mins, secs)
             } else {
-                quick_ui.label(
-                    RichText::new("⚡ Modern Remote Toolbox")
+                format!("{:02}:{:02}", mins, secs)
+            };
+
+            let (display_text, text_col) = if self.clock_shows_uptime {
+                (format!("⏳ {}", uptime_str), Color32::from_rgb(251, 146, 60))
+            } else {
+                (now.format("⏱ %H:%M:%S").to_string(), Color32::from_rgb(148, 163, 184))
+            };
+
+            let clock_btn = egui::Button::new(
+                RichText::new(display_text)
+                    .monospace()
+                    .size(11.0)
+                    .color(text_col),
+            )
+            .fill(Color32::from_rgb(18, 24, 34))
+            .stroke(egui::Stroke::new(1.0, Color32::from_rgb(38, 48, 66)))
+            .rounding(5.0)
+            .min_size(vec2(90.0, 22.0));
+
+            let tooltip_text = format!(
+                "⏱ Giờ hệ thống: {}\n📅 Ngày: {}\n⏳ Uptime ứng dụng: {}h {}m {}s\n💻 Tab đang mở: {} tab\n\n💡 Bấm để chuyển đổi giữa Giờ hệ thống và Uptime",
+                now.format("%H:%M:%S"),
+                now.format("%d/%m/%Y"),
+                hours,
+                mins,
+                secs,
+                self.open_tabs.len()
+            );
+
+            if right_ui.add(clock_btn).on_hover_text(tooltip_text).clicked() {
+                self.clock_shows_uptime = !self.clock_shows_uptime;
+            }
+
+            // Quick Tab Switcher dropdown for managing 10-20+ tabs seamlessly
+            if tab_count > 1 {
+                right_ui.add_space(3.0);
+                right_ui.menu_button(
+                    RichText::new(format!("📑 {} ▾", tab_count))
                         .size(11.0)
-                        .color(Color32::from_rgb(100, 116, 139)),
+                        .color(Color32::from_rgb(147, 197, 253))
+                        .strong(),
+                    |ui| {
+                        ui.set_min_width(260.0);
+                        ui.label(RichText::new(format!("📑 Open Tabs ({})", tab_count)).strong().size(12.0));
+                        ui.separator();
+
+                        if ui.selectable_label(self.is_home_active, "🏠 Home Dashboard").clicked() {
+                            self.is_home_active = true;
+                            ui.close_menu();
+                        }
+                        ui.separator();
+
+                        for idx in 0..self.open_tabs.len() {
+                            let is_active = !self.is_home_active && self.active_tab_idx == idx;
+                            let (tab_title, tab_type_icon) = {
+                                let t = &self.open_tabs[idx];
+                                let icon = if t.title.contains("SSH") {
+                                    "🔒 "
+                                } else if t.title.contains("WSL") {
+                                    "🐧 "
+                                } else if t.title.contains("Telnet") {
+                                    "⚡ "
+                                } else {
+                                    ">_ "
+                                };
+                                (t.title.clone(), icon)
+                            };
+
+                            ui.horizontal(|ui| {
+                                let row_label = format!("{}. {}{}", idx + 1, tab_type_icon, tab_title);
+                                if ui.selectable_label(is_active, row_label).clicked() {
+                                    switch_to_tab = Some(idx);
+                                    ui.close_menu();
+                                }
+                                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                    if ui.small_button("✕").on_hover_text("Close Tab").clicked() {
+                                        close_tab_idx = Some(idx);
+                                        ui.close_menu();
+                                    }
+                                });
+                            });
+                        }
+
+                        ui.separator();
+                        if ui.button("➕ Open Local Terminal (Ctrl+T)").clicked() {
+                            self.spawn_local_terminal("Local Terminal", None, None);
+                            self.is_home_active = false;
+                            self.sidebar_tab = 0;
+                            ui.close_menu();
+                        }
+                        if ui.button("✕ Close Inactive Tabs").clicked() {
+                            tab_menu_action = Some((self.active_tab_idx, TabMenuAction::CloseOthers));
+                            ui.close_menu();
+                        }
+                    },
                 );
             }
 
@@ -4509,6 +4597,7 @@ impl eframe::App for RustyBoxApp {
                     self.is_home_active = false;
                     self.active_tab_idx = (self.active_tab_idx + 1) % self.open_tabs.len();
                     self.sync_sidebar_with_active_tab();
+                    self.scroll_active_tab_into_view = true;
                 }
             }
             TerminalAction::PrevTab => {
@@ -4520,6 +4609,7 @@ impl eframe::App for RustyBoxApp {
                         self.active_tab_idx - 1
                     };
                     self.sync_sidebar_with_active_tab();
+                    self.scroll_active_tab_into_view = true;
                 }
             }
             _ => {}
@@ -7014,15 +7104,29 @@ impl eframe::App for RustyBoxApp {
             let mut open = self.show_about;
             egui::Window::new("ℹ About RustyBox")
                 .open(&mut open)
-                .default_size(Vec2::new(440.0, 280.0))
+                .default_size(Vec2::new(480.0, 320.0))
                 .show(ctx, |ui| {
                     ui.vertical_centered(|ui| {
                         ui.heading("🚀 RustyBox");
                         ui.label(RichText::new("Complete Remote Toolbox & Terminal Suite in Pure Rust").strong());
+                        ui.add_space(4.0);
+                        ui.label(RichText::new("Version v1.3-91").color(Color32::from_rgb(147, 197, 253)).strong());
                         ui.add_space(8.0);
                         ui.label("High-performance, zero-install, lightweight remote terminal toolbox.");
                         ui.label("Runs natively on Windows, macOS, and Linux.");
                         ui.add_space(8.0);
+                        ui.horizontal(|ui| {
+                            ui.label(RichText::new("GitHub Repository:").strong());
+                            ui.hyperlink_to(
+                                RichText::new("https://github.com/longanhvn/rustybox")
+                                    .color(Color32::from_rgb(56, 189, 248))
+                                    .underline(),
+                                "https://github.com/longanhvn/rustybox",
+                            );
+                        });
+                        ui.add_space(8.0);
+                        ui.separator();
+                        ui.add_space(4.0);
                         ui.label(RichText::new("Integrated Features:").strong());
                         ui.label("• Multi-tab & Multi-Split Terminal (ConPTY / Unix PTY / VT100)");
                         ui.label("• Realtime Multi-Execution (Command Broadcasting)");
@@ -7030,10 +7134,12 @@ impl eframe::App for RustyBoxApp {
                         ui.label("• Terminal Themes (RustyBox Dark, Dracula, Solarized, Monokai, Nord, Matrix)");
                         ui.label("• Interactive Quick Macros / Sysadmin Toolbar & Manager");
                         ui.label("• Embedded Services Hub (Micro HTTP Daemon, Syslog UDP Server)");
-                        ui.label("• Graphical SFTP Explorer with Quick Code Editor");
+                        ui.label("• Graphical SFTP Explorer with Advanced Built-in Code Editor");
+                        ui.label("• High-Speed SFTP Transfer (512KB Buffers & 2MB Sockets)");
                         ui.label("• SSH Port Forwarding / Tunneling Manager");
                         ui.label("• Network Tools (NetScan Subnet Scanner, Port Scanner, Ping, Netstat)");
                         ui.label("• AES-256-GCM Master Password Encrypted Vault");
+                        ui.label("• 5-Day Daily Auto-Rotating Terminal Session Logs");
                     });
                 });
             self.show_about = open;

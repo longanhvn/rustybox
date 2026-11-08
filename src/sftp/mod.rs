@@ -135,6 +135,7 @@ pub struct FileExplorer {
     pub editor_search_query: String,
     pub editor_search_matches: usize,
     pub editor_show_search: bool,
+    pub editor_word_wrap: bool,
     // Modal Chmod (RustyBox TFORMCHMOD)
     pub chmod_open: bool,
     pub chmod_target: Option<PathBuf>,
@@ -218,6 +219,7 @@ impl FileExplorer {
             editor_search_query: String::new(),
             editor_search_matches: 0,
             editor_show_search: false,
+            editor_word_wrap: false,
             chmod_open: false,
             chmod_target: None,
             chmod_remote_label: None,

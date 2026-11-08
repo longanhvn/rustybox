@@ -1355,7 +1355,9 @@ pub fn render_sftp_sidebar(ui: &mut Ui, explorer: &mut FileExplorer) {
         egui::Window::new(format!("📝 Built-in Editor — {}", file_name))
             .open(&mut open)
             .collapsible(false)
-            .default_size(Vec2::new(720.0, 520.0))
+            .resizable(true)
+            .default_size(Vec2::new(860.0, 580.0))
+            .min_size(Vec2::new(520.0, 360.0))
             .show(&ctx, |ui| {
                 ui.horizontal(|ui| {
                     if ui.button("💾 Save (Ctrl+S)").clicked() || trigger_save {
@@ -1363,6 +1365,10 @@ pub fn render_sftp_sidebar(ui: &mut Ui, explorer: &mut FileExplorer) {
                     }
                     if ui.button("🔍 Find (Ctrl+F)").clicked() {
                         explorer.editor_show_search = !explorer.editor_show_search;
+                    }
+                    let wrap_text = if explorer.editor_word_wrap { "↩ Wrap: ON" } else { "➡ Wrap: OFF" };
+                    if ui.button(wrap_text).on_hover_text("Toggle line wrapping").clicked() {
+                        explorer.editor_word_wrap = !explorer.editor_word_wrap;
                     }
                     if ui.small_button("➖").on_hover_text("Zoom out font").clicked() && explorer.editor_font_size > 9.0 {
                         explorer.editor_font_size -= 1.0;
@@ -1410,7 +1416,7 @@ pub fn render_sftp_sidebar(ui: &mut Ui, explorer: &mut FileExplorer) {
                 ui.separator();
 
                 // Compute line numbers
-                let line_count = explorer.editor_content.lines().count().max(1);
+                let line_count = explorer.editor_content.split('\n').count().max(1);
                 let digits = line_count.to_string().len().max(2);
                 let line_numbers_text = (1..=line_count)
                     .map(|n| format!("{:>width$}", n, width = digits))
@@ -1419,37 +1425,52 @@ pub fn render_sftp_sidebar(ui: &mut Ui, explorer: &mut FileExplorer) {
 
                 let total_chars = explorer.editor_content.len();
                 let editor_font = FontId::monospace(explorer.editor_font_size);
+                let bottom_status_height = 28.0;
+                let editor_avail_height = (ui.available_height() - bottom_status_height).max(120.0);
 
                 ScrollArea::both()
-                    .max_height(ui.available_height() - 24.0)
+                    .max_height(editor_avail_height)
+                    .auto_shrink([false, false])
                     .show(ui, |ui| {
                         ui.horizontal_top(|ui| {
                             // Left gutter: Line numbers
                             let line_w = (digits as f32 * 8.5 * (explorer.editor_font_size / 13.0)).max(28.0);
-                            ui.add_sized(
-                                [line_w, ui.available_height()],
-                                egui::Label::new(
-                                    RichText::new(line_numbers_text)
-                                        .font(editor_font.clone())
-                                        .color(Color32::from_rgb(100, 116, 139)),
-                                )
-                                .selectable(false),
+                            ui.allocate_ui_with_layout(
+                                vec2(line_w, 0.0),
+                                egui::Layout::top_down(egui::Align::RIGHT),
+                                |ui| {
+                                    ui.add(
+                                        egui::Label::new(
+                                            RichText::new(&line_numbers_text)
+                                                .font(editor_font.clone())
+                                                .color(Color32::from_rgb(100, 116, 139)),
+                                        )
+                                        .selectable(false),
+                                    );
+                                },
                             );
 
                             ui.separator();
 
                             // Main code editor area
+                            let edit_width = if explorer.editor_word_wrap {
+                                (ui.available_width() - 8.0).max(100.0)
+                            } else {
+                                f32::INFINITY
+                            };
+
                             ui.add(
                                 TextEdit::multiline(&mut explorer.editor_content)
                                     .font(editor_font)
-                                    .desired_width(f32::INFINITY)
+                                    .desired_width(edit_width)
                                     .desired_rows(22)
+                                    .lock_focus(true)
                                     .code_editor(),
                             );
                         });
                     });
 
-                // Status bar at bottom
+                // Status bar cleanly pinned at bottom (never overflowed or hidden)
                 ui.separator();
                 ui.horizontal(|ui| {
                     ui.label(RichText::new(format!("Lines: {}  |  Length: {} bytes", line_count, total_chars)).size(11.0).weak());

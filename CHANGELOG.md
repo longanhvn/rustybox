@@ -7,6 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [v1.3-91] - 2026-11-08
+### Fixed & Improved (Multi-Tab Management, Sessions Auto-Switch, SFTP Editor Overhaul & About Repo Link)
+- **Quản lý đa tab thông minh khi mở 10–20+ Tab cùng lúc**:
+  - Tích hợp thanh cuộn ngang `ScrollArea::horizontal` kèm cơ chế tự động cuộn đến tab đang chọn (`auto-scroll active tab into view`).
+  - Bổ sung **Menu chuyển tab nhanh (`📑 N ▾` Tab Switcher)** trực tiếp trên thanh công cụ: hiển thị danh sách toàn bộ tab kèm biểu tượng nhận diện (Local, SSH, WSL, Telnet), hỗ trợ chuyển đổi hoặc đóng tab riêng lẻ tức thì, kèm lối tắt "Đóng tất cả tab không hoạt động" và "Mở Local Terminal".
+- **Tự động chuyển Sidebar về tab Sessions khi mở Tab mới**:
+  - Mọi thao tác khởi tạo tab mới (Local Terminal, kết nối SSH từ danh bạ hoặc Quick Connect) đều tự động chuyển thanh điều hướng trái về tab **Sessions**, giúp người dùng luôn quản lý danh bạ máy chủ thuận tiện.
+- **Tối ưu hóa toàn diện Built-in Code/Text Editor SFTP (Chống tràn giao diện)**:
+  - Khắc phục triệt để lỗi tràn khung nhìn khi mở các tệp có nội dung lớn hoặc dòng văn bản siêu dài (log nén, JSON một dòng).
+  - Cửa sổ hỗ trợ co giãn tự do (`resizable`), kích thước mặc định 860x580, tối thiểu 520x360.
+  - Bổ sung nút bấm **Bật/Tắt bẻ dòng (`↩ Wrap: ON / OFF`)**: tự động gói dòng theo chiều rộng hiển thị mà không làm phình cửa sổ.
+  - Cố định thanh trạng thái chân trang (hiển thị số dòng, dung lượng tệp, đường dẫn remote) luôn nằm ngay ngắn ở đáy cửa sổ, không bao giờ bị đẩy mất.
+  - Cột số dòng (Line Numbers Gutter) tính toán độ rộng chuẩn xác theo cỡ chữ và căn phải chuyên nghiệp.
+  - Cuộn hai chiều mượt mà (`ScrollArea::both`) cho cả dòng văn bản dài và file nhiều trang.
+- **Cập nhật Hộp thoại About RustyBox**:
+  - Thêm liên kết trực tiếp đến GitHub Repository chính thức: `https://github.com/longanhvn/rustybox`.
+  - Cập nhật số hiệu phiên bản `v1.3-90` và danh mục tính năng hoàn chỉnh.
+- **Làm mới toàn bộ tài liệu `README.md`**:
+  - Đồng bộ đầy đủ các tính năng hiện tại của ứng dụng.
+  - Cập nhật chính xác địa chỉ repository và số lượng kiểm thử tự động (160/160 unit tests).
+- **Triệt tiêu hiện tượng chớp màn hình đen / cửa sổ console conhost khi mở app**:
+  - Chuyển cơ chế khởi tạo Terminal nội bộ sang Lazy Spawn: Không tự động chạy ngầm phiên ConPTY shell (`Local Terminal`) lúc vừa mở ứng dụng, ngăn chặn hoàn toàn hệ điều hành Windows bật chớp cửa sổ `conhost.exe` ngầm.
+  - Thiết lập cấu hình Viewport `with_transparent(false)` và tối ưu hóa chu kỳ vẽ frame đầu tiên của `eframe`/`glow`, loại bỏ hiện tượng giật tối khung hình khi GPU khởi tạo.
+- **Tối ưu hóa gọn gàng thanh Tab Bar & Bổ sung Tiện ích Đồng hồ / Uptime Thời gian thực**:
+  - Thay thế phần nhãn tĩnh/khung Quick Connect cồng kềnh (chiếm 265px) bên phải thanh Tab Bar bằng Widget trạng thái siêu nhỏ gọn (~96px).
+  - Lấy lại **171px chiều rộng** cho dải tab, hỗ trợ màn hình nhỏ và mở cùng lúc nhiều tab mà không bị co cụm hay che khuất.
+  - Tích hợp đồng hồ thời gian thực (`⏱ HH:MM:SS`), hỗ trợ nhấp chuột chuyển đổi linh hoạt sang hiển thị thời gian hoạt động ứng dụng (`⏳ Uptime`).
+  - Tooltip đầy đủ thông tin: Giờ hệ thống, ngày tháng, thời gian uptime chi tiết và số lượng tab đang chạy.
+
+---
+
 ## [v1.3-89] - 2026-11-07
 ### Added & Improved (SFTP Speed Optimization, Advanced Internal Editor, Auto Session Logging & SFTP Bookmarks)
 - **Tối ưu hóa băng thông SFTP Transfer (512KB Buffer & 2MB Socket)**:
