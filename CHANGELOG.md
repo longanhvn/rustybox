@@ -30,11 +30,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Triệt tiêu hiện tượng chớp màn hình đen / cửa sổ console conhost khi mở app**:
   - Chuyển cơ chế khởi tạo Terminal nội bộ sang Lazy Spawn: Không tự động chạy ngầm phiên ConPTY shell (`Local Terminal`) lúc vừa mở ứng dụng, ngăn chặn hoàn toàn hệ điều hành Windows bật chớp cửa sổ `conhost.exe` ngầm.
   - Thiết lập cấu hình Viewport `with_transparent(false)` và tối ưu hóa chu kỳ vẽ frame đầu tiên của `eframe`/`glow`, loại bỏ hiện tượng giật tối khung hình khi GPU khởi tạo.
-- **Tối ưu hóa gọn gàng thanh Tab Bar & Bổ sung Tiện ích Đồng hồ / Uptime Thời gian thực**:
-  - Thay thế phần nhãn tĩnh/khung Quick Connect cồng kềnh (chiếm 265px) bên phải thanh Tab Bar bằng Widget trạng thái siêu nhỏ gọn (~96px).
-  - Lấy lại **171px chiều rộng** cho dải tab, hỗ trợ màn hình nhỏ và mở cùng lúc nhiều tab mà không bị co cụm hay che khuất.
-  - Tích hợp đồng hồ thời gian thực (`⏱ HH:MM:SS`), hỗ trợ nhấp chuột chuyển đổi linh hoạt sang hiển thị thời gian hoạt động ứng dụng (`⏳ Uptime`).
-  - Tooltip đầy đủ thông tin: Giờ hệ thống, ngày tháng, thời gian uptime chi tiết và số lượng tab đang chạy.
+- **Tối ưu hóa tối đa chiều rộng thanh Tab Bar**:
+  - Loại bỏ hoàn toàn các thành phần trang trí không cần thiết bên phải thanh tab, nhường toàn bộ không gian ngang cho dải tab terminal.
+  - Tích hợp nút menu chuyển tab nhanh `📑 N ▾` xuất hiện thông minh khi có từ 2 tab trở lên.
 
 ---
 

@@ -47,33 +47,28 @@
   - Cột đánh số dòng (Line Numbers Gutter) chuẩn xác, phông Monospace rõ nét, thanh cuộn hai chiều (`ScrollArea::both`).
   - Thanh công cụ tích hợp lưu phím tắt `Ctrl+S`, tìm kiếm từ khóa `Ctrl+F` (đếm số match theo thời gian thực), tăng/giảm cỡ chữ và thanh trạng thái hiển thị số dòng, dung lượng tệp.
 
-### 6. ⏱️ Widget Đồng hồ số & Uptime siêu gọn
-- Tích hợp widget đồng hồ số thời gian thực (`⏱ HH:MM:SS`) ngay trên thanh tiêu đề.
-- Click để chuyển đổi tức thì sang thời gian ứng dụng hoạt động (`⏳ Uptime`).
-- Hover chuột hiển thị tooltip chi tiết: giờ hệ thống, ngày tháng, thời gian uptime và tổng số tab đang mở.
-
-### 7. 📜 Ghi log phiên tự động xoay vòng (5-Day Auto-Rotating Logs)
+### 6. 📜 Ghi log phiên tự động xoay vòng (5-Day Auto-Rotating Logs)
 - Tự động ghi lại toàn bộ nội dung xuất ra terminal theo từng phiên làm việc vào thư mục `./data/logs/`.
 - Cơ chế xoay vòng tự động duy trì log trong vòng **5 ngày gần nhất** và tự dọn dẹp các tệp log cũ hơn, đảm bảo không làm đầy ổ cứng.
 - Nút bấm truy cập nhanh thư mục log trực tiếp từ giao diện.
 
-### 8. ⌨️ Quick Macros & Sysadmin Toolbar
+### 7. ⌨️ Quick Macros & Sysadmin Toolbar
 - Thanh công cụ phím tắt lệnh nhanh (Sysadmin Toolbar) tích hợp các lệnh phổ biến: `htop`, `docker ps`, `df -h`, `free -m`, `netstat`, `systemctl status`...
 - **Macro Manager:** Cho phép người dùng tự do tạo, chỉnh sửa, lưu trữ và kích hoạt các đoạn kịch bản / lệnh shell thường dùng chỉ với 1 click.
 
-### 9. 🔐 Bảo mật Master Password Vault (Argon2id + AES-256-GCM)
+### 8. 🔐 Bảo mật Master Password Vault (Argon2id + AES-256-GCM)
 - **Chuẩn mã hóa chứng thực quân sự (AEAD):**
   - **Argon2id:** Dẫn xuất khóa 256-bit an toàn với Salt ngẫu nhiên 16 bytes sinh từ phần cứng, chống tấn công brute-force/GPU.
   - **AES-256-GCM:** Mã hóa toàn bộ mật khẩu phiên và danh bạ thông tin xác thực (`Credential Store`) với Nonce 12 bytes ngẫu nhiên độc lập cho từng trường dữ liệu.
 - **Không rò rỉ dữ liệu:** Toàn bộ mật khẩu trên đĩa lưu dưới dạng `enc:v1:<nonce>:<ciphertext>`.
 - **Cơ chế Khóa theo nhu cầu (On-Demand Lazy Lock):** Mở app an toàn, không làm phiền người dùng khi chỉ dùng local terminal. Khi kết nối SSH, app giải mã an toàn trong bộ nhớ RAM và inject vào PTY mà không sinh file tạm ra đĩa.
 
-### 10. 🗄️ Lưu trữ Portable & Tự phục hồi dữ liệu (Self-Healing)
+### 9. 🗄️ Lưu trữ Portable & Tự phục hồi dữ liệu (Self-Healing)
 - **Kiến trúc Portable 100%:** Toàn bộ cấu hình và danh bạ lưu trữ gọn gàng tại thư mục `./data/RustyBox.json` ngay cạnh file thực thi. Không ghi file rác vào registry hay AppData hệ thống.
 - **Cơ chế sao lưu xoay vòng (Rolling Backups):** Tự động tạo bản sao lưu snapshot (`RustyBox.json.<unixtime>`) trước mỗi lần ghi đĩa và duy trì tối đa **3 bản sao lưu mới nhất**.
 - **Tự động khôi phục khi lỗi (Self-Healing):** Nếu file JSON chính bị lỗi hỏng đột ngột do mất nguồn, RustyBox tự động phát hiện và phục hồi từ bản backup hợp lệ gần nhất.
 
-### 11. 🛠️ Tiện ích & Dịch vụ mạng tích hợp
+### 10. 🛠️ Tiện ích & Dịch vụ mạng tích hợp
 - **Network Scanner (NetScan):** Quét IP dải mạng nội bộ (Subnet Discovery), kiểm tra cổng dịch vụ bất đồng bộ (Async TCP Port Scan) kèm đo độ trễ mạng ms.
 - **SSH Tunnels Manager:** Quản lý trực quan Local Port Forwarding, Remote Forwarding và SOCKS5 Dynamic Proxy với công tắc kích hoạt tức thì.
 - **Embedded Network Daemons:** Tích hợp sẵn Micro HTTP File Server, TFTP Server và Syslog Server phục vụ cứu hộ thiết bị mạng và truyền file nhanh.

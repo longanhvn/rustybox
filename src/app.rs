@@ -286,9 +286,6 @@ pub struct RustyBoxApp {
     quick_connect_input: String,
     home_session_filter: String,
     is_home_active: bool,
-    // Status Bar & Clock Widget
-    launch_time: std::time::Instant,
-    clock_shows_uptime: bool,
     scroll_active_tab_into_view: bool,
     // Live System Telemetry Dashboard
     last_telemetry_time: std::time::Instant,
@@ -503,8 +500,6 @@ impl RustyBoxApp {
             quick_connect_input: String::new(),
             home_session_filter: String::new(),
             is_home_active: false,
-            launch_time: std::time::Instant::now(),
-            clock_shows_uptime: false,
             scroll_active_tab_into_view: false,
             last_telemetry_time: std::time::Instant::now() - std::time::Duration::from_secs(10),
             local_telemetry: TabTelemetry::new_local(),
@@ -3316,13 +3311,17 @@ impl eframe::App for RustyBoxApp {
         let mut triggered_action = TerminalAction::None;
 
         egui::CentralPanel::default().show(ctx, |ui| {
-            // TAB BAR HEADER (Tabs strip + Compact Real-Time Clock / Uptime widget + Tab Switcher)
+            // TAB BAR HEADER (Full-width Tabs strip + optional Tab Switcher dropdown)
             let strip_height = 28.0;
             let (strip_rect, _) = ui.allocate_exact_size(vec2(ui.available_width(), strip_height), egui::Sense::hover());
             let tab_count = self.open_tabs.len();
-            let switcher_w = if tab_count > 1 { 56.0f32 } else { 0.0f32 };
-            let right_w = 96.0f32 + switcher_w;
-            let tabs_rect = egui::Rect::from_min_max(strip_rect.min, pos2(strip_rect.max.x - right_w - 6.0, strip_rect.max.y));
+            let switcher_w = if tab_count > 1 { 60.0f32 } else { 0.0f32 };
+            let right_w = switcher_w;
+            let tabs_rect = if right_w > 0.0 {
+                egui::Rect::from_min_max(strip_rect.min, pos2(strip_rect.max.x - right_w - 4.0, strip_rect.max.y))
+            } else {
+                strip_rect
+            };
             let right_rect = egui::Rect::from_min_max(pos2(strip_rect.max.x - right_w, strip_rect.min.y), strip_rect.max);
 
             let mut close_tab_idx: Option<usize> = None;
@@ -3561,53 +3560,9 @@ impl eframe::App for RustyBoxApp {
                 });
             }
 
-            // 2. RIGHT COMPACT CLOCK & UPTIME WIDGET + TAB SWITCHER DROPDOWN
-            let mut right_ui = ui.new_child(egui::UiBuilder::new().max_rect(right_rect).layout(Layout::right_to_left(Align::Center)));
-            let now = chrono::Local::now();
-            let elapsed = self.launch_time.elapsed().as_secs();
-            let hours = elapsed / 3600;
-            let mins = (elapsed % 3600) / 60;
-            let secs = elapsed % 60;
-            let uptime_str = if hours > 0 {
-                format!("{:02}:{:02}:{:02}", hours, mins, secs)
-            } else {
-                format!("{:02}:{:02}", mins, secs)
-            };
-
-            let (display_text, text_col) = if self.clock_shows_uptime {
-                (format!("⏳ {}", uptime_str), Color32::from_rgb(251, 146, 60))
-            } else {
-                (now.format("⏱ %H:%M:%S").to_string(), Color32::from_rgb(148, 163, 184))
-            };
-
-            let clock_btn = egui::Button::new(
-                RichText::new(display_text)
-                    .monospace()
-                    .size(11.0)
-                    .color(text_col),
-            )
-            .fill(Color32::from_rgb(18, 24, 34))
-            .stroke(egui::Stroke::new(1.0, Color32::from_rgb(38, 48, 66)))
-            .rounding(5.0)
-            .min_size(vec2(90.0, 22.0));
-
-            let tooltip_text = format!(
-                "⏱ Giờ hệ thống: {}\n📅 Ngày: {}\n⏳ Uptime ứng dụng: {}h {}m {}s\n💻 Tab đang mở: {} tab\n\n💡 Bấm để chuyển đổi giữa Giờ hệ thống và Uptime",
-                now.format("%H:%M:%S"),
-                now.format("%d/%m/%Y"),
-                hours,
-                mins,
-                secs,
-                self.open_tabs.len()
-            );
-
-            if right_ui.add(clock_btn).on_hover_text(tooltip_text).clicked() {
-                self.clock_shows_uptime = !self.clock_shows_uptime;
-            }
-
-            // Quick Tab Switcher dropdown for managing 10-20+ tabs seamlessly
+            // 2. RIGHT TAB SWITCHER DROPDOWN (when multiple tabs exist)
             if tab_count > 1 {
-                right_ui.add_space(3.0);
+                let mut right_ui = ui.new_child(egui::UiBuilder::new().max_rect(right_rect).layout(Layout::right_to_left(Align::Center)));
                 right_ui.menu_button(
                     RichText::new(format!("📑 {} ▾", tab_count))
                         .size(11.0)
