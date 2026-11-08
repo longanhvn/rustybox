@@ -32,18 +32,20 @@ jobs:
           lipo -create -output RustyBox-macos-universal RustyBox-macos-arm64 RustyBox-macos-x64
           chmod +x RustyBox-macos-arm64 RustyBox-macos-x64 RustyBox-macos-universal
           ls -lh RustyBox-macos-*
+          otool -L RustyBox-macos-arm64
 
       - name: Launch RustyBox GUI on macOS & Capture Screenshot
         run: |
           ./RustyBox-macos-arm64 &
           APP_PID=$!
-          sleep 5
+          sleep 6
           if kill -0 $APP_PID 2>/dev/null; then
             echo "RustyBox GUI is running smoothly on macOS (PID: $APP_PID)"
           else
             echo "Warning: Process exited early"
           fi
           screencapture -x macos_gui_screenshot.png || true
+          ls -lh macos_gui_screenshot.png || true
           kill $APP_PID 2>/dev/null || true
 
       - name: Upload macOS Binaries & GUI Screenshot Artifacts

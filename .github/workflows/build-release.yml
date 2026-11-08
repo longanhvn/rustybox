@@ -23,16 +23,10 @@ jobs:
             binary_path: target/x86_64-pc-windows-msvc/release/rust-remote-toolbox.exe
 
           # macOS Apple Silicon (M1/M2/M3/M4)
-          - os: macos-latest
+          - os: macos-15
             target: aarch64-apple-darwin
             artifact_name: RustyBox-macos-arm64
             binary_path: target/aarch64-apple-darwin/release/rust-remote-toolbox
-
-          # macOS Intel x64 (cross-compiled on macos-15)
-          - os: macos-15
-            target: x86_64-apple-darwin
-            artifact_name: RustyBox-macos-x64
-            binary_path: target/x86_64-apple-darwin/release/rust-remote-toolbox
 
           # Linux (Ubuntu / Debian / Fedora) Portable Binary
           - os: ubuntu-22.04
