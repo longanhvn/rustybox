@@ -13,6 +13,19 @@
 
 ---
 
+## 📦 Tải về dùng ngay (Pre-built Portable Binaries)
+
+Người dùng tải về là chạy trực tiếp được ngay (**Zero Install / Portable 100%**, không cần cài đặt dependencies hay runtime phụ):
+
+| Hệ điều hành | Tệp thực thi Portable | Dung lượng | Hướng dẫn sử dụng |
+| :--- | :--- | :--- | :--- |
+| **🪟 Windows 10 / 11 (x64)** | [**`RustyBox-windows-x64.exe`**](https://github.com/longanhvn/rustybox/releases/download/v1.3-92/RustyBox-windows-x64.exe) | ~20 MB | Tải về nhấp đúp chạy ngay |
+| **🐧 Linux (Ubuntu / Debian / Fedora)** | [**`RustyBox-linux-x64`**](https://github.com/longanhvn/rustybox/releases/download/v1.3-92/RustyBox-linux-x64) | ~17 MB | `chmod +x RustyBox-linux-x64 && ./RustyBox-linux-x64` |
+
+*👉 Xem danh sách toàn bộ các bản phát hành tại: [**GitHub Releases**](https://github.com/longanhvn/rustybox/releases)*
+
+---
+
 ## 📸 Điểm nổi bật & Tính năng chính
 
 ### 1. 🖥️ Multi-Terminal & Đa bố cục (Split Views & 20+ Tabs Management)
