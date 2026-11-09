@@ -190,6 +190,7 @@ impl Editor {
         let mut request_close = false;
 
         egui::Window::new(window_title)
+            .id(egui::Id::new("builtin_quick_code_editor_window"))
             .open(&mut window_open)
             .collapsible(false)
             .resizable(true)
@@ -390,6 +391,7 @@ impl Editor {
 
                             let edit_resp = ui.add(
                                 TextEdit::multiline(&mut self.content)
+                                    .id_salt("builtin_editor_multiline_content")
                                     .font(editor_font)
                                     .desired_width(edit_width)
                                     .desired_rows(10)
