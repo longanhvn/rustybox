@@ -49,6 +49,7 @@ impl SyntaxType {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
 pub struct SyntaxRules {
     pub keywords: &'static [&'static str],
     pub types_builtins: &'static [&'static str],

@@ -29,6 +29,15 @@ impl Default for ThemeColors {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EmbeddedLanguage {
+    None,
+    JavaScript,
+    Css,
+    Php,
+    RubyErb,
+}
+
 pub fn create_layout_job(
     text: &str,
     syntax: SyntaxType,
@@ -43,7 +52,7 @@ pub fn create_layout_job(
         job.wrap.max_width = wrap_width;
     }
 
-    let rules = syntax.rules();
+    let base_rules = syntax.rules();
     let theme = ThemeColors::default();
     let font_id = FontId::monospace(font_size);
 
@@ -52,12 +61,12 @@ pub fn create_layout_job(
 
     // Collect search match byte ranges if search is active
     let search_ranges: Vec<(usize, usize)> = if has_search {
-        let needle = if rules.case_insensitive {
+        let needle = if base_rules.case_insensitive {
             trimmed_search.to_lowercase()
         } else {
             trimmed_search.to_string()
         };
-        let haystack = if rules.case_insensitive {
+        let haystack = if base_rules.case_insensitive {
             text.to_lowercase()
         } else {
             text.to_string()
@@ -72,14 +81,21 @@ pub fn create_layout_job(
     };
 
     let mut in_multiline_comment = false;
+    let mut embedded_lang = EmbeddedLanguage::None;
+    let supports_embedding = matches!(
+        syntax,
+        SyntaxType::HtmlXml | SyntaxType::Php | SyntaxType::Ruby
+    );
 
     for line in text.split_inclusive('\n') {
         highlight_line(
             line,
-            &rules,
+            supports_embedding,
+            &base_rules,
             &theme,
             &font_id,
             &mut in_multiline_comment,
+            &mut embedded_lang,
             &mut job,
         );
     }
@@ -92,12 +108,27 @@ pub fn create_layout_job(
     job
 }
 
+fn starts_with_ci(chars: &[char], prefix: &str) -> bool {
+    let p_chars: Vec<char> = prefix.chars().collect();
+    if chars.len() < p_chars.len() {
+        return false;
+    }
+    for (a, b) in chars[..p_chars.len()].iter().zip(p_chars.iter()) {
+        if !a.eq_ignore_ascii_case(b) {
+            return false;
+        }
+    }
+    true
+}
+
 fn highlight_line(
     line: &str,
-    rules: &SyntaxRules,
+    supports_embedding: bool,
+    base_rules: &SyntaxRules,
     theme: &ThemeColors,
     font_id: &FontId,
     in_multiline_comment: &mut bool,
+    embedded_lang: &mut EmbeddedLanguage,
     job: &mut LayoutJob,
 ) {
     let chars: Vec<char> = line.chars().collect();
@@ -111,11 +142,153 @@ fn highlight_line(
         ..Default::default()
     };
 
-    let line_comment_chars: Option<Vec<char>> = rules.line_comment.map(|s| s.chars().collect());
-    let multi_start_chars: Option<Vec<char>> = rules.multi_comment.map(|(s, _)| s.chars().collect());
-    let multi_end_chars: Option<Vec<char>> = rules.multi_comment.map(|(_, e)| e.chars().collect());
-
     while i < len {
+        // --- 0. Handle HTML embedded mode transitions (Script, Style, PHP, ERB) ---
+        if supports_embedding {
+            match *embedded_lang {
+                EmbeddedLanguage::None => {
+                    // Check <script ...>
+                    if starts_with_ci(&chars[i..], "<script") {
+                        let after = i + 7;
+                        if after >= len || chars[after] == '>' || chars[after].is_whitespace() || chars[after] == '/' {
+                            let start = i;
+                            while i < len && chars[i] != '>' {
+                                i += 1;
+                            }
+                            if i < len && chars[i] == '>' {
+                                i += 1;
+                            }
+                            let seg: String = chars[start..i].iter().collect();
+                            job.append(&seg, 0.0, fmt(theme.keyword));
+                            *embedded_lang = EmbeddedLanguage::JavaScript;
+                            continue;
+                        }
+                    }
+
+                    // Check <style ...>
+                    if starts_with_ci(&chars[i..], "<style") {
+                        let after = i + 6;
+                        if after >= len || chars[after] == '>' || chars[after].is_whitespace() || chars[after] == '/' {
+                            let start = i;
+                            while i < len && chars[i] != '>' {
+                                i += 1;
+                            }
+                            if i < len && chars[i] == '>' {
+                                i += 1;
+                            }
+                            let seg: String = chars[start..i].iter().collect();
+                            job.append(&seg, 0.0, fmt(theme.keyword));
+                            *embedded_lang = EmbeddedLanguage::Css;
+                            continue;
+                        }
+                    }
+
+                    // Check <?php or <?=
+                    if starts_with_ci(&chars[i..], "<?php") {
+                        let seg: String = chars[i..i + 5].iter().collect();
+                        job.append(&seg, 0.0, fmt(theme.keyword));
+                        i += 5;
+                        *embedded_lang = EmbeddedLanguage::Php;
+                        continue;
+                    } else if starts_with_ci(&chars[i..], "<?=") {
+                        let seg: String = chars[i..i + 3].iter().collect();
+                        job.append(&seg, 0.0, fmt(theme.keyword));
+                        i += 3;
+                        *embedded_lang = EmbeddedLanguage::Php;
+                        continue;
+                    }
+
+                    // Check <% ERB (e.g. <%, <%=, <%-, <%#)
+                    if chars[i..].starts_with(&['<', '%']) {
+                        let start = i;
+                        i += 2;
+                        if i < len && (chars[i] == '=' || chars[i] == '-' || chars[i] == '#') {
+                            i += 1;
+                        }
+                        let seg: String = chars[start..i].iter().collect();
+                        job.append(&seg, 0.0, fmt(theme.keyword));
+                        *embedded_lang = EmbeddedLanguage::RubyErb;
+                        continue;
+                    }
+                }
+
+                EmbeddedLanguage::JavaScript => {
+                    // Check </script>
+                    if starts_with_ci(&chars[i..], "</script") {
+                        let start = i;
+                        while i < len && chars[i] != '>' {
+                            i += 1;
+                        }
+                        if i < len && chars[i] == '>' {
+                            i += 1;
+                        }
+                        let seg: String = chars[start..i].iter().collect();
+                        job.append(&seg, 0.0, fmt(theme.keyword));
+                        *embedded_lang = EmbeddedLanguage::None;
+                        continue;
+                    }
+                }
+
+                EmbeddedLanguage::Css => {
+                    // Check </style>
+                    if starts_with_ci(&chars[i..], "</style") {
+                        let start = i;
+                        while i < len && chars[i] != '>' {
+                            i += 1;
+                        }
+                        if i < len && chars[i] == '>' {
+                            i += 1;
+                        }
+                        let seg: String = chars[start..i].iter().collect();
+                        job.append(&seg, 0.0, fmt(theme.keyword));
+                        *embedded_lang = EmbeddedLanguage::None;
+                        continue;
+                    }
+                }
+
+                EmbeddedLanguage::Php => {
+                    // Check ?>
+                    if chars[i..].starts_with(&['?', '>']) {
+                        let seg: String = chars[i..i + 2].iter().collect();
+                        job.append(&seg, 0.0, fmt(theme.keyword));
+                        i += 2;
+                        *embedded_lang = EmbeddedLanguage::None;
+                        continue;
+                    }
+                }
+
+                EmbeddedLanguage::RubyErb => {
+                    // Check -%> or %>
+                    if chars[i..].starts_with(&['-', '%', '>']) {
+                        let seg: String = chars[i..i + 3].iter().collect();
+                        job.append(&seg, 0.0, fmt(theme.keyword));
+                        i += 3;
+                        *embedded_lang = EmbeddedLanguage::None;
+                        continue;
+                    } else if chars[i..].starts_with(&['%', '>']) {
+                        let seg: String = chars[i..i + 2].iter().collect();
+                        job.append(&seg, 0.0, fmt(theme.keyword));
+                        i += 2;
+                        *embedded_lang = EmbeddedLanguage::None;
+                        continue;
+                    }
+                }
+            }
+        }
+
+        // Active rules for current token
+        let rules = match *embedded_lang {
+            EmbeddedLanguage::JavaScript => SyntaxType::JavaScript.rules(),
+            EmbeddedLanguage::Css => SyntaxType::Css.rules(),
+            EmbeddedLanguage::Php => SyntaxType::Php.rules(),
+            EmbeddedLanguage::RubyErb => SyntaxType::Ruby.rules(),
+            EmbeddedLanguage::None => base_rules.clone(),
+        };
+
+        let line_comment_chars: Option<Vec<char>> = rules.line_comment.map(|s| s.chars().collect());
+        let multi_start_chars: Option<Vec<char>> = rules.multi_comment.map(|(s, _)| s.chars().collect());
+        let multi_end_chars: Option<Vec<char>> = rules.multi_comment.map(|(_, e)| e.chars().collect());
+
         // 1. In existing multiline comment
         if *in_multiline_comment {
             if let Some(ref end_chars) = multi_end_chars {
@@ -168,9 +341,20 @@ fn highlight_line(
         // 3. Single-line comment
         if let Some(ref prefix_chars) = line_comment_chars {
             if i + prefix_chars.len() <= len && chars[i..i + prefix_chars.len()] == prefix_chars[..] {
-                let seg: String = chars[i..].iter().collect();
-                job.append(&seg, 0.0, fmt(theme.comment));
-                return;
+                // If in ERB, stop before %>
+                if *embedded_lang == EmbeddedLanguage::RubyErb {
+                    let start = i;
+                    while i < len && !chars[i..].starts_with(&['%', '>']) && !chars[i..].starts_with(&['-', '%', '>']) {
+                        i += 1;
+                    }
+                    let seg: String = chars[start..i].iter().collect();
+                    job.append(&seg, 0.0, fmt(theme.comment));
+                    continue;
+                } else {
+                    let seg: String = chars[i..].iter().collect();
+                    job.append(&seg, 0.0, fmt(theme.comment));
+                    return;
+                }
             }
         }
 
@@ -238,10 +422,40 @@ fn highlight_line(
         }
 
         // 7. Fallback: Any other characters (operators, symbols, whitespaces, punctuation)
-        // CRITICAL: Must advance `i` by at least 1 character to guarantee no infinite loops!
+        // Advance `i` by at least 1 character to guarantee no infinite loops!
         let start = i;
         i += 1;
         while i < len {
+            // Stop if an embedded transition or delimiter starts
+            if supports_embedding {
+                if *embedded_lang == EmbeddedLanguage::None {
+                    if starts_with_ci(&chars[i..], "<script")
+                        || starts_with_ci(&chars[i..], "<style")
+                        || starts_with_ci(&chars[i..], "<?php")
+                        || starts_with_ci(&chars[i..], "<?=")
+                        || chars[i..].starts_with(&['<', '%'])
+                    {
+                        break;
+                    }
+                } else if *embedded_lang == EmbeddedLanguage::JavaScript {
+                    if starts_with_ci(&chars[i..], "</script") {
+                        break;
+                    }
+                } else if *embedded_lang == EmbeddedLanguage::Css {
+                    if starts_with_ci(&chars[i..], "</style") {
+                        break;
+                    }
+                } else if *embedded_lang == EmbeddedLanguage::Php {
+                    if chars[i..].starts_with(&['?', '>']) {
+                        break;
+                    }
+                } else if *embedded_lang == EmbeddedLanguage::RubyErb {
+                    if chars[i..].starts_with(&['%', '>']) || chars[i..].starts_with(&['-', '%', '>']) {
+                        break;
+                    }
+                }
+            }
+
             // Stop if an identifier starts
             if chars[i].is_alphabetic() || chars[i] == '_' {
                 break;
@@ -346,5 +560,55 @@ mod tests {
                 assert!(!job.sections.is_empty() || text.is_empty());
             }
         }
+    }
+
+    #[test]
+    fn test_embedded_html_scripts_and_styles() {
+        let html_content = r#"
+<!DOCTYPE html>
+<html>
+<head>
+    <style>
+        body { display: flex; margin: 0; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <% @items.each do |item| %>
+            <p><%= item.title %></p>
+        <% end %>
+        <?php echo "Hello from PHP"; ?>
+    </div>
+    <script>
+        const app = "RustyBox";
+        function init() {
+            console.log(app);
+        }
+    </script>
+</body>
+</html>
+"#;
+
+        let job = create_layout_job(html_content, SyntaxType::HtmlXml, 13.0, "", 0, false, 800.0);
+        assert!(!job.sections.is_empty());
+
+        // Verify sections contain keywords from embedded JS, CSS, and ERB
+        let has_js_keyword = job.sections.iter().any(|s| {
+            let text = &html_content[s.byte_range.start..s.byte_range.end];
+            text == "const" || text == "function"
+        });
+        assert!(has_js_keyword, "Should highlight JS 'const' or 'function' inside <script>");
+
+        let has_css_keyword = job.sections.iter().any(|s| {
+            let text = &html_content[s.byte_range.start..s.byte_range.end];
+            text == "flex"
+        });
+        assert!(has_css_keyword, "Should highlight CSS 'flex' inside <style>");
+
+        let has_erb_keyword = job.sections.iter().any(|s| {
+            let text = &html_content[s.byte_range.start..s.byte_range.end];
+            text == "do" || text == "end"
+        });
+        assert!(has_erb_keyword, "Should highlight ERB 'do' or 'end' inside <% %>");
     }
 }
