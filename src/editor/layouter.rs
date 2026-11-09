@@ -111,14 +111,16 @@ fn highlight_line(
         ..Default::default()
     };
 
-    while i < len {
-        // Handle multiline comment
-        if *in_multiline_comment {
-            if let Some((_, end_tag)) = rules.multi_comment {
-                let start = i;
-                let end_chars: Vec<char> = end_tag.chars().collect();
-                let mut found_end = false;
+    let line_comment_chars: Option<Vec<char>> = rules.line_comment.map(|s| s.chars().collect());
+    let multi_start_chars: Option<Vec<char>> = rules.multi_comment.map(|(s, _)| s.chars().collect());
+    let multi_end_chars: Option<Vec<char>> = rules.multi_comment.map(|(_, e)| e.chars().collect());
 
+    while i < len {
+        // 1. In existing multiline comment
+        if *in_multiline_comment {
+            if let Some(ref end_chars) = multi_end_chars {
+                let start = i;
+                let mut found_end = false;
                 while i < len {
                     if i + end_chars.len() <= len && chars[i..i + end_chars.len()] == end_chars[..] {
                         i += end_chars.len();
@@ -131,7 +133,7 @@ fn highlight_line(
                 let seg: String = chars[start..i].iter().collect();
                 job.append(&seg, 0.0, fmt(theme.comment));
                 if !found_end {
-                    return;
+                    return; // line ends inside multiline comment
                 }
                 continue;
             } else {
@@ -139,18 +141,32 @@ fn highlight_line(
             }
         }
 
-        // Check multiline comment start
-        if let Some((start_tag, _)) = rules.multi_comment {
-            let start_chars: Vec<char> = start_tag.chars().collect();
+        // 2. Start of multiline comment
+        if let Some(ref start_chars) = multi_start_chars {
             if i + start_chars.len() <= len && chars[i..i + start_chars.len()] == start_chars[..] {
+                let start = i;
+                i += start_chars.len();
                 *in_multiline_comment = true;
+
+                // Check if end of multiline comment is on the same line
+                if let Some(ref end_chars) = multi_end_chars {
+                    while i < len {
+                        if i + end_chars.len() <= len && chars[i..i + end_chars.len()] == end_chars[..] {
+                            i += end_chars.len();
+                            *in_multiline_comment = false;
+                            break;
+                        }
+                        i += 1;
+                    }
+                }
+                let seg: String = chars[start..i].iter().collect();
+                job.append(&seg, 0.0, fmt(theme.comment));
                 continue;
             }
         }
 
-        // Check single-line comment
-        if let Some(comment_prefix) = rules.line_comment {
-            let prefix_chars: Vec<char> = comment_prefix.chars().collect();
+        // 3. Single-line comment
+        if let Some(ref prefix_chars) = line_comment_chars {
             if i + prefix_chars.len() <= len && chars[i..i + prefix_chars.len()] == prefix_chars[..] {
                 let seg: String = chars[i..].iter().collect();
                 job.append(&seg, 0.0, fmt(theme.comment));
@@ -158,14 +174,14 @@ fn highlight_line(
             }
         }
 
-        // Check strings: "..." or '...'
-        if rules.highlight_strings && (chars[i] == '"' || chars[i] == '\'') {
+        // 4. Strings: "..." or '...' or `...`
+        if rules.highlight_strings && (chars[i] == '"' || chars[i] == '\'' || chars[i] == '`') {
             let quote = chars[i];
             let start = i;
             i += 1;
             while i < len {
                 if chars[i] == '\\' && i + 1 < len {
-                    i += 2; // skip escaped char
+                    i += 2; // skip escaped character
                     continue;
                 }
                 if chars[i] == quote {
@@ -179,7 +195,7 @@ fn highlight_line(
             continue;
         }
 
-        // Check numbers
+        // 5. Numbers
         if rules.highlight_numbers && chars[i].is_ascii_digit() {
             let start = i;
             let is_hex = i + 1 < len && chars[i] == '0' && (chars[i + 1] == 'x' || chars[i + 1] == 'X');
@@ -198,7 +214,7 @@ fn highlight_line(
             continue;
         }
 
-        // Check words (identifiers, keywords, types)
+        // 6. Identifiers (keywords, types, variables)
         if chars[i].is_alphabetic() || chars[i] == '_' {
             let start = i;
             while i < len && (chars[i].is_alphanumeric() || chars[i] == '_') {
@@ -221,23 +237,31 @@ fn highlight_line(
             continue;
         }
 
-        // Other characters (symbols, spaces, operators, newlines)
+        // 7. Fallback: Any other characters (operators, symbols, whitespaces, punctuation)
+        // CRITICAL: Must advance `i` by at least 1 character to guarantee no infinite loops!
         let start = i;
-        while i < len
-            && !chars[i].is_alphabetic()
-            && chars[i] != '_'
-            && !chars[i].is_ascii_digit()
-            && chars[i] != '"'
-            && chars[i] != '\''
-        {
-            if let Some(comment_prefix) = rules.line_comment {
-                let prefix_chars: Vec<char> = comment_prefix.chars().collect();
+        i += 1;
+        while i < len {
+            // Stop if an identifier starts
+            if chars[i].is_alphabetic() || chars[i] == '_' {
+                break;
+            }
+            // Stop if a number starts
+            if rules.highlight_numbers && chars[i].is_ascii_digit() {
+                break;
+            }
+            // Stop if a string starts
+            if rules.highlight_strings && (chars[i] == '"' || chars[i] == '\'' || chars[i] == '`') {
+                break;
+            }
+            // Stop if a single line comment starts
+            if let Some(ref prefix_chars) = line_comment_chars {
                 if i + prefix_chars.len() <= len && chars[i..i + prefix_chars.len()] == prefix_chars[..] {
                     break;
                 }
             }
-            if let Some((start_tag, _)) = rules.multi_comment {
-                let start_chars: Vec<char> = start_tag.chars().collect();
+            // Stop if a multiline comment starts
+            if let Some(ref start_chars) = multi_start_chars {
                 if i + start_chars.len() <= len && chars[i..i + start_chars.len()] == start_chars[..] {
                     break;
                 }
@@ -259,7 +283,6 @@ fn apply_search_highlights(
         return;
     }
 
-    // egui LayoutJob sections have byte range indices [byte_range.start, byte_range.end]
     for (match_i, &(m_start, m_end)) in search_ranges.iter().enumerate() {
         let is_active = match_i == active_idx;
         let bg_color = if is_active {
@@ -269,7 +292,6 @@ fn apply_search_highlights(
         };
 
         for section in &mut job.sections {
-            // Check if section overlaps with search match
             let s_start = section.byte_range.start;
             let s_end = section.byte_range.end;
 
@@ -300,4 +322,29 @@ pub fn render_editor_layouter(
         wrap_width,
     );
     ctx.fonts(|f| f.layout_job(job))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_highlight_plain_text_and_quotes_no_infinite_loop() {
+        let test_texts = [
+            "source \"https://rubygems.org\"\ngem 'rails'\n",
+            "# Markdown header\nSome \"quoted text\" and `backticks` and [links](url)\n",
+            "<% @users.each do |user| %>\n  <p><%= user.name %></p>\n<% end %>\n",
+            "a = 1 + 2 * (3 / 4) !@#$%^&*()_+-=[]{}|;':\",./<>?",
+            "",
+            "\"unclosed string",
+            "/* unclosed comment",
+        ];
+
+        for text in &test_texts {
+            for syntax in &[SyntaxType::PlainText, SyntaxType::Markdown, SyntaxType::HtmlXml, SyntaxType::Ruby] {
+                let job = create_layout_job(text, *syntax, 13.0, "", 0, false, 800.0);
+                assert!(!job.sections.is_empty() || text.is_empty());
+            }
+        }
+    }
 }

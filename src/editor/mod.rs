@@ -236,6 +236,7 @@ impl Editor {
                                 SyntaxType::Sql,
                                 SyntaxType::Markdown,
                                 SyntaxType::HtmlXml,
+                                SyntaxType::Ruby,
                                 SyntaxType::PlainText,
                             ];
                             for s in list {

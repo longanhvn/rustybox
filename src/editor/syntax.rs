@@ -13,6 +13,7 @@ pub enum SyntaxType {
     Sql,
     Markdown,
     HtmlXml,
+    Ruby,
     PlainText,
 }
 
@@ -30,6 +31,7 @@ impl SyntaxType {
             SyntaxType::Sql => "SQL",
             SyntaxType::Markdown => "Markdown",
             SyntaxType::HtmlXml => "HTML / XML",
+            SyntaxType::Ruby => "Ruby",
             SyntaxType::PlainText => "Plain Text",
         }
     }
@@ -184,10 +186,10 @@ impl SyntaxType {
                 keywords: &[],
                 types_builtins: &[],
                 line_comment: None,
-                multi_comment: None,
+                multi_comment: Some(("<!--", "-->")),
                 case_insensitive: false,
                 highlight_numbers: false,
-                highlight_strings: false,
+                highlight_strings: true,
             },
             SyntaxType::HtmlXml => SyntaxRules {
                 keywords: &["doctype", "html", "head", "body", "div", "span", "p", "a", "script", "style"],
@@ -198,6 +200,23 @@ impl SyntaxType {
                 highlight_numbers: true,
                 highlight_strings: true,
             },
+            SyntaxType::Ruby => SyntaxRules {
+                keywords: &[
+                    "def", "end", "class", "module", "if", "elsif", "else", "unless", "while",
+                    "until", "for", "in", "do", "yield", "return", "require", "require_relative",
+                    "include", "extend", "attr_accessor", "attr_reader", "attr_writer", "source",
+                    "gem", "group", "case", "when", "then", "begin", "rescue", "ensure",
+                ],
+                types_builtins: &[
+                    "true", "false", "nil", "self", "puts", "print", "p", "raise", "fail",
+                    "Integer", "String", "Array", "Hash", "Symbol",
+                ],
+                line_comment: Some("#"),
+                multi_comment: Some(("=begin", "=end")),
+                case_insensitive: false,
+                highlight_numbers: true,
+                highlight_strings: true,
+            },
             SyntaxType::PlainText => SyntaxRules {
                 keywords: &[],
                 types_builtins: &[],
@@ -205,7 +224,7 @@ impl SyntaxType {
                 multi_comment: None,
                 case_insensitive: false,
                 highlight_numbers: false,
-                highlight_strings: false,
+                highlight_strings: true,
             },
         }
     }
@@ -219,6 +238,7 @@ pub fn detect_syntax(path: Option<&Path>, content: &str) -> SyntaxType {
                 "dockerfile" | "makefile" | "pkgbuild" | ".bashrc" | ".bash_profile"
                 | ".profile" | ".zshrc" | ".env" => return SyntaxType::Bash,
                 "cargo.lock" => return SyntaxType::Toml,
+                "gemfile" | "rakefile" => return SyntaxType::Ruby,
                 "hosts" | "resolv.conf" | "nginx.conf" | "sshd_config" => {
                     return SyntaxType::IniConf
                 }
@@ -240,6 +260,7 @@ pub fn detect_syntax(path: Option<&Path>, content: &str) -> SyntaxType {
                 "sql" => return SyntaxType::Sql,
                 "md" | "markdown" => return SyntaxType::Markdown,
                 "html" | "htm" | "xml" | "svg" => return SyntaxType::HtmlXml,
+                "rb" | "erb" | "gemspec" | "rake" => return SyntaxType::Ruby,
                 _ => {}
             }
         }
@@ -253,6 +274,9 @@ pub fn detect_syntax(path: Option<&Path>, content: &str) -> SyntaxType {
         }
         if first_line.contains("python") {
             return SyntaxType::Python;
+        }
+        if first_line.contains("ruby") {
+            return SyntaxType::Ruby;
         }
     }
 
