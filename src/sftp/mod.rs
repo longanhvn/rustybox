@@ -1216,12 +1216,6 @@ impl FileExplorer {
         }
     }
 
-    pub fn save_editor(&mut self) {
-        if let Some(ref path) = self.editor.file_path {
-            self.save_editor_file(path.clone(), self.editor.content.clone(), self.editor.remote_label.clone());
-        }
-    }
-
     pub fn save_editor_file(&mut self, path: PathBuf, content: String, remote_label: Option<String>) {
         if let Some(ref target_label) = remote_label {
             let path_str = path.to_string_lossy().to_string();
