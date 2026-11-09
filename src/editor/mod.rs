@@ -237,6 +237,12 @@ impl Editor {
                                 SyntaxType::Markdown,
                                 SyntaxType::HtmlXml,
                                 SyntaxType::Ruby,
+                                SyntaxType::JavaScript,
+                                SyntaxType::Go,
+                                SyntaxType::Php,
+                                SyntaxType::Css,
+                                SyntaxType::Lua,
+                                SyntaxType::Java,
                                 SyntaxType::PlainText,
                             ];
                             for s in list {

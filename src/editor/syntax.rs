@@ -14,6 +14,12 @@ pub enum SyntaxType {
     Markdown,
     HtmlXml,
     Ruby,
+    JavaScript,
+    Go,
+    Php,
+    Css,
+    Lua,
+    Java,
     PlainText,
 }
 
@@ -32,6 +38,12 @@ impl SyntaxType {
             SyntaxType::Markdown => "Markdown",
             SyntaxType::HtmlXml => "HTML / XML",
             SyntaxType::Ruby => "Ruby",
+            SyntaxType::JavaScript => "JavaScript / TypeScript",
+            SyntaxType::Go => "Go (Golang)",
+            SyntaxType::Php => "PHP",
+            SyntaxType::Css => "CSS / SCSS",
+            SyntaxType::Lua => "Lua",
+            SyntaxType::Java => "Java / Kotlin / C#",
             SyntaxType::PlainText => "Plain Text",
         }
     }
@@ -217,6 +229,118 @@ impl SyntaxType {
                 highlight_numbers: true,
                 highlight_strings: true,
             },
+            SyntaxType::JavaScript => SyntaxRules {
+                keywords: &[
+                    "const", "let", "var", "function", "return", "if", "else", "for", "while",
+                    "do", "switch", "case", "break", "continue", "default", "import", "export",
+                    "from", "as", "class", "extends", "super", "new", "this", "try", "catch",
+                    "finally", "throw", "async", "await", "yield", "typeof", "instanceof", "in",
+                    "of", "interface", "type", "enum", "implements", "declare", "abstract",
+                    "public", "private", "protected", "readonly", "static",
+                ],
+                types_builtins: &[
+                    "true", "false", "null", "undefined", "NaN", "Infinity", "console",
+                    "Promise", "Array", "Object", "String", "Number", "Boolean", "Symbol",
+                    "Map", "Set", "JSON", "Math", "process", "require", "module",
+                ],
+                line_comment: Some("//"),
+                multi_comment: Some(("/*", "*/")),
+                case_insensitive: false,
+                highlight_numbers: true,
+                highlight_strings: true,
+            },
+            SyntaxType::Go => SyntaxRules {
+                keywords: &[
+                    "package", "import", "func", "return", "var", "const", "type", "struct",
+                    "interface", "map", "chan", "if", "else", "switch", "case", "default",
+                    "for", "range", "break", "continue", "fallthrough", "goto", "defer", "go",
+                    "select",
+                ],
+                types_builtins: &[
+                    "int", "int8", "int16", "int32", "int64", "uint", "uint8", "uint16",
+                    "uint32", "uint64", "uintptr", "float32", "float64", "complex64",
+                    "complex128", "string", "bool", "byte", "rune", "error", "any", "nil",
+                    "true", "false", "iota", "make", "new", "len", "cap", "append", "copy",
+                    "delete", "close", "panic", "recover", "print", "println",
+                ],
+                line_comment: Some("//"),
+                multi_comment: Some(("/*", "*/")),
+                case_insensitive: false,
+                highlight_numbers: true,
+                highlight_strings: true,
+            },
+            SyntaxType::Php => SyntaxRules {
+                keywords: &[
+                    "function", "class", "public", "private", "protected", "static", "return",
+                    "if", "else", "elseif", "foreach", "for", "while", "do", "switch", "case",
+                    "break", "continue", "echo", "print", "include", "include_once", "require",
+                    "require_once", "namespace", "use", "as", "new", "extends", "implements",
+                    "trait", "interface", "abstract", "final", "try", "catch", "finally",
+                    "throw", "match",
+                ],
+                types_builtins: &[
+                    "true", "false", "null", "array", "string", "int", "bool", "float",
+                    "object", "mixed", "void", "self", "parent", "die", "exit", "isset",
+                    "empty", "unset",
+                ],
+                line_comment: Some("//"),
+                multi_comment: Some(("/*", "*/")),
+                case_insensitive: false,
+                highlight_numbers: true,
+                highlight_strings: true,
+            },
+            SyntaxType::Css => SyntaxRules {
+                keywords: &[
+                    "@import", "@media", "@keyframes", "@font-face", "@supports", "@layer",
+                    "important", "from", "to", "root",
+                ],
+                types_builtins: &[
+                    "inherit", "initial", "unset", "none", "auto", "block", "inline", "flex",
+                    "grid", "absolute", "relative", "fixed", "sticky", "hidden", "visible",
+                    "solid", "dashed", "dotted", "transparent", "currentcolor",
+                ],
+                line_comment: Some("//"),
+                multi_comment: Some(("/*", "*/")),
+                case_insensitive: true,
+                highlight_numbers: true,
+                highlight_strings: true,
+            },
+            SyntaxType::Lua => SyntaxRules {
+                keywords: &[
+                    "and", "break", "do", "else", "elseif", "end", "false", "for", "function",
+                    "goto", "if", "in", "local", "nil", "not", "or", "repeat", "return", "then",
+                    "true", "until", "while",
+                ],
+                types_builtins: &[
+                    "print", "type", "tostring", "tonumber", "pairs", "ipairs", "next",
+                    "pcall", "xpcall", "error", "assert", "require", "table", "string", "math",
+                    "os", "io",
+                ],
+                line_comment: Some("--"),
+                multi_comment: Some(("--[[", "]]")),
+                case_insensitive: false,
+                highlight_numbers: true,
+                highlight_strings: true,
+            },
+            SyntaxType::Java => SyntaxRules {
+                keywords: &[
+                    "public", "private", "protected", "class", "interface", "extends",
+                    "implements", "import", "package", "return", "if", "else", "for", "while",
+                    "do", "switch", "case", "break", "continue", "default", "try", "catch",
+                    "finally", "throw", "throws", "new", "this", "super", "static", "final",
+                    "abstract", "val", "var", "fun", "namespace", "using", "override", "async",
+                    "await",
+                ],
+                types_builtins: &[
+                    "int", "long", "short", "byte", "float", "double", "boolean", "char",
+                    "void", "String", "Object", "List", "Map", "Set", "true", "false", "null",
+                ],
+                line_comment: Some("//"),
+                multi_comment: Some(("/*", "*/")),
+                case_insensitive: false,
+                highlight_numbers: true,
+                highlight_strings: true,
+            },
             SyntaxType::PlainText => SyntaxRules {
                 keywords: &[],
                 types_builtins: &[],
@@ -239,6 +363,7 @@ pub fn detect_syntax(path: Option<&Path>, content: &str) -> SyntaxType {
                 | ".profile" | ".zshrc" | ".env" => return SyntaxType::Bash,
                 "cargo.lock" => return SyntaxType::Toml,
                 "gemfile" | "rakefile" => return SyntaxType::Ruby,
+                "go.mod" | "go.sum" | "go.work" => return SyntaxType::Go,
                 "hosts" | "resolv.conf" | "nginx.conf" | "sshd_config" => {
                     return SyntaxType::IniConf
                 }
@@ -261,6 +386,14 @@ pub fn detect_syntax(path: Option<&Path>, content: &str) -> SyntaxType {
                 "md" | "markdown" => return SyntaxType::Markdown,
                 "html" | "htm" | "xml" | "svg" => return SyntaxType::HtmlXml,
                 "rb" | "erb" | "gemspec" | "rake" => return SyntaxType::Ruby,
+                "js" | "mjs" | "cjs" | "jsx" | "ts" | "tsx" | "mts" | "cts" => {
+                    return SyntaxType::JavaScript
+                }
+                "go" => return SyntaxType::Go,
+                "php" | "phtml" => return SyntaxType::Php,
+                "css" | "scss" | "sass" | "less" => return SyntaxType::Css,
+                "lua" => return SyntaxType::Lua,
+                "java" | "kt" | "kts" | "cs" => return SyntaxType::Java,
                 _ => {}
             }
         }
@@ -277,6 +410,16 @@ pub fn detect_syntax(path: Option<&Path>, content: &str) -> SyntaxType {
         }
         if first_line.contains("ruby") {
             return SyntaxType::Ruby;
+        }
+        if first_line.contains("node") || first_line.contains("deno") || first_line.contains("bun")
+        {
+            return SyntaxType::JavaScript;
+        }
+        if first_line.contains("php") {
+            return SyntaxType::Php;
+        }
+        if first_line.contains("lua") {
+            return SyntaxType::Lua;
         }
     }
 
@@ -349,6 +492,13 @@ mod tests {
         assert_eq!(detect_syntax(Some(&PathBuf::from("query.sql")), ""), SyntaxType::Sql);
         assert_eq!(detect_syntax(Some(&PathBuf::from("README.md")), ""), SyntaxType::Markdown);
         assert_eq!(detect_syntax(Some(&PathBuf::from("index.html")), ""), SyntaxType::HtmlXml);
+        assert_eq!(detect_syntax(Some(&PathBuf::from("script.js")), ""), SyntaxType::JavaScript);
+        assert_eq!(detect_syntax(Some(&PathBuf::from("app.ts")), ""), SyntaxType::JavaScript);
+        assert_eq!(detect_syntax(Some(&PathBuf::from("main.go")), ""), SyntaxType::Go);
+        assert_eq!(detect_syntax(Some(&PathBuf::from("index.php")), ""), SyntaxType::Php);
+        assert_eq!(detect_syntax(Some(&PathBuf::from("style.css")), ""), SyntaxType::Css);
+        assert_eq!(detect_syntax(Some(&PathBuf::from("init.lua")), ""), SyntaxType::Lua);
+        assert_eq!(detect_syntax(Some(&PathBuf::from("Main.java")), ""), SyntaxType::Java);
         assert_eq!(detect_syntax(Some(&PathBuf::from("notes.txt")), ""), SyntaxType::PlainText);
     }
 
@@ -357,6 +507,8 @@ mod tests {
         assert_eq!(detect_syntax(Some(&PathBuf::from("Dockerfile")), ""), SyntaxType::Bash);
         assert_eq!(detect_syntax(Some(&PathBuf::from("Makefile")), ""), SyntaxType::Bash);
         assert_eq!(detect_syntax(Some(&PathBuf::from(".bashrc")), ""), SyntaxType::Bash);
+        assert_eq!(detect_syntax(Some(&PathBuf::from("Gemfile")), ""), SyntaxType::Ruby);
+        assert_eq!(detect_syntax(Some(&PathBuf::from("go.mod")), ""), SyntaxType::Go);
         assert_eq!(detect_syntax(Some(&PathBuf::from("nginx.conf")), ""), SyntaxType::IniConf);
         assert_eq!(detect_syntax(Some(&PathBuf::from("hosts")), ""), SyntaxType::IniConf);
     }
@@ -365,6 +517,8 @@ mod tests {
     fn test_detect_syntax_by_shebang() {
         assert_eq!(detect_syntax(None, "#!/bin/bash\necho hello"), SyntaxType::Bash);
         assert_eq!(detect_syntax(None, "#!/usr/bin/env python3\nprint('hello')"), SyntaxType::Python);
+        assert_eq!(detect_syntax(None, "#!/usr/bin/env node\nconsole.log(1)"), SyntaxType::JavaScript);
+        assert_eq!(detect_syntax(None, "#!/usr/bin/env php\n<?php echo 1;"), SyntaxType::Php);
         assert_eq!(detect_syntax(None, "just random plain text"), SyntaxType::PlainText);
     }
 
