@@ -1,4 +1,5 @@
 pub mod app;
+pub mod editor;
 pub mod network_tools;
 pub mod session;
 pub mod sftp;
