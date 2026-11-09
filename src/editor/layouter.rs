@@ -142,6 +142,26 @@ fn highlight_line(
         ..Default::default()
     };
 
+    // Render subtle indent guides for leading spaces (at every 2-space step)
+    if !*in_multiline_comment {
+        while i < len && (chars[i] == ' ' || chars[i] == '\t') {
+            let is_indent_step = i % 2 == 0;
+            let bg = if is_indent_step {
+                Color32::from_rgba_unmultiplied(148, 163, 184, 38) // Crisp subtle indent guide marker
+            } else {
+                Color32::TRANSPARENT
+            };
+            let mut format = fmt(theme.default_text);
+            format.background = bg;
+            if chars[i] == '\t' {
+                job.append("\t", 0.0, format);
+            } else {
+                job.append(" ", 0.0, format);
+            }
+            i += 1;
+        }
+    }
+
     while i < len {
         // --- 0. Handle HTML embedded mode transitions (Script, Style, PHP, ERB) ---
         if supports_embedding {

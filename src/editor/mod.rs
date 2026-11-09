@@ -125,6 +125,18 @@ impl Editor {
         }
     }
 
+    pub fn clean_tabs_to_spaces(&mut self, spaces_per_tab: usize) -> usize {
+        let count = self.content.matches('\t').count();
+        if count > 0 {
+            let replacement = " ".repeat(spaces_per_tab);
+            self.content = self.content.replace('\t', &replacement);
+            self.status = Some(format!("Cleaned {} Tab(s) → {} spaces!", count, spaces_per_tab));
+        } else {
+            self.status = Some("No tabs found (file is clean)".to_string());
+        }
+        count
+    }
+
     pub fn show(&mut self, ctx: &egui::Context) -> EditorAction {
         if !self.open {
             return EditorAction::None;
@@ -209,6 +221,10 @@ impl Editor {
                     let wrap_text = if self.word_wrap { "↩ Wrap: ON" } else { "➡ Wrap: OFF" };
                     if ui.button(wrap_text).on_hover_text("Toggle word wrapping").clicked() {
                         self.word_wrap = !self.word_wrap;
+                    }
+
+                    if ui.button("🧹 Clean Tabs").on_hover_text("Convert all Tab characters to 2 spaces (fixes indentation in YAML, Python, etc.)").clicked() {
+                        self.clean_tabs_to_spaces(2);
                     }
 
                     // Font Zoom
@@ -404,6 +420,19 @@ impl Editor {
                     ui.separator();
                     ui.label(RichText::new(format!("Syntax: {}", self.syntax.name())).size(11.0).color(Color32::from_rgb(148, 163, 184)));
 
+                    let tab_count = self.content.matches('\t').count();
+                    if tab_count > 0 {
+                        ui.separator();
+                        if ui.button(
+                            RichText::new(format!("⚠️ {} Tab(s) (Click to clean)", tab_count))
+                                .color(Color32::from_rgb(251, 191, 36))
+                                .size(11.0)
+                                .strong(),
+                        ).on_hover_text("Convert all tabs into 2 spaces").clicked() {
+                            self.clean_tabs_to_spaces(2);
+                        }
+                    }
+
                     if let Some(ref p) = self.file_path {
                         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                             let target_desc = if let Some(ref lbl) = self.remote_label {
@@ -528,6 +557,22 @@ mod tests {
 
         editor.prev_match();
         assert_eq!(editor.active_match_idx, 2, "Should wrap back to last match");
+    }
+
+    #[test]
+    fn test_clean_tabs_to_spaces() {
+        let mut editor = Editor::new();
+        editor.content = "name:\n\tage: 30\n\t\tcity: Hanoi\n".to_string();
+
+        let count = editor.clean_tabs_to_spaces(2);
+        assert_eq!(count, 3);
+        assert_eq!(editor.content, "name:\n  age: 30\n    city: Hanoi\n");
+        assert!(!editor.content.contains('\t'));
+        assert!(editor.status.is_some());
+
+        // Second clean should find 0 tabs
+        let count2 = editor.clean_tabs_to_spaces(2);
+        assert_eq!(count2, 0);
     }
 }
 
