@@ -334,6 +334,16 @@ fn run_sftp_worker(
                 if let Some((ref sess, ref sftp, ref cfg, ..)) = current_sess {
                     const MAX_EDITOR_BYTES: u64 = 2 * 1024 * 1024;
                     let p = Path::new(&remote_path);
+                    let file_name = p.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_else(|| remote_path.clone());
+                    if let Some(ext) = p.extension().and_then(|e| e.to_str()) {
+                        if crate::editor::syntax::is_known_binary_extension(ext) {
+                            let _ = event_tx.send(SftpEvent::OperationError(format!(
+                                "⚠️ Cannot open binary/compressed file \"{}\". Quick Editor only supports text and code files.",
+                                file_name
+                            )));
+                            continue;
+                        }
+                    }
                     let mut file_read_done = false;
                     if let Ok(stat) = sftp.stat(p) {
                         if stat.is_dir() {
@@ -351,7 +361,23 @@ fn run_sftp_worker(
                         let mut buf = Vec::new();
                         if let Ok(_) = file.take(MAX_EDITOR_BYTES + 1).read_to_end(&mut buf) {
                             if buf.len() as u64 <= MAX_EDITOR_BYTES {
-                                let content = String::from_utf8_lossy(&buf).to_string();
+                                if crate::editor::syntax::is_binary_buffer(&buf) {
+                                    let _ = event_tx.send(SftpEvent::OperationError(format!(
+                                        "⚠️ Cannot open binary file \"{}\". Quick Editor only supports text and code files.",
+                                        file_name
+                                    )));
+                                    continue;
+                                }
+                                let content = match String::from_utf8(buf) {
+                                    Ok(s) => s,
+                                    Err(_) => {
+                                        let _ = event_tx.send(SftpEvent::OperationError(format!(
+                                            "⚠️ Cannot open \"{}\": File contains non-UTF-8 characters or binary data.",
+                                            file_name
+                                        )));
+                                        continue;
+                                    }
+                                };
                                 let _ = event_tx.send(SftpEvent::FileRead {
                                     path: remote_path.clone(),
                                     content,
@@ -1456,7 +1482,13 @@ fn read_sudo_file_base64(
     let decoded = base64::engine::general_purpose::STANDARD
         .decode(clean_b64.as_bytes())
         .map_err(|e| format!("Base64 decode error: {}", e))?;
-    Ok(String::from_utf8_lossy(&decoded).to_string())
+    if crate::editor::syntax::is_binary_buffer(&decoded) {
+        return Err("⚠️ File is a binary/compressed format. Quick Editor only supports text and code files.".into());
+    }
+    match String::from_utf8(decoded) {
+        Ok(s) => Ok(s),
+        Err(_) => Err("⚠️ File contains non-UTF-8 characters or binary data.".into()),
+    }
 }
 
 fn write_sudo_file_base64(

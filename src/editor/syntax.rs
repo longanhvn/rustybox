@@ -259,6 +259,55 @@ pub fn detect_syntax(path: Option<&Path>, content: &str) -> SyntaxType {
     SyntaxType::PlainText
 }
 
+pub fn is_known_binary_extension(ext: &str) -> bool {
+    let lower = ext.to_lowercase();
+    matches!(
+        lower.as_str(),
+        "gz" | "tgz" | "bz2" | "tbz2" | "xz" | "txz" | "zst" | "zip" | "tar" | "7z" | "rar"
+            | "iso" | "rpm" | "deb" | "apk" | "jar" | "war"
+            | "png" | "jpg" | "jpeg" | "gif" | "webp" | "ico" | "bmp" | "svgz"
+            | "mp3" | "mp4" | "mkv" | "avi" | "mov" | "wav" | "flac"
+            | "pdf" | "doc" | "docx" | "xls" | "xlsx" | "ppt" | "pptx"
+            | "bin" | "exe" | "dll" | "so" | "dylib" | "o" | "a" | "pyc" | "pyo" | "class"
+            | "wasm" | "db" | "sqlite" | "sqlite3"
+    )
+}
+
+pub fn is_binary_buffer(buf: &[u8]) -> bool {
+    if buf.is_empty() {
+        return false;
+    }
+    // Check known magic bytes
+    if buf.len() >= 2 && buf[0] == 0x1f && buf[1] == 0x8b {
+        // Gzip magic
+        return true;
+    }
+    if buf.len() >= 4 && buf[0] == 0x50 && buf[1] == 0x4b && buf[2] == 0x03 && buf[3] == 0x04 {
+        // Zip magic
+        return true;
+    }
+    if buf.len() >= 4 && buf[0] == 0x7f && buf[1] == b'E' && buf[2] == b'L' && buf[3] == b'F' {
+        // ELF binary magic
+        return true;
+    }
+    if buf.len() >= 2 && buf[0] == b'M' && buf[1] == b'Z' {
+        // DOS/PE binary magic
+        return true;
+    }
+    if buf.len() >= 3 && buf[0] == b'B' && buf[1] == b'Z' && buf[2] == b'h' {
+        // Bzip2 magic
+        return true;
+    }
+    if buf.len() >= 6 && &buf[0..6] == b"7z\xbc\xaf'\x1c" {
+        // 7z magic
+        return true;
+    }
+
+    // Check first 8 KB for null bytes (\0)
+    let check_len = buf.len().min(8192);
+    buf[..check_len].iter().any(|&b| b == 0)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -293,6 +342,25 @@ mod tests {
         assert_eq!(detect_syntax(None, "#!/bin/bash\necho hello"), SyntaxType::Bash);
         assert_eq!(detect_syntax(None, "#!/usr/bin/env python3\nprint('hello')"), SyntaxType::Python);
         assert_eq!(detect_syntax(None, "just random plain text"), SyntaxType::PlainText);
+    }
+
+    #[test]
+    fn test_binary_detection() {
+        assert!(is_known_binary_extension("gz"));
+        assert!(is_known_binary_extension("tar"));
+        assert!(is_known_binary_extension("zip"));
+        assert!(is_known_binary_extension("png"));
+        assert!(is_known_binary_extension("bin"));
+        assert!(!is_known_binary_extension("rs"));
+        assert!(!is_known_binary_extension("py"));
+        assert!(!is_known_binary_extension("sh"));
+
+        // Gzip magic
+        assert!(is_binary_buffer(&[0x1f, 0x8b, 0x08, 0x00]));
+        // Null byte in text
+        assert!(is_binary_buffer(b"hello\x00world"));
+        // Plain text is NOT binary
+        assert!(!is_binary_buffer(b"#!/bin/bash\necho 'hello world'\n"));
     }
 }
 

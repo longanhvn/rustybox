@@ -1149,6 +1149,23 @@ impl FileExplorer {
         {
             return;
         }
+
+        let file_name = path
+            .file_name()
+            .map(|n| n.to_string_lossy().to_string())
+            .unwrap_or_else(|| "file".to_string());
+
+        // Fast check: Known binary or compressed archive format
+        if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
+            if crate::editor::syntax::is_known_binary_extension(ext) {
+                self.error_message = Some(format!(
+                    "⚠️ Cannot open binary/compressed file \"{}\". Quick Editor only supports text and code files.",
+                    file_name
+                ));
+                return;
+            }
+        }
+
         if self.is_remote {
             let path_str = path.to_string_lossy().to_string();
             if let Some(ref client) = self.remote_client {
@@ -1172,9 +1189,26 @@ impl FileExplorer {
             }
         }
 
-        match fs::read_to_string(&path) {
-            Ok(content) => {
-                self.editor.open_file(path, content, None);
+        match fs::read(&path) {
+            Ok(bytes) => {
+                if crate::editor::syntax::is_binary_buffer(&bytes) {
+                    self.error_message = Some(format!(
+                        "⚠️ Cannot open binary file \"{}\". Quick Editor only supports text and code files.",
+                        file_name
+                    ));
+                    return;
+                }
+                match String::from_utf8(bytes) {
+                    Ok(content) => {
+                        self.editor.open_file(path, content, None);
+                    }
+                    Err(_) => {
+                        self.error_message = Some(format!(
+                            "⚠️ Cannot open \"{}\": File contains binary or non-UTF-8 characters.",
+                            file_name
+                        ));
+                    }
+                }
             }
             Err(e) => {
                 self.error_message = Some(format!("Cannot open file: {}", e));
@@ -2057,6 +2091,21 @@ mod tests {
             !explorer.can_edit_selected(),
             "Remote directory must not be editable in Quick Editor"
         );
+    }
+
+    #[test]
+    fn test_open_editor_rejects_binary_file_with_friendly_warning() {
+        let mut explorer = FileExplorer::new();
+        explorer.is_remote = false;
+
+        // Test with a .gz file path
+        let gz_path = PathBuf::from("syslog.1.gz");
+        explorer.open_editor(gz_path);
+
+        assert!(!explorer.editor.open, "Editor must not open for .gz file");
+        assert!(explorer.error_message.is_some(), "Friendly error message should be set");
+        let err = explorer.error_message.unwrap();
+        assert!(err.contains("binary/compressed file"), "Error message should mention binary/compressed: {}", err);
     }
 
     #[test]
