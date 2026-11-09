@@ -27,6 +27,19 @@ pub fn render_sftp_sidebar(ui: &mut Ui, explorer: &mut FileExplorer) {
                     if ui.small_button("💻 Local").on_hover_text("Switch to browsing local files").clicked() {
                         explorer.disconnect_remote();
                     }
+
+                    // Sudo SFTP Toggle Button
+                    let is_sudo = explorer.is_active_sudo_mode();
+                    let sudo_btn = if is_sudo {
+                        egui::Button::new(RichText::new("🛡️ Sudo Active").strong().size(11.0).color(Color32::WHITE))
+                            .fill(Color32::from_rgb(234, 88, 12)) // Bright orange/red
+                    } else {
+                        egui::Button::new(RichText::new("🛡️ Sudo SFTP").size(11.0).color(Color32::from_rgb(209, 217, 224)))
+                            .fill(Color32::from_rgb(33, 38, 45))
+                    };
+                    if ui.add(sudo_btn).on_hover_text("Bật / Tắt chế độ Sudo SFTP (Root Mode để đọc, ghi, sửa file hệ thống)").clicked() {
+                        explorer.toggle_sudo_mode();
+                    }
                 });
             } else {
                 ui.label(RichText::new("💻 Local Files").strong().size(11.5).color(Color32::from_rgb(139, 148, 158)));
@@ -2063,6 +2076,44 @@ pub fn render_sftp_sidebar(ui: &mut Ui, explorer: &mut FileExplorer) {
                 }
             });
         explorer.show_new_file = open && !close_dlg;
+    }
+
+    if explorer.show_sudo_password_dialog {
+        let open = explorer.show_sudo_password_dialog;
+        let mut close_dlg = false;
+        let mut do_confirm = false;
+        egui::Window::new(RichText::new("🛡️ Xác thực Sudo (Root Mode)").strong().color(Color32::from_rgb(251, 146, 60)))
+            .collapsible(false)
+            .resizable(false)
+            .default_size(Vec2::new(360.0, 160.0))
+            .anchor(egui::Align2::CENTER_CENTER, Vec2::ZERO)
+            .show(ui.ctx(), |ui| {
+                ui.label(RichText::new("SFTP đang kích hoạt quyền Root (sudo -S).").size(12.0).color(Color32::from_rgb(209, 217, 224)));
+                ui.label(RichText::new("Vui lòng nhập mật khẩu sudo trên máy chủ:").strong().size(12.5));
+                let resp = ui.add(
+                    TextEdit::singleline(&mut explorer.sudo_password_input)
+                        .password(true)
+                        .desired_width(f32::INFINITY)
+                        .hint_text("Mật khẩu sudo..."),
+                );
+                if resp.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+                    do_confirm = true;
+                }
+                ui.add_space(4.0);
+                ui.checkbox(&mut explorer.sudo_password_remember, "Ghi nhớ mật khẩu sudo cho phiên làm việc này");
+                ui.add_space(6.0);
+                ui.separator();
+                ui.add_space(4.0);
+                let (ok, cancel) = crate::session::ui::rusty_ok_cancel_buttons(ui, "🛡️ Kích hoạt Sudo", "✖ Hủy");
+                if ok || do_confirm {
+                    explorer.confirm_sudo_password();
+                    close_dlg = true;
+                }
+                if cancel {
+                    close_dlg = true;
+                }
+            });
+        explorer.show_sudo_password_dialog = open && !close_dlg;
     }
 }
 

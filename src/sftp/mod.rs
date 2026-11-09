@@ -88,6 +88,8 @@ pub struct RemoteSessionState {
     pub last_telemetry_poll: Option<Instant>,
     pub error_message: Option<String>,
     pub status_message: Option<String>,
+    pub sudo_mode: bool,
+    pub sudo_password: Option<String>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -184,6 +186,10 @@ pub struct FileExplorer {
     pub transfer_progress: Option<TransferProgressInfo>,
     pub pending_conflict: Option<ConflictItem>,
     pub pending_conflicts: Vec<ConflictItem>,
+    // Modal Sudo password prompt
+    pub show_sudo_password_dialog: bool,
+    pub sudo_password_input: String,
+    pub sudo_password_remember: bool,
 }
 
 impl FileExplorer {
@@ -264,6 +270,9 @@ impl FileExplorer {
             transfer_progress: None,
             pending_conflict: None,
             pending_conflicts: Vec::new(),
+            show_sudo_password_dialog: false,
+            sudo_password_input: String::new(),
+            sudo_password_remember: true,
         };
         explorer.refresh();
         explorer
@@ -277,6 +286,79 @@ impl FileExplorer {
             format!("{}\\", raw)
         } else {
             format!("{}/", raw)
+        }
+    }
+
+    pub fn is_active_sudo_mode(&self) -> bool {
+        if let Some(ref label) = self.remote_label {
+            if let Some(sess) = self.remote_sessions.get(label) {
+                return sess.sudo_mode;
+            }
+        }
+        false
+    }
+
+    pub fn toggle_sudo_mode(&mut self) {
+        if !self.is_remote {
+            return;
+        }
+        let Some(ref label) = self.remote_label.clone() else {
+            return;
+        };
+        let Some(sess) = self.remote_sessions.get_mut(label) else {
+            return;
+        };
+
+        if sess.sudo_mode {
+            // Deactivate Sudo Mode
+            sess.sudo_mode = false;
+            if let Some(ref client) = self.remote_client {
+                client.lock().set_sudo_mode(false, None);
+            }
+            self.status_message = Some("Sudo SFTP Mode deactivated".to_string());
+            self.refresh();
+        } else {
+            // Check if we already have sudo password or ssh password
+            if sess.sudo_password.is_some() || sess.config.password.is_some() {
+                sess.sudo_mode = true;
+                let pass = sess.sudo_password.clone().or_else(|| sess.config.password.clone());
+                if let Some(ref client) = self.remote_client {
+                    client.lock().set_sudo_mode(true, pass);
+                }
+                self.status_message = Some("🛡️ Sudo SFTP Mode activated".to_string());
+                self.refresh();
+            } else {
+                // Prompt user for sudo password via modal dialog
+                self.sudo_password_input.clear();
+                self.show_sudo_password_dialog = true;
+            }
+        }
+    }
+
+    pub fn confirm_sudo_password(&mut self) {
+        if !self.is_remote {
+            self.show_sudo_password_dialog = false;
+            return;
+        }
+        let Some(ref label) = self.remote_label.clone() else {
+            self.show_sudo_password_dialog = false;
+            return;
+        };
+        let entered_pass = self.sudo_password_input.trim().to_string();
+        self.show_sudo_password_dialog = false;
+
+        let pass_opt = if entered_pass.is_empty() { None } else { Some(entered_pass) };
+
+        if let Some(sess) = self.remote_sessions.get_mut(label) {
+            sess.sudo_mode = true;
+            if self.sudo_password_remember {
+                sess.sudo_password = pass_opt.clone();
+            }
+            if let Some(ref client) = self.remote_client {
+                client.lock().set_sudo_mode(true, pass_opt);
+            }
+            self.status_message = Some("🛡️ Sudo SFTP Mode activated".to_string());
+            self.refresh();
         }
     }
 
@@ -378,6 +460,8 @@ impl FileExplorer {
             last_telemetry_poll: None,
             error_message: None,
             status_message: None,
+            sudo_mode: false,
+            sudo_password: None,
         };
 
         self.remote_sessions.insert(label.clone(), new_session);
@@ -1820,11 +1904,13 @@ mod tests {
         assert!(!explorer.is_remote);
 
         let cfg = SftpTargetConfig {
-            host: "198.51.100.42".to_string(),
+            host: "198.51.100.42".into(),
             port: 22,
-            user: "root".to_string(),
-            password: Some("secret".to_string()),
+            user: "root".into(),
+            password: None,
             key_path: None,
+            sudo_mode: false,
+            sudo_password: None,
         };
 
         explorer.connect_remote(cfg);
@@ -1836,6 +1922,45 @@ mod tests {
         assert!(!explorer.is_remote);
         assert_eq!(explorer.remote_label, None);
         assert!(!explorer.is_loading);
+    }
+
+    #[test]
+    fn test_sftp_sudo_mode_toggle_and_password_dialog() {
+        let mut explorer = FileExplorer::new();
+        let cfg = SftpTargetConfig {
+            host: "198.51.100.42".into(),
+            port: 22,
+            user: "ubuntu".into(),
+            password: None,
+            key_path: None,
+            sudo_mode: false,
+            sudo_password: None,
+        };
+
+        explorer.connect_remote(cfg);
+        assert!(!explorer.is_active_sudo_mode());
+        assert!(!explorer.show_sudo_password_dialog);
+
+        // Toggle when no password exists should open sudo password dialog
+        explorer.toggle_sudo_mode();
+        assert!(explorer.show_sudo_password_dialog);
+        assert!(!explorer.is_active_sudo_mode());
+
+        // Provide password and confirm
+        explorer.sudo_password_input = "secret123".into();
+        explorer.sudo_password_remember = true;
+        explorer.confirm_sudo_password();
+        assert!(!explorer.show_sudo_password_dialog);
+        assert!(explorer.is_active_sudo_mode());
+
+        // Toggle again turns it off
+        explorer.toggle_sudo_mode();
+        assert!(!explorer.is_active_sudo_mode());
+
+        // Toggle back on with remembered password activates directly without prompt
+        explorer.toggle_sudo_mode();
+        assert!(explorer.is_active_sudo_mode());
+        assert!(!explorer.show_sudo_password_dialog);
     }
 
     #[test]
@@ -2044,6 +2169,8 @@ mod tests {
             user: "root".to_string(),
             password: Some("pass-a".to_string()),
             key_path: None,
+            sudo_mode: false,
+            sudo_password: None,
         };
         let cfg_b = SftpTargetConfig {
             host: "198.51.100.20".to_string(),
@@ -2051,6 +2178,8 @@ mod tests {
             user: "ubuntu".to_string(),
             password: Some("pass-b".to_string()),
             key_path: None,
+            sudo_mode: false,
+            sudo_password: None,
         };
 
         // 1. Connect to Server A and simulate browsing /var/log/nginx with an ongoing upload
@@ -2331,6 +2460,8 @@ mod tests {
                 user: "ubuntu".to_string(),
                 password: None,
                 key_path: None,
+                sudo_mode: false,
+                sudo_password: None,
             },
             client,
             is_connected: true,
@@ -2348,6 +2479,8 @@ mod tests {
             last_telemetry_poll: None,
             error_message: None,
             status_message: None,
+            sudo_mode: false,
+            sudo_password: None,
         };
 
         explorer.remote_sessions.insert(label.clone(), sess);
@@ -2405,6 +2538,8 @@ mod tests {
                 user: "ubuntu".to_string(),
                 password: None,
                 key_path: None,
+                sudo_mode: false,
+                sudo_password: None,
             },
             client,
             is_connected: true,
@@ -2422,6 +2557,8 @@ mod tests {
             last_telemetry_poll: None,
             error_message: None,
             status_message: None,
+            sudo_mode: false,
+            sudo_password: None,
         };
 
         explorer.remote_sessions.insert(label.clone(), sess);

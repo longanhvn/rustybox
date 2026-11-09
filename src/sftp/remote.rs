@@ -19,6 +19,8 @@ pub struct SftpTargetConfig {
     pub user: String,
     pub password: Option<String>,
     pub key_path: Option<String>,
+    pub sudo_mode: bool,
+    pub sudo_password: Option<String>,
 }
 
 #[derive(Debug)]
@@ -38,6 +40,10 @@ pub enum SftpCommand {
     CancelTransfer,
     GetDiskUsage(String),
     FetchTelemetry,
+    SetSudoMode {
+        enabled: bool,
+        password: Option<String>,
+    },
 }
 
 #[derive(Clone, Debug)]
@@ -193,8 +199,12 @@ impl RemoteSftpClient {
         let _ = self.cmd_tx.send(SftpCommand::Download(remote_path, local_path));
     }
 
-    pub fn fetch_telemetry(&self) {
+    pub fn fetch_telemetry(&mut self) {
         let _ = self.cmd_tx.send(SftpCommand::FetchTelemetry);
+    }
+
+    pub fn set_sudo_mode(&mut self, enabled: bool, password: Option<String>) {
+        let _ = self.cmd_tx.send(SftpCommand::SetSudoMode { enabled, password });
     }
 
     pub fn try_recv(&self) -> Option<SftpEvent> {
@@ -294,7 +304,14 @@ fn run_sftp_worker(
 
             SftpCommand::ListDir(dir_path) => {
                 if let Some((ref sess, ref sftp, ref cfg, ref users, ref groups)) = current_sess {
-                    match read_sftp_dir(sftp, &dir_path, &cfg.user, users, groups) {
+                    let mut list_res = read_sftp_dir(sftp, &dir_path, &cfg.user, users, groups);
+                    if list_res.is_err() && cfg.sudo_mode {
+                        // Fallback to elevated sudo directory read
+                        if let Ok(sudo_entries) = read_sudo_dir(sess, &dir_path, cfg.sudo_password.as_deref().or(cfg.password.as_deref())) {
+                            list_res = Ok(sudo_entries);
+                        }
+                    }
+                    match list_res {
                         Ok(entries) => {
                             let _ = event_tx.send(SftpEvent::DirListed {
                                 dir: dir_path.clone(),
@@ -314,9 +331,10 @@ fn run_sftp_worker(
             }
 
             SftpCommand::ReadFile(remote_path) => {
-                if let Some((_, ref sftp, ..)) = current_sess {
+                if let Some((ref sess, ref sftp, ref cfg, ..)) = current_sess {
                     const MAX_EDITOR_BYTES: u64 = 2 * 1024 * 1024;
                     let p = Path::new(&remote_path);
+                    let mut file_read_done = false;
                     if let Ok(stat) = sftp.stat(p) {
                         if stat.is_dir() {
                             let _ = event_tx.send(SftpEvent::OperationError("Cannot open directory in Quick Editor".into()));
@@ -329,75 +347,118 @@ fn run_sftp_worker(
                             continue;
                         }
                     }
-                    match sftp.open(p) {
-                        Ok(file) => {
-                            let mut buf = Vec::new();
-                            if let Err(e) = file.take(MAX_EDITOR_BYTES + 1).read_to_end(&mut buf) {
-                                let _ = event_tx.send(SftpEvent::OperationError(format!("Read file failed: {}", e)));
-                            } else if buf.len() as u64 > MAX_EDITOR_BYTES {
-                                let _ = event_tx.send(SftpEvent::OperationError(
-                                    "File is too large for Quick Editor (> 2 MB). Please download it instead.".into(),
-                                ));
-                            } else {
+                    if let Ok(file) = sftp.open(p) {
+                        let mut buf = Vec::new();
+                        if let Ok(_) = file.take(MAX_EDITOR_BYTES + 1).read_to_end(&mut buf) {
+                            if buf.len() as u64 <= MAX_EDITOR_BYTES {
                                 let content = String::from_utf8_lossy(&buf).to_string();
                                 let _ = event_tx.send(SftpEvent::FileRead {
-                                    path: remote_path,
+                                    path: remote_path.clone(),
                                     content,
                                 });
+                                file_read_done = true;
                             }
                         }
-                        Err(e) => {
-                            let _ = event_tx.send(SftpEvent::OperationError(format!("Cannot open remote file: {}", e)));
+                    }
+                    if !file_read_done {
+                        if cfg.sudo_mode {
+                            // Try sudo base64 read
+                            match read_sudo_file_base64(sess, &remote_path, cfg.sudo_password.as_deref().or(cfg.password.as_deref())) {
+                                Ok(content) => {
+                                    let _ = event_tx.send(SftpEvent::FileRead {
+                                        path: remote_path,
+                                        content,
+                                    });
+                                }
+                                Err(e) => {
+                                    let _ = event_tx.send(SftpEvent::OperationError(format!("Cannot open remote file (sudo): {}", e)));
+                                }
+                            }
+                        } else {
+                            let _ = event_tx.send(SftpEvent::OperationError(format!("Cannot open remote file: Permission denied or I/O error")));
                         }
                     }
                 }
             }
 
             SftpCommand::WriteFile(remote_path, content) => {
-                if let Some((_, ref sftp, ..)) = current_sess {
-                    match sftp.create(Path::new(&remote_path)) {
-                        Ok(mut file) => {
-                            if let Err(e) = file.write_all(content.as_bytes()) {
-                                let _ = event_tx.send(SftpEvent::OperationError(format!("Write remote file failed: {}", e)));
-                            } else {
-                                let _ = event_tx.send(SftpEvent::FileWritten { path: remote_path });
-                            }
+                if let Some((ref sess, ref sftp, ref cfg, ..)) = current_sess {
+                    let mut write_success = false;
+                    if let Ok(mut file) = sftp.create(Path::new(&remote_path)) {
+                        if file.write_all(content.as_bytes()).is_ok() {
+                            write_success = true;
+                            let _ = event_tx.send(SftpEvent::FileWritten { path: remote_path.clone() });
                         }
-                        Err(e) => {
-                            let _ = event_tx.send(SftpEvent::OperationError(format!("Create remote file failed: {}", e)));
+                    }
+                    if !write_success {
+                        if cfg.sudo_mode {
+                            match write_sudo_file_base64(sess, &remote_path, &content, cfg.sudo_password.as_deref().or(cfg.password.as_deref())) {
+                                Ok(_) => {
+                                    let _ = event_tx.send(SftpEvent::FileWritten { path: remote_path });
+                                }
+                                Err(e) => {
+                                    let _ = event_tx.send(SftpEvent::OperationError(format!("Write remote file failed (sudo): {}", e)));
+                                }
+                            }
+                        } else {
+                            let _ = event_tx.send(SftpEvent::OperationError(format!("Create/write remote file failed: Permission denied")));
                         }
                     }
                 }
             }
 
             SftpCommand::CreateDir(remote_path) => {
-                if let Some((_, ref sftp, ..)) = current_sess {
+                if let Some((ref sess, ref sftp, ref cfg, ..)) = current_sess {
                     match sftp.mkdir(Path::new(&remote_path), 0o755) {
                         Ok(_) => {
                             let _ = event_tx.send(SftpEvent::OperationSuccess("Folder created on VPS".into()));
                         }
                         Err(e) => {
-                            let _ = event_tx.send(SftpEvent::OperationError(format!("Mkdir failed: {}", e)));
+                            if cfg.sudo_mode {
+                                let mkdir_cmd = format!("mkdir -p '{}'", remote_path.replace('\'', "'\\''"));
+                                match execute_sudo_cmd(sess, &mkdir_cmd, cfg.sudo_password.as_deref().or(cfg.password.as_deref())) {
+                                    Ok(_) => {
+                                        let _ = event_tx.send(SftpEvent::OperationSuccess("Folder created on VPS (sudo)".into()));
+                                    }
+                                    Err(err) => {
+                                        let _ = event_tx.send(SftpEvent::OperationError(format!("Mkdir failed (sudo): {}", err)));
+                                    }
+                                }
+                            } else {
+                                let _ = event_tx.send(SftpEvent::OperationError(format!("Mkdir failed: {}", e)));
+                            }
                         }
                     }
                 }
             }
 
             SftpCommand::CreateFile(remote_path) => {
-                if let Some((_, ref sftp, ..)) = current_sess {
+                if let Some((ref sess, ref sftp, ref cfg, ..)) = current_sess {
                     match sftp.create(Path::new(&remote_path)) {
                         Ok(_) => {
                             let _ = event_tx.send(SftpEvent::OperationSuccess("File created on VPS".into()));
                         }
                         Err(e) => {
-                            let _ = event_tx.send(SftpEvent::OperationError(format!("Touch failed: {}", e)));
+                            if cfg.sudo_mode {
+                                let touch_cmd = format!("touch '{}'", remote_path.replace('\'', "'\\''"));
+                                match execute_sudo_cmd(sess, &touch_cmd, cfg.sudo_password.as_deref().or(cfg.password.as_deref())) {
+                                    Ok(_) => {
+                                        let _ = event_tx.send(SftpEvent::OperationSuccess("File created on VPS (sudo)".into()));
+                                    }
+                                    Err(err) => {
+                                        let _ = event_tx.send(SftpEvent::OperationError(format!("Touch failed (sudo): {}", err)));
+                                    }
+                                }
+                            } else {
+                                let _ = event_tx.send(SftpEvent::OperationError(format!("Touch failed: {}", e)));
+                            }
                         }
                     }
                 }
             }
 
             SftpCommand::Delete(remote_path, is_dir) => {
-                if let Some((_, ref sftp, ..)) = current_sess {
+                if let Some((ref sess, ref sftp, ref cfg, ..)) = current_sess {
                     let p = Path::new(&remote_path);
                     let res: Result<(), String> = if is_dir {
                         remove_sftp_dir_recursive(sftp, p, 0)
@@ -409,14 +470,30 @@ fn run_sftp_worker(
                             let _ = event_tx.send(SftpEvent::OperationSuccess("Deleted on VPS".into()));
                         }
                         Err(e) => {
-                            let _ = event_tx.send(SftpEvent::OperationError(format!("Delete failed: {}", e)));
+                            if cfg.sudo_mode {
+                                let rm_cmd = if is_dir {
+                                    format!("rm -rf '{}'", remote_path.replace('\'', "'\\''"))
+                                } else {
+                                    format!("rm -f '{}'", remote_path.replace('\'', "'\\''"))
+                                };
+                                match execute_sudo_cmd(sess, &rm_cmd, cfg.sudo_password.as_deref().or(cfg.password.as_deref())) {
+                                    Ok(_) => {
+                                        let _ = event_tx.send(SftpEvent::OperationSuccess("Deleted on VPS (sudo)".into()));
+                                    }
+                                    Err(err) => {
+                                        let _ = event_tx.send(SftpEvent::OperationError(format!("Delete failed (sudo): {}", err)));
+                                    }
+                                }
+                            } else {
+                                let _ = event_tx.send(SftpEvent::OperationError(format!("Delete failed: {}", e)));
+                            }
                         }
                     }
                 }
             }
 
             SftpCommand::Rename(from_path, to_path) => {
-                if let Some((_, ref sftp, ..)) = current_sess {
+                if let Some((ref sess, ref sftp, ref cfg, ..)) = current_sess {
                     let from = Path::new(&from_path);
                     let to = Path::new(&to_path);
                     match sftp.rename(from, to, None) {
@@ -424,14 +501,26 @@ fn run_sftp_worker(
                             let _ = event_tx.send(SftpEvent::OperationSuccess("Renamed on VPS".into()));
                         }
                         Err(e) => {
-                            let _ = event_tx.send(SftpEvent::OperationError(format!("Rename failed: {}", e)));
+                            if cfg.sudo_mode {
+                                let mv_cmd = format!("mv '{}' '{}'", from_path.replace('\'', "'\\''"), to_path.replace('\'', "'\\''"));
+                                match execute_sudo_cmd(sess, &mv_cmd, cfg.sudo_password.as_deref().or(cfg.password.as_deref())) {
+                                    Ok(_) => {
+                                        let _ = event_tx.send(SftpEvent::OperationSuccess("Renamed on VPS (sudo)".into()));
+                                    }
+                                    Err(err) => {
+                                        let _ = event_tx.send(SftpEvent::OperationError(format!("Rename failed (sudo): {}", err)));
+                                    }
+                                }
+                            } else {
+                                let _ = event_tx.send(SftpEvent::OperationError(format!("Rename failed: {}", e)));
+                            }
                         }
                     }
                 }
             }
 
             SftpCommand::Chmod(remote_path, mode) => {
-                if let Some((_, ref sftp, ..)) = current_sess {
+                if let Some((ref sess, ref sftp, ref cfg, ..)) = current_sess {
                     let p = Path::new(&remote_path);
                     let stat = ssh2::FileStat {
                         size: None,
@@ -446,7 +535,19 @@ fn run_sftp_worker(
                             let _ = event_tx.send(SftpEvent::OperationSuccess("Permissions updated on VPS".into()));
                         }
                         Err(e) => {
-                            let _ = event_tx.send(SftpEvent::OperationError(format!("Chmod failed: {}", e)));
+                            if cfg.sudo_mode {
+                                let chmod_cmd = format!("chmod {:o} '{}'", mode, remote_path.replace('\'', "'\\''"));
+                                match execute_sudo_cmd(sess, &chmod_cmd, cfg.sudo_password.as_deref().or(cfg.password.as_deref())) {
+                                    Ok(_) => {
+                                        let _ = event_tx.send(SftpEvent::OperationSuccess("Permissions updated on VPS (sudo)".into()));
+                                    }
+                                    Err(err) => {
+                                        let _ = event_tx.send(SftpEvent::OperationError(format!("Chmod failed (sudo): {}", err)));
+                                    }
+                                }
+                            } else {
+                                let _ = event_tx.send(SftpEvent::OperationError(format!("Chmod failed: {}", e)));
+                            }
                         }
                     }
                 }
@@ -712,6 +813,20 @@ fn run_sftp_worker(
                         last_net_sample = next_sample;
                         let _ = event_tx.send(SftpEvent::Telemetry(metrics));
                     }
+                }
+            }
+
+            SftpCommand::SetSudoMode { enabled, password } => {
+                if let Some((_, _, ref mut cfg, ..)) = current_sess {
+                    cfg.sudo_mode = enabled;
+                    if password.is_some() {
+                        cfg.sudo_password = password;
+                    }
+                    let _ = event_tx.send(SftpEvent::OperationSuccess(if enabled {
+                        "🛡️ Sudo SFTP Mode activated".to_string()
+                    } else {
+                        "Sudo SFTP Mode deactivated".to_string()
+                    }));
                 }
             }
         }
@@ -1295,4 +1410,158 @@ fn execute_remote_cmd(sess: &ssh2::Session, cmd: &str) -> Result<String, String>
     let _ = ch.read_to_end(&mut out_bytes);
     let _ = ch.wait_close();
     Ok(String::from_utf8_lossy(&out_bytes).to_string())
+}
+
+pub fn execute_sudo_cmd(sess: &ssh2::Session, cmd: &str, sudo_password: Option<&str>) -> Result<String, String> {
+    let mut ch = sess.channel_session().map_err(|e| format!("Channel error: {}", e))?;
+    if let Some(pwd) = sudo_password.filter(|p| !p.trim().is_empty()) {
+        let full_cmd = format!("echo '{}' | sudo -S -k -- sh -c '{}'", pwd.replace('\'', "'\\''"), cmd.replace('\'', "'\\''"));
+        ch.exec(&full_cmd).map_err(|e| format!("Exec error: {}", e))?;
+    } else {
+        let full_cmd = format!("sudo -n -- sh -c '{}'", cmd.replace('\'', "'\\''"));
+        ch.exec(&full_cmd).map_err(|e| format!("Exec error: {}", e))?;
+    }
+    let mut out_bytes = Vec::new();
+    let _ = ch.read_to_end(&mut out_bytes);
+    let _ = ch.wait_close();
+    let exit_code = ch.exit_status().unwrap_or(0);
+    let out = String::from_utf8_lossy(&out_bytes).to_string();
+    if exit_code != 0 && (out.contains("incorrect password") || out.contains("a password is required") || out.contains("sudo: a terminal is required")) {
+        return Err(format!("Sudo failed (exit {}): {}", exit_code, out.trim()));
+    }
+    Ok(out)
+}
+
+use base64::Engine;
+
+fn read_sudo_file_base64(
+    sess: &ssh2::Session,
+    remote_path: &str,
+    sudo_password: Option<&str>,
+) -> Result<String, String> {
+    const MAX_EDITOR_BYTES: u64 = 2 * 1024 * 1024;
+    // Check file size first via stat
+    let stat_cmd = format!("stat -c %s '{}' 2>/dev/null", remote_path.replace('\'', "'\\''"));
+    if let Ok(size_str) = execute_sudo_cmd(sess, &stat_cmd, sudo_password) {
+        if let Ok(sz) = size_str.trim().parse::<u64>() {
+            if sz > MAX_EDITOR_BYTES {
+                return Err("File is too large for Quick Editor (> 2 MB).".into());
+            }
+        }
+    }
+
+    let read_cmd = format!("base64 -w 0 '{}' 2>/dev/null || base64 '{}'", remote_path.replace('\'', "'\\''"), remote_path.replace('\'', "'\\''"));
+    let b64_out = execute_sudo_cmd(sess, &read_cmd, sudo_password)?;
+    let clean_b64: String = b64_out.chars().filter(|c| !c.is_whitespace()).collect();
+    let decoded = base64::engine::general_purpose::STANDARD
+        .decode(clean_b64.as_bytes())
+        .map_err(|e| format!("Base64 decode error: {}", e))?;
+    Ok(String::from_utf8_lossy(&decoded).to_string())
+}
+
+fn write_sudo_file_base64(
+    sess: &ssh2::Session,
+    remote_path: &str,
+    content: &str,
+    sudo_password: Option<&str>,
+) -> Result<(), String> {
+    let b64_str = base64::engine::general_purpose::STANDARD.encode(content.as_bytes());
+    // Write via base64 -d into target file
+    let write_cmd = format!(
+        "echo '{}' | base64 -d | sudo {}tee '{}' > /dev/null",
+        b64_str,
+        if sudo_password.is_some() { "-S -k " } else { "-n " },
+        remote_path.replace('\'', "'\\''")
+    );
+    let mut ch = sess.channel_session().map_err(|e| format!("Channel error: {}", e))?;
+    if let Some(pwd) = sudo_password.filter(|p| !p.trim().is_empty()) {
+        // Feed password on first line then base64
+        let full_input = format!("{}\n", pwd);
+        ch.exec(&write_cmd).map_err(|e| format!("Exec error: {}", e))?;
+        let _ = ch.write_all(full_input.as_bytes());
+    } else {
+        ch.exec(&write_cmd).map_err(|e| format!("Exec error: {}", e))?;
+    }
+    let _ = ch.send_eof();
+    let mut out_bytes = Vec::new();
+    let _ = ch.read_to_end(&mut out_bytes);
+    let _ = ch.wait_close();
+    let exit_code = ch.exit_status().unwrap_or(0);
+    if exit_code != 0 {
+        return Err(format!("Sudo write failed (exit code {})", exit_code));
+    }
+    Ok(())
+}
+
+pub fn read_sudo_dir(
+    sess: &ssh2::Session,
+    dir_path: &str,
+    sudo_password: Option<&str>,
+) -> Result<Vec<FileEntry>, String> {
+    // Uses `find` with printf for deterministic parsing:
+    // %y = type ('d' for dir, 'f' for regular file, 'l' for symlink)
+    // %s = size in bytes
+    // %T@ = modification timestamp in epoch seconds
+    // %m = octal permissions
+    // %u = owner username
+    // %g = group name
+    // %f = filename
+    let probe_cmd = format!(
+        "find '{}' -mindepth 1 -maxdepth 1 -printf '%y\\t%s\\t%T@\\t%m\\t%u\\t%g\\t%f\\n' 2>/dev/null",
+        dir_path.replace('\'', "'\\''")
+    );
+    let output = execute_sudo_cmd(sess, &probe_cmd, sudo_password)?;
+    let mut dirs = Vec::new();
+    let mut files = Vec::new();
+
+    for line in output.lines() {
+        let parts: Vec<&str> = line.split('\t').collect();
+        if parts.len() < 7 {
+            continue;
+        }
+        let ftype = parts[0];
+        let size: u64 = parts[1].parse().unwrap_or(0);
+        let mtime_secs: f64 = parts[2].parse().unwrap_or(0.0);
+        let mode_octal = u32::from_str_radix(parts[3], 8).unwrap_or(0o644);
+        let owner = parts[4].to_string();
+        let group = parts[5].to_string();
+        let name = parts[6].to_string();
+
+        if name.is_empty() || name == "." || name == ".." {
+            continue;
+        }
+
+        let is_dir = ftype == "d";
+        let is_hidden = name.starts_with('.');
+        let modified = if mtime_secs > 0.0 {
+            Some(UNIX_EPOCH + Duration::from_secs(mtime_secs as u64))
+        } else {
+            None
+        };
+        let permissions = format_mode(mode_octal, is_dir);
+        let full_path = PathBuf::from(dir_path).join(&name);
+
+        let entry = FileEntry {
+            name,
+            path: full_path,
+            is_dir,
+            is_hidden,
+            size,
+            modified,
+            permissions,
+            owner,
+            group,
+        };
+
+        if is_dir {
+            dirs.push(entry);
+        } else {
+            files.push(entry);
+        }
+    }
+
+    dirs.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+    files.sort_by(|a, b| a.name.to_lowercase().cmp(&b.name.to_lowercase()));
+    dirs.extend(files);
+    Ok(dirs)
 }

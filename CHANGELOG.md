@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [v1.3.96] - 2026-11-09
+### Added & Improved (Sudo SFTP Mode, Elevated File Management & Root Built-in Editor)
+- **Tính năng 🛡️ Sudo SFTP Mode (Root Mode)**:
+  - Cho phép người dùng duyệt cây thư mục bị hạn chế quyền (như `/root`, `/etc/ssl/private`, `/var/log`), xem, sửa, tạo, xóa, đổi tên và phân quyền file hệ thống dưới quyền root thông qua kênh thực thi ngầm `sudo -S`.
+  - **Built-in Editor hỗ trợ quyền Root**: Đọc và lưu file trực tiếp qua kênh Sudo (Base64 encode / decode qua `sudo tee`), giải quyết triệt để lỗi `Permission Denied` khi chỉnh sửa các tệp cấu hình hệ thống quan trọng (`/etc/nginx/nginx.conf`, `/etc/hosts`, v.v.).
+  - **Nút chuyển đổi chủ động (Toggle Button) trên SFTP Toolbar**:
+    - Trạng thái mặc định: Nút xám tối `🛡️ Sudo SFTP` (chạy theo quyền user SSH thông thường).
+    - Trạng thái kích hoạt: Đổi màu cam nổi bật `🛡️ Sudo Active` kèm biểu tượng khiên sáng để người dùng luôn nhận biết rõ mình đang thao tác với quyền Root tối cao.
+  - **Hộp thoại xác thực mật khẩu Sudo Modal**: Khi máy chủ đòi hỏi mật khẩu sudo và phiên kết nối chưa có sẵn (ví dụ đăng nhập bằng SSH Key), ứng dụng tự động hiển thị popup căn giữa màn hình yêu cầu nhập mật khẩu và hỗ trợ ghi nhớ trong suốt phiên làm việc.
+- **Quy chuẩn định dạng phiên bản mới**:
+  - Chuyển đổi định dạng phiên bản từ dấu gạch nối (`v1.3-95`) sang chuẩn dấu chấm (`v1.3.96`), tên file thực thi Windows xuất bản là `RustyBox-v1.3.96.exe`.
+
+---
+
 ## [v1.3-95] - 2026-11-09
 ### Fixed & Improved (Universal Dark Mode Enforcement across OS Appearances & Standalone macOS Builds)
 - **Khóa cứng Dark Mode trên toàn bộ nền tảng (macOS, Windows, Linux)**:
