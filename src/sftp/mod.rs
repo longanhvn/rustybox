@@ -132,17 +132,8 @@ pub struct FileExplorer {
     // Bookmarks list
     pub bookmarks: Vec<String>,
     pub bookmarks_changed: bool,
-    // Modal quick editor
-    pub editor_open: bool,
-    pub editor_file_path: Option<PathBuf>,
-    pub editor_remote_label: Option<String>,
-    pub editor_content: String,
-    pub editor_status: Option<String>,
-    pub editor_font_size: f32,
-    pub editor_search_query: String,
-    pub editor_search_matches: usize,
-    pub editor_show_search: bool,
-    pub editor_word_wrap: bool,
+    // Modular built-in code/text editor
+    pub editor: crate::editor::Editor,
     // Modal Chmod (RustyBox TFORMCHMOD)
     pub chmod_open: bool,
     pub chmod_target: Option<PathBuf>,
@@ -226,16 +217,7 @@ impl FileExplorer {
             active_remote_label: None,
             bookmarks: Vec::new(),
             bookmarks_changed: false,
-            editor_open: false,
-            editor_file_path: None,
-            editor_remote_label: None,
-            editor_content: String::new(),
-            editor_status: None,
-            editor_font_size: 13.0,
-            editor_search_query: String::new(),
-            editor_search_matches: 0,
-            editor_show_search: false,
-            editor_word_wrap: false,
+            editor: crate::editor::Editor::new(),
             chmod_open: false,
             chmod_target: None,
             chmod_remote_label: None,
@@ -795,14 +777,10 @@ impl FileExplorer {
         }
 
         if let Some((label, path, content)) = opened_editor {
-            self.editor_remote_label = Some(label);
-            self.editor_file_path = Some(path);
-            self.editor_content = content;
-            self.editor_status = None;
-            self.editor_open = true;
+            self.editor.open_file(path, content, Some(label));
         }
-        if let Some(target_label) = editor_saved_target {
-            self.editor_status = Some(format!("Saved successfully to {}!", target_label));
+        if let Some(_target_label) = editor_saved_target {
+            self.editor.mark_saved();
         }
 
         if self.is_remote {
@@ -1171,6 +1149,23 @@ impl FileExplorer {
         {
             return;
         }
+
+        let file_name = path
+            .file_name()
+            .map(|n| n.to_string_lossy().to_string())
+            .unwrap_or_else(|| "file".to_string());
+
+        // Fast check: Known binary or compressed archive format
+        if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
+            if crate::editor::syntax::is_known_binary_extension(ext) {
+                self.error_message = Some(format!(
+                    "⚠️ Cannot open binary/compressed file \"{}\". Quick Editor only supports text and code files.",
+                    file_name
+                ));
+                return;
+            }
+        }
+
         if self.is_remote {
             let path_str = path.to_string_lossy().to_string();
             if let Some(ref client) = self.remote_client {
@@ -1194,13 +1189,26 @@ impl FileExplorer {
             }
         }
 
-        match fs::read_to_string(&path) {
-            Ok(content) => {
-                self.editor_remote_label = None;
-                self.editor_file_path = Some(path);
-                self.editor_content = content;
-                self.editor_status = None;
-                self.editor_open = true;
+        match fs::read(&path) {
+            Ok(bytes) => {
+                if crate::editor::syntax::is_binary_buffer(&bytes) {
+                    self.error_message = Some(format!(
+                        "⚠️ Cannot open binary file \"{}\". Quick Editor only supports text and code files.",
+                        file_name
+                    ));
+                    return;
+                }
+                match String::from_utf8(bytes) {
+                    Ok(content) => {
+                        self.editor.open_file(path, content, None);
+                    }
+                    Err(_) => {
+                        self.error_message = Some(format!(
+                            "⚠️ Cannot open \"{}\": File contains binary or non-UTF-8 characters.",
+                            file_name
+                        ));
+                    }
+                }
             }
             Err(e) => {
                 self.error_message = Some(format!("Cannot open file: {}", e));
@@ -1208,37 +1216,35 @@ impl FileExplorer {
         }
     }
 
-    pub fn save_editor(&mut self) {
-        if let Some(ref path) = self.editor_file_path {
-            if let Some(ref target_label) = self.editor_remote_label {
-                let path_str = path.to_string_lossy().to_string();
-                if let Some(sess) = self.remote_sessions.get_mut(target_label) {
-                    sess.is_loading = true;
-                    sess.client.lock().write_file(&path_str, &self.editor_content);
-                }
-                if self.remote_label.as_deref() == Some(target_label.as_str()) {
-                    self.is_loading = true;
-                }
-                return;
+    pub fn save_editor_file(&mut self, path: PathBuf, content: String, remote_label: Option<String>) {
+        if let Some(ref target_label) = remote_label {
+            let path_str = path.to_string_lossy().to_string();
+            if let Some(sess) = self.remote_sessions.get_mut(target_label) {
+                sess.is_loading = true;
+                sess.client.lock().write_file(&path_str, &content);
             }
-            if self.is_remote {
-                let path_str = path.to_string_lossy().to_string();
-                if let Some(ref client) = self.remote_client {
-                    self.is_loading = true;
-                    client.lock().write_file(&path_str, &self.editor_content);
-                }
-                self.save_active_remote_state();
-                return;
+            if self.remote_label.as_deref() == Some(target_label.as_str()) {
+                self.is_loading = true;
             }
+            return;
+        }
+        if self.is_remote {
+            let path_str = path.to_string_lossy().to_string();
+            if let Some(ref client) = self.remote_client {
+                self.is_loading = true;
+                client.lock().write_file(&path_str, &content);
+            }
+            self.save_active_remote_state();
+            return;
+        }
 
-            match fs::write(path, &self.editor_content) {
-                Ok(_) => {
-                    self.editor_status = Some("Saved successfully!".to_string());
-                    self.refresh();
-                }
-                Err(e) => {
-                    self.editor_status = Some(format!("Save error: {}", e));
-                }
+        match fs::write(&path, &content) {
+            Ok(_) => {
+                self.editor.mark_saved();
+                self.refresh();
+            }
+            Err(e) => {
+                self.editor.status = Some(format!("Save error: {}", e));
             }
         }
     }
@@ -2079,6 +2085,21 @@ mod tests {
             !explorer.can_edit_selected(),
             "Remote directory must not be editable in Quick Editor"
         );
+    }
+
+    #[test]
+    fn test_open_editor_rejects_binary_file_with_friendly_warning() {
+        let mut explorer = FileExplorer::new();
+        explorer.is_remote = false;
+
+        // Test with a .gz file path
+        let gz_path = PathBuf::from("syslog.1.gz");
+        explorer.open_editor(gz_path);
+
+        assert!(!explorer.editor.open, "Editor must not open for .gz file");
+        assert!(explorer.error_message.is_some(), "Friendly error message should be set");
+        let err = explorer.error_message.unwrap();
+        assert!(err.contains("binary/compressed file"), "Error message should mention binary/compressed: {}", err);
     }
 
     #[test]
