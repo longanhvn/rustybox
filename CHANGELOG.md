@@ -7,14 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [v1.3.96] - 2026-11-09
-### Added & Improved (Sudo SFTP Mode, Elevated File Management & Root Built-in Editor)
+## [v1.3.97] - 2026-11-10
+### Added & Improved (Kibi-inspired Modular Code Editor)
 - **Tích hợp Kibi-inspired Modular Code Editor (PR #9)**:
   - Tách trình chỉnh sửa văn bản thành module độc lập (`src/editor/`), hỗ trợ tô màu cú pháp (Syntax Highlighting) chuyên nghiệp cho 18+ ngôn ngữ lập trình và cấu hình: Shell/Bash, YAML, JSON, TOML, Python, Rust, C/C++, SQL, HTML/XML, JavaScript/TypeScript, Go, PHP, CSS, Lua, Ruby, Java/C#, v.v.
   - Hỗ trợ cú pháp nhúng đa ngữ cảnh trong HTML (JS trong `<script>`, CSS trong `<style>`, PHP trong `<?php ?>`, Ruby/ERB trong `<% %>`).
   - Thước căn thụt dòng thông minh (Visual Indent Guides `┊`), nút công cụ `🧹 Clean Tabs` chuyển đổi nhanh tab thành khoảng trắng.
   - Tìm kiếm từ khóa mạnh mẽ (`Ctrl + F`, `F3`, `Shift + F3`), zoom kích thước chữ, ngắt dòng (word wrap), và trạng thái lưu file an toàn chống mất dữ liệu.
   - Tự động nhận diện và chặn mở các tệp nhị phân / tệp nén (`.gz`, `.zip`, `.tar`, ELF) để tránh lỗi UTF-8 hoặc tràn bộ nhớ.
+- **Nâng phiên bản**:
+  - Tăng số hiệu phiên bản lên **`v1.3.97`** sau khi merge PR #9.
+
+---
+
+## [v1.3.96] - 2026-11-09
+### Added & Improved (Sudo SFTP Mode, Elevated File Management & Root Built-in Editor)
 - **Tính năng 🛡️ Sudo SFTP Mode (Root Mode)**:
   - Cho phép người dùng duyệt cây thư mục bị hạn chế quyền (như `/root`, `/etc/ssl/private`, `/var/log`), xem, sửa, tạo, xóa, đổi tên và phân quyền file hệ thống dưới quyền root thông qua kênh thực thi ngầm `sudo -S`.
   - **Built-in Editor hỗ trợ quyền Root**: Đọc và lưu file trực tiếp qua kênh Sudo (Base64 encode / decode qua `sudo tee`), giải quyết triệt để lỗi `Permission Denied` khi chỉnh sửa các tệp cấu hình hệ thống quan trọng (`/etc/nginx/nginx.conf`, `/etc/hosts`, v.v.).
