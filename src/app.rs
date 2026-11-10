@@ -2944,7 +2944,7 @@ impl eframe::App for RustyBoxApp {
                         .inner_margin(egui::Margin::symmetric(8.0, 8.0))
                 )
                 .resizable(true)
-                .default_width(260.0)
+                .default_width(280.0)
                 .width_range(180.0..=max_sidebar_w)
                 .show(ctx, |ui| {
                     // Modern segmented pill switcher

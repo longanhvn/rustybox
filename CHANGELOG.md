@@ -16,6 +16,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     - Trạng thái mặc định: Nút xám tối `🛡️ Sudo SFTP` (chạy theo quyền user SSH thông thường).
     - Trạng thái kích hoạt: Đổi màu cam nổi bật `🛡️ Sudo Active` kèm biểu tượng khiên sáng để người dùng luôn nhận biết rõ mình đang thao tác với quyền Root tối cao.
   - **Hộp thoại xác thực mật khẩu Sudo Modal**: Khi máy chủ đòi hỏi mật khẩu sudo và phiên kết nối chưa có sẵn (ví dụ đăng nhập bằng SSH Key), ứng dụng tự động hiển thị popup căn giữa màn hình yêu cầu nhập mật khẩu và hỗ trợ ghi nhớ trong suốt phiên làm việc.
+- **Cải thiện độ rộng thanh Sidebar mặc định**:
+  - Tăng độ rộng khởi tạo mặc định của Left Sidebar (Sessions / SFTP Explorer) từ `260px` lên `280px` giúp hiển thị tên tệp/thư mục và địa chỉ host dài trực quan, thoáng đãng hơn.
 - **Quy chuẩn định dạng phiên bản mới**:
   - Chuyển đổi định dạng phiên bản từ dấu gạch nối (`v1.3-95`) sang chuẩn dấu chấm (`v1.3.96`), tên file thực thi Windows xuất bản là `RustyBox-v1.3.96.exe`.
 
