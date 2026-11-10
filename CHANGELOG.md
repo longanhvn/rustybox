@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [v1.3.97] - 2026-11-10
+## [v1.3.98] - 2026-11-10
 ### Added & Improved (Kibi-inspired Modular Code Editor)
 - **Tích hợp Kibi-inspired Modular Code Editor (PR #9)**:
   - Tách trình chỉnh sửa văn bản thành module độc lập (`src/editor/`), hỗ trợ tô màu cú pháp (Syntax Highlighting) chuyên nghiệp cho 18+ ngôn ngữ lập trình và cấu hình: Shell/Bash, YAML, JSON, TOML, Python, Rust, C/C++, SQL, HTML/XML, JavaScript/TypeScript, Go, PHP, CSS, Lua, Ruby, Java/C#, v.v.
@@ -16,7 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Tìm kiếm từ khóa mạnh mẽ (`Ctrl + F`, `F3`, `Shift + F3`), zoom kích thước chữ, ngắt dòng (word wrap), và trạng thái lưu file an toàn chống mất dữ liệu.
   - Tự động nhận diện và chặn mở các tệp nhị phân / tệp nén (`.gz`, `.zip`, `.tar`, ELF) để tránh lỗi UTF-8 hoặc tràn bộ nhớ.
 - **Nâng phiên bản**:
-  - Tăng số hiệu phiên bản lên **`v1.3.97`** sau khi merge PR #9.
+  - Tăng số hiệu phiên bản lên **`v1.3.98`** tích hợp hoàn chỉnh PR #9.
 
 ---
 
