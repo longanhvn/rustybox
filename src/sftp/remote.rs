@@ -12,6 +12,18 @@ use super::FileEntry;
 
 pub const OS_SAFETY_BUFFER_BYTES: u64 = 1024 * 1024 * 1024; // 1 GB reserve for OS safety
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RemoteOsKind {
+    Posix,
+    Windows,
+}
+
+impl Default for RemoteOsKind {
+    fn default() -> Self {
+        RemoteOsKind::Posix
+    }
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct SftpTargetConfig {
     pub host: String,
@@ -33,6 +45,7 @@ pub enum SftpCommand {
     CreateDir(String),
     CreateFile(String),
     Delete(String, bool), // (remote_path, is_dir)
+    DeleteMany(Vec<(String, bool)>),
     Rename(String, String), // (old_path, new_path)
     Chmod(String, u32),
     Upload(PathBuf, String),   // (local_path, remote_path)
@@ -61,6 +74,7 @@ pub enum SftpEvent {
     Connected {
         target: String,
         initial_dir: String,
+        remote_os: RemoteOsKind,
     },
     ConnectionFailed(String),
     DirListed {
@@ -179,6 +193,11 @@ impl RemoteSftpClient {
         let _ = self.cmd_tx.send(SftpCommand::Delete(path.to_string(), is_dir));
     }
 
+    pub fn delete_many(&mut self, items: Vec<(String, bool)>) {
+        self.is_busy = true;
+        let _ = self.cmd_tx.send(SftpCommand::DeleteMany(items));
+    }
+
     pub fn rename(&mut self, from_path: String, to_path: String) {
         self.is_busy = true;
         let _ = self.cmd_tx.send(SftpCommand::Rename(from_path, to_path));
@@ -223,6 +242,7 @@ fn run_sftp_worker(
         SftpTargetConfig,
         HashMap<u32, String>,
         HashMap<u32, String>,
+        RemoteOsKind,
     )> = None;
     let mut last_net_sample: Option<(u64, u64, Instant)> = None;
 
@@ -234,11 +254,12 @@ fn run_sftp_worker(
 
             SftpCommand::Connect(cfg) => {
                 // If already connected to the same config, keep it
-                if let Some((_, _, ref active_cfg, ..)) = current_sess {
+                if let Some((_, _, ref active_cfg, _, _, active_os)) = current_sess {
                     if *active_cfg == cfg {
                         let _ = event_tx.send(SftpEvent::Connected {
                             target: format!("{}@{}:{}", cfg.user, cfg.host, cfg.port),
                             initial_dir: if cfg.user == "root" { "/root".into() } else { format!("/home/{}", cfg.user) },
+                            remote_os: active_os,
                         });
                         continue;
                     }
@@ -247,23 +268,47 @@ fn run_sftp_worker(
                 current_sess = None;
                 match connect_sftp(&cfg) {
                     Ok((sess, sftp)) => {
-                        let initial_dir = if cfg.user == "root" {
-                            "/root".to_string()
-                        } else {
-                            format!("/home/{}", cfg.user)
-                        };
-
-                        // Check if initial_dir exists on VPS, fallback to "/" if not
-                        let valid_dir = if sftp.stat(Path::new(&initial_dir)).is_ok() {
-                            initial_dir
-                        } else {
-                            "/".to_string()
+                        // Detect remote OS and resolve initial dir via realpath(".")
+                        let (remote_os, valid_dir) = match sftp.realpath(Path::new(".")) {
+                            Ok(real_p) => {
+                                let p_str = real_p.to_string_lossy();
+                                let norm = p_str.replace('\\', "/");
+                                let is_win = (norm.len() >= 2 && norm.as_bytes()[1] == b':')
+                                    || (norm.starts_with('/') && norm.len() >= 4 && norm.as_bytes()[2] == b':');
+                                if is_win {
+                                    let win_dir = if norm.starts_with('/') && norm.len() >= 4 && norm.as_bytes()[2] == b':' {
+                                        norm[1..].to_string()
+                                    } else {
+                                        norm
+                                    };
+                                    (RemoteOsKind::Windows, win_dir)
+                                } else {
+                                    (RemoteOsKind::Posix, norm)
+                                }
+                            }
+                            Err(_) => {
+                                let initial_dir = if cfg.user == "root" {
+                                    "/root".to_string()
+                                } else {
+                                    format!("/home/{}", cfg.user)
+                                };
+                                let v = if sftp.stat(Path::new(&initial_dir)).is_ok() {
+                                    initial_dir
+                                } else if sftp.stat(Path::new("/")).is_ok() {
+                                    "/".to_string()
+                                } else {
+                                    "C:/".to_string()
+                                };
+                                let os = if v.starts_with('/') { RemoteOsKind::Posix } else { RemoteOsKind::Windows };
+                                (os, v)
+                            }
                         };
 
                         let target = format!("{}@{}:{}", cfg.user, cfg.host, cfg.port);
                         let _ = event_tx.send(SftpEvent::Connected {
                             target,
                             initial_dir: valid_dir.clone(),
+                            remote_os,
                         });
 
                         // Cache remote user and group mappings from /etc/passwd and /etc/group
@@ -289,7 +334,7 @@ fn run_sftp_worker(
                             let _ = event_tx.send(SftpEvent::Telemetry(metrics));
                         }
 
-                        current_sess = Some((sess, sftp, cfg, users, groups));
+                        current_sess = Some((sess, sftp, cfg, users, groups, remote_os));
                     }
                     Err(e) => {
                         let _ = event_tx.send(SftpEvent::ConnectionFailed(e));
@@ -303,21 +348,22 @@ fn run_sftp_worker(
             }
 
             SftpCommand::ListDir(dir_path) => {
-                if let Some((ref sess, ref sftp, ref cfg, ref users, ref groups)) = current_sess {
-                    let mut list_res = read_sftp_dir(sftp, &dir_path, &cfg.user, users, groups);
+                let clean_dir = dir_path.replace('\\', "/");
+                if let Some((ref sess, ref sftp, ref cfg, ref users, ref groups, ..)) = current_sess {
+                    let mut list_res = read_sftp_dir(sftp, &clean_dir, &cfg.user, users, groups);
                     if list_res.is_err() && cfg.sudo_mode {
                         // Fallback to elevated sudo directory read
-                        if let Ok(sudo_entries) = read_sudo_dir(sess, &dir_path, cfg.sudo_password.as_deref().or(cfg.password.as_deref())) {
+                        if let Ok(sudo_entries) = read_sudo_dir(sess, &clean_dir, cfg.sudo_password.as_deref().or(cfg.password.as_deref())) {
                             list_res = Ok(sudo_entries);
                         }
                     }
                     match list_res {
                         Ok(entries) => {
                             let _ = event_tx.send(SftpEvent::DirListed {
-                                dir: dir_path.clone(),
+                                dir: clean_dir.clone(),
                                 entries,
                             });
-                            if let Ok((used, total, pct)) = fetch_remote_disk(sess, &dir_path) {
+                            if let Ok((used, total, pct)) = fetch_remote_disk(sess, &clean_dir) {
                                 let _ = event_tx.send(SftpEvent::DiskUsage { used, total, pct });
                             }
                         }
@@ -331,10 +377,11 @@ fn run_sftp_worker(
             }
 
             SftpCommand::ReadFile(remote_path) => {
+                let clean_remote = remote_path.replace('\\', "/");
                 if let Some((ref sess, ref sftp, ref cfg, ..)) = current_sess {
                     const MAX_EDITOR_BYTES: u64 = 2 * 1024 * 1024;
-                    let p = Path::new(&remote_path);
-                    let file_name = p.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_else(|| remote_path.clone());
+                    let p = Path::new(&clean_remote);
+                    let file_name = p.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_else(|| clean_remote.clone());
                     if let Some(ext) = p.extension().and_then(|e| e.to_str()) {
                         if crate::editor::syntax::is_known_binary_extension(ext) {
                             let _ = event_tx.send(SftpEvent::OperationError(format!(
@@ -379,7 +426,7 @@ fn run_sftp_worker(
                                     }
                                 };
                                 let _ = event_tx.send(SftpEvent::FileRead {
-                                    path: remote_path.clone(),
+                                    path: clean_remote.clone(),
                                     content,
                                 });
                                 file_read_done = true;
@@ -389,10 +436,10 @@ fn run_sftp_worker(
                     if !file_read_done {
                         if cfg.sudo_mode {
                             // Try sudo base64 read
-                            match read_sudo_file_base64(sess, &remote_path, cfg.sudo_password.as_deref().or(cfg.password.as_deref())) {
+                            match read_sudo_file_base64(sess, &clean_remote, cfg.sudo_password.as_deref().or(cfg.password.as_deref())) {
                                 Ok(content) => {
                                     let _ = event_tx.send(SftpEvent::FileRead {
-                                        path: remote_path,
+                                        path: clean_remote,
                                         content,
                                     });
                                 }
@@ -408,19 +455,20 @@ fn run_sftp_worker(
             }
 
             SftpCommand::WriteFile(remote_path, content) => {
+                let clean_remote = remote_path.replace('\\', "/");
                 if let Some((ref sess, ref sftp, ref cfg, ..)) = current_sess {
                     let mut write_success = false;
-                    if let Ok(mut file) = sftp.create(Path::new(&remote_path)) {
+                    if let Ok(mut file) = sftp.create(Path::new(&clean_remote)) {
                         if file.write_all(content.as_bytes()).is_ok() {
                             write_success = true;
-                            let _ = event_tx.send(SftpEvent::FileWritten { path: remote_path.clone() });
+                            let _ = event_tx.send(SftpEvent::FileWritten { path: clean_remote.clone() });
                         }
                     }
                     if !write_success {
                         if cfg.sudo_mode {
-                            match write_sudo_file_base64(sess, &remote_path, &content, cfg.sudo_password.as_deref().or(cfg.password.as_deref())) {
+                            match write_sudo_file_base64(sess, &clean_remote, &content, cfg.sudo_password.as_deref().or(cfg.password.as_deref())) {
                                 Ok(_) => {
-                                    let _ = event_tx.send(SftpEvent::FileWritten { path: remote_path });
+                                    let _ = event_tx.send(SftpEvent::FileWritten { path: clean_remote });
                                 }
                                 Err(e) => {
                                     let _ = event_tx.send(SftpEvent::OperationError(format!("Write remote file failed (sudo): {}", e)));
@@ -434,14 +482,15 @@ fn run_sftp_worker(
             }
 
             SftpCommand::CreateDir(remote_path) => {
+                let clean_remote = remote_path.replace('\\', "/");
                 if let Some((ref sess, ref sftp, ref cfg, ..)) = current_sess {
-                    match sftp.mkdir(Path::new(&remote_path), 0o755) {
+                    match sftp.mkdir(Path::new(&clean_remote), 0o755) {
                         Ok(_) => {
                             let _ = event_tx.send(SftpEvent::OperationSuccess("Folder created on VPS".into()));
                         }
                         Err(e) => {
                             if cfg.sudo_mode {
-                                let mkdir_cmd = format!("mkdir -p '{}'", remote_path.replace('\'', "'\\''"));
+                                let mkdir_cmd = format!("mkdir -p -- '{}'", clean_remote.replace('\'', "'\\''"));
                                 match execute_sudo_cmd(sess, &mkdir_cmd, cfg.sudo_password.as_deref().or(cfg.password.as_deref())) {
                                     Ok(_) => {
                                         let _ = event_tx.send(SftpEvent::OperationSuccess("Folder created on VPS (sudo)".into()));
@@ -459,14 +508,15 @@ fn run_sftp_worker(
             }
 
             SftpCommand::CreateFile(remote_path) => {
+                let clean_remote = remote_path.replace('\\', "/");
                 if let Some((ref sess, ref sftp, ref cfg, ..)) = current_sess {
-                    match sftp.create(Path::new(&remote_path)) {
+                    match sftp.create(Path::new(&clean_remote)) {
                         Ok(_) => {
                             let _ = event_tx.send(SftpEvent::OperationSuccess("File created on VPS".into()));
                         }
                         Err(e) => {
                             if cfg.sudo_mode {
-                                let touch_cmd = format!("touch '{}'", remote_path.replace('\'', "'\\''"));
+                                let touch_cmd = format!("touch -- '{}'", clean_remote.replace('\'', "'\\''"));
                                 match execute_sudo_cmd(sess, &touch_cmd, cfg.sudo_password.as_deref().or(cfg.password.as_deref())) {
                                     Ok(_) => {
                                         let _ = event_tx.send(SftpEvent::OperationSuccess("File created on VPS (sudo)".into()));
@@ -484,33 +534,35 @@ fn run_sftp_worker(
             }
 
             SftpCommand::Delete(remote_path, is_dir) => {
+                let clean_remote = remote_path.replace('\\', "/");
                 if let Some((ref sess, ref sftp, ref cfg, ..)) = current_sess {
-                    let p = Path::new(&remote_path);
-                    let res: Result<(), String> = if is_dir {
-                        remove_sftp_dir_recursive(sftp, p, 0)
-                    } else {
-                        sftp.unlink(p).map_err(|e| e.to_string())
-                    };
-                    match res {
-                        Ok(_) => {
-                            let _ = event_tx.send(SftpEvent::OperationSuccess("Deleted on VPS".into()));
+                    let trimmed = clean_remote.trim();
+                    if trimmed.is_empty() || trimmed == "/" || trimmed == "." || trimmed == ".." {
+                        let _ = event_tx.send(SftpEvent::OperationError("Refusing to delete root or invalid path".into()));
+                        continue;
+                    }
+                    if cfg.sudo_mode {
+                        let rm_cmd = format!("rm -rf -- '{}'", clean_remote.replace('\'', "'\\''"));
+                        match execute_sudo_cmd(sess, &rm_cmd, cfg.sudo_password.as_deref().or(cfg.password.as_deref())) {
+                            Ok(_) => {
+                                let _ = event_tx.send(SftpEvent::OperationSuccess("Deleted on VPS (sudo)".into()));
+                            }
+                            Err(err) => {
+                                let _ = event_tx.send(SftpEvent::OperationError(format!("Delete failed (sudo): {}", err)));
+                            }
                         }
-                        Err(e) => {
-                            if cfg.sudo_mode {
-                                let rm_cmd = if is_dir {
-                                    format!("rm -rf '{}'", remote_path.replace('\'', "'\\''"))
-                                } else {
-                                    format!("rm -f '{}'", remote_path.replace('\'', "'\\''"))
-                                };
-                                match execute_sudo_cmd(sess, &rm_cmd, cfg.sudo_password.as_deref().or(cfg.password.as_deref())) {
-                                    Ok(_) => {
-                                        let _ = event_tx.send(SftpEvent::OperationSuccess("Deleted on VPS (sudo)".into()));
-                                    }
-                                    Err(err) => {
-                                        let _ = event_tx.send(SftpEvent::OperationError(format!("Delete failed (sudo): {}", err)));
-                                    }
-                                }
-                            } else {
+                    } else {
+                        let p = Path::new(&clean_remote);
+                        let res: Result<(), String> = if is_dir {
+                            remove_sftp_dir_recursive(sftp, p, 0)
+                        } else {
+                            sftp.unlink(p).map_err(|e| e.to_string())
+                        };
+                        match res {
+                            Ok(_) => {
+                                let _ = event_tx.send(SftpEvent::OperationSuccess("Deleted on VPS".into()));
+                            }
+                            Err(e) => {
                                 let _ = event_tx.send(SftpEvent::OperationError(format!("Delete failed: {}", e)));
                             }
                         }
@@ -518,17 +570,81 @@ fn run_sftp_worker(
                 }
             }
 
-            SftpCommand::Rename(from_path, to_path) => {
+            SftpCommand::DeleteMany(items) => {
                 if let Some((ref sess, ref sftp, ref cfg, ..)) = current_sess {
-                    let from = Path::new(&from_path);
-                    let to = Path::new(&to_path);
+                    if items.is_empty() {
+                        continue;
+                    }
+                    if cfg.sudo_mode {
+                        let mut all_succeeded = true;
+                        let mut last_err = String::new();
+                        for chunk in items.chunks(50) {
+                            let mut args = String::new();
+                            for (p_str, _) in chunk {
+                                let clean = p_str.replace('\\', "/");
+                                let trimmed = clean.trim();
+                                if trimmed.is_empty() || trimmed == "/" || trimmed == "." || trimmed == ".." {
+                                    continue;
+                                }
+                                args.push_str(&format!(" '{}'", clean.replace('\'', "'\\''")));
+                            }
+                            if args.is_empty() {
+                                continue;
+                            }
+                            let rm_cmd = format!("rm -rf --{}", args);
+                            if let Err(err) = execute_sudo_cmd(sess, &rm_cmd, cfg.sudo_password.as_deref().or(cfg.password.as_deref())) {
+                                all_succeeded = false;
+                                last_err = err;
+                                break;
+                            }
+                        }
+                        if all_succeeded {
+                            let _ = event_tx.send(SftpEvent::OperationSuccess(format!("Deleted {} items on VPS (sudo)", items.len())));
+                        } else {
+                            let _ = event_tx.send(SftpEvent::OperationError(format!("Delete batch failed (sudo): {}", last_err)));
+                        }
+                    } else {
+                        let mut deleted_count = 0;
+                        let mut last_err = String::new();
+                        for (p_str, is_dir) in &items {
+                            let clean = p_str.replace('\\', "/");
+                            let p = Path::new(&clean);
+                            let res = if *is_dir {
+                                remove_sftp_dir_recursive(sftp, p, 0)
+                            } else {
+                                sftp.unlink(p).map_err(|e| e.to_string())
+                            };
+                            match res {
+                                Ok(_) => deleted_count += 1,
+                                Err(e) => {
+                                    last_err = e;
+                                }
+                            }
+                        }
+                        if deleted_count == items.len() {
+                            let _ = event_tx.send(SftpEvent::OperationSuccess(format!("Deleted {} items on VPS", deleted_count)));
+                        } else if deleted_count > 0 {
+                            let _ = event_tx.send(SftpEvent::OperationSuccess(format!("Deleted {}/{} items (some failed: {})", deleted_count, items.len(), last_err)));
+                        } else {
+                            let _ = event_tx.send(SftpEvent::OperationError(format!("Delete batch failed: {}", last_err)));
+                        }
+                    }
+                }
+            }
+
+            SftpCommand::Rename(from_path, to_path) => {
+                let clean_from = from_path.replace('\\', "/");
+                let clean_to = to_path.replace('\\', "/");
+                if let Some((ref sess, ref sftp, ref cfg, ..)) = current_sess {
+                    let from = Path::new(&clean_from);
+                    let to = Path::new(&clean_to);
                     match sftp.rename(from, to, None) {
                         Ok(_) => {
                             let _ = event_tx.send(SftpEvent::OperationSuccess("Renamed on VPS".into()));
                         }
                         Err(e) => {
                             if cfg.sudo_mode {
-                                let mv_cmd = format!("mv '{}' '{}'", from_path.replace('\'', "'\\''"), to_path.replace('\'', "'\\''"));
+                                let mv_cmd = format!("mv -- '{}' '{}'", clean_from.replace('\'', "'\\''"), clean_to.replace('\'', "'\\''"));
                                 match execute_sudo_cmd(sess, &mv_cmd, cfg.sudo_password.as_deref().or(cfg.password.as_deref())) {
                                     Ok(_) => {
                                         let _ = event_tx.send(SftpEvent::OperationSuccess("Renamed on VPS (sudo)".into()));
@@ -546,8 +662,9 @@ fn run_sftp_worker(
             }
 
             SftpCommand::Chmod(remote_path, mode) => {
+                let clean_remote = remote_path.replace('\\', "/");
                 if let Some((ref sess, ref sftp, ref cfg, ..)) = current_sess {
-                    let p = Path::new(&remote_path);
+                    let p = Path::new(&clean_remote);
                     let stat = ssh2::FileStat {
                         size: None,
                         uid: None,
@@ -1356,9 +1473,12 @@ fn read_sftp_dir(
             }
         };
 
+        let clean_path = entry_path.to_string_lossy().replace('\\', "/");
+        let entry_path_clean = PathBuf::from(clean_path);
+
         let item = FileEntry {
             name,
-            path: entry_path,
+            path: entry_path_clean,
             is_dir,
             is_hidden,
             size,
@@ -1441,7 +1561,7 @@ fn execute_remote_cmd(sess: &ssh2::Session, cmd: &str) -> Result<String, String>
 pub fn execute_sudo_cmd(sess: &ssh2::Session, cmd: &str, sudo_password: Option<&str>) -> Result<String, String> {
     let mut ch = sess.channel_session().map_err(|e| format!("Channel error: {}", e))?;
     if let Some(pwd) = sudo_password.filter(|p| !p.trim().is_empty()) {
-        let full_cmd = format!("echo '{}' | sudo -S -k -- sh -c '{}'", pwd.replace('\'', "'\\''"), cmd.replace('\'', "'\\''"));
+        let full_cmd = format!("printf '%s\\n' '{}' | sudo -S -k -p '' -- sh -c '{}'", pwd.replace('\'', "'\\''"), cmd.replace('\'', "'\\''"));
         ch.exec(&full_cmd).map_err(|e| format!("Exec error: {}", e))?;
     } else {
         let full_cmd = format!("sudo -n -- sh -c '{}'", cmd.replace('\'', "'\\''"));
@@ -1449,11 +1569,23 @@ pub fn execute_sudo_cmd(sess: &ssh2::Session, cmd: &str, sudo_password: Option<&
     }
     let mut out_bytes = Vec::new();
     let _ = ch.read_to_end(&mut out_bytes);
+    let mut err_bytes = Vec::new();
+    let _ = ch.stderr().read_to_end(&mut err_bytes);
     let _ = ch.wait_close();
     let exit_code = ch.exit_status().unwrap_or(0);
     let out = String::from_utf8_lossy(&out_bytes).to_string();
-    if exit_code != 0 && (out.contains("incorrect password") || out.contains("a password is required") || out.contains("sudo: a terminal is required")) {
-        return Err(format!("Sudo failed (exit {}): {}", exit_code, out.trim()));
+    let err = String::from_utf8_lossy(&err_bytes).to_string();
+    if exit_code != 0 {
+        let clean_err = err.trim();
+        let clean_out = out.trim();
+        let msg = if !clean_err.is_empty() {
+            clean_err
+        } else if !clean_out.is_empty() {
+            clean_out
+        } else {
+            "Sudo command exited with non-zero status"
+        };
+        return Err(format!("Sudo failed (exit {}): {}", exit_code, msg));
     }
     Ok(out)
 }
@@ -1497,31 +1629,15 @@ fn write_sudo_file_base64(
     content: &str,
     sudo_password: Option<&str>,
 ) -> Result<(), String> {
+    let clean_remote = remote_path.replace('\\', "/");
     let b64_str = base64::engine::general_purpose::STANDARD.encode(content.as_bytes());
-    // Write via base64 -d into target file
+    // Write via base64 -d into target file using execute_sudo_cmd to ensure proper stdin & sudo handling
     let write_cmd = format!(
-        "echo '{}' | base64 -d | sudo {}tee '{}' > /dev/null",
+        "printf '%s' '{}' | base64 -d > '{}'",
         b64_str,
-        if sudo_password.is_some() { "-S -k " } else { "-n " },
-        remote_path.replace('\'', "'\\''")
+        clean_remote.replace('\'', "'\\''")
     );
-    let mut ch = sess.channel_session().map_err(|e| format!("Channel error: {}", e))?;
-    if let Some(pwd) = sudo_password.filter(|p| !p.trim().is_empty()) {
-        // Feed password on first line then base64
-        let full_input = format!("{}\n", pwd);
-        ch.exec(&write_cmd).map_err(|e| format!("Exec error: {}", e))?;
-        let _ = ch.write_all(full_input.as_bytes());
-    } else {
-        ch.exec(&write_cmd).map_err(|e| format!("Exec error: {}", e))?;
-    }
-    let _ = ch.send_eof();
-    let mut out_bytes = Vec::new();
-    let _ = ch.read_to_end(&mut out_bytes);
-    let _ = ch.wait_close();
-    let exit_code = ch.exit_status().unwrap_or(0);
-    if exit_code != 0 {
-        return Err(format!("Sudo write failed (exit code {})", exit_code));
-    }
+    execute_sudo_cmd(sess, &write_cmd, sudo_password)?;
     Ok(())
 }
 
@@ -1530,6 +1646,8 @@ pub fn read_sudo_dir(
     dir_path: &str,
     sudo_password: Option<&str>,
 ) -> Result<Vec<FileEntry>, String> {
+    let clean_dir = dir_path.replace('\\', "/");
+    let clean_dir_trimmed = clean_dir.trim_end_matches('/');
     // Uses `find` with printf for deterministic parsing:
     // %y = type ('d' for dir, 'f' for regular file, 'l' for symlink)
     // %s = size in bytes
@@ -1540,7 +1658,7 @@ pub fn read_sudo_dir(
     // %f = filename
     let probe_cmd = format!(
         "find '{}' -mindepth 1 -maxdepth 1 -printf '%y\\t%s\\t%T@\\t%m\\t%u\\t%g\\t%f\\n' 2>/dev/null",
-        dir_path.replace('\'', "'\\''")
+        clean_dir.replace('\'', "'\\''")
     );
     let output = execute_sudo_cmd(sess, &probe_cmd, sudo_password)?;
     let mut dirs = Vec::new();
@@ -1571,7 +1689,12 @@ pub fn read_sudo_dir(
             None
         };
         let permissions = format_mode(mode_octal, is_dir);
-        let full_path = PathBuf::from(dir_path).join(&name);
+        let full_path_str = if clean_dir_trimmed.is_empty() {
+            format!("/{}", name)
+        } else {
+            format!("{}/{}", clean_dir_trimmed, name)
+        };
+        let full_path = PathBuf::from(full_path_str);
 
         let entry = FileEntry {
             name,

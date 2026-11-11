@@ -7,7 +7,7 @@ use crate::session::{Session, SessionType};
 use crate::sftp::ui::render_sftp_sidebar;
 use crate::sftp::FileExplorer;
 use crate::terminal::vt_screen::TerminalTheme;
-use crate::terminal::widget::{TerminalAction, TerminalWidget};
+use crate::terminal::widget::{copy_text_to_clipboard, TerminalAction, TerminalWidget};
 use crate::terminal::PtySession;
 use crate::tunneling::TunnelManager;
 use crossbeam_channel::{unbounded, Receiver, Sender};
@@ -3308,7 +3308,7 @@ impl eframe::App for RustyBoxApp {
                         }
                         if let Some(copy_s) = to_copy_settings {
                             if let Ok(json) = serde_json::to_string(&copy_s) {
-                                ctx.output_mut(|o| o.copied_text = json);
+                                copy_text_to_clipboard(ui, &json);
                                 self.status_toast = Some(("Session settings copied to clipboard".into(), std::time::Instant::now()));
                             }
                         }
@@ -6561,21 +6561,31 @@ impl eframe::App for RustyBoxApp {
                                                     ui.label(if user.is_empty() { "-" } else { &user });
                                                     ui.label(&host);
 
-                                                    // Password Show/Hide
+                                                    // Password Show/Hide & Copy
                                                     let is_pw_enc = is_encrypted(pw);
+                                                    let decrypted_pw = if is_pw_enc {
+                                                        if is_vault_unlocked {
+                                                            self.storage.vault_key().and_then(|k| decrypt_str(&k, pw).ok())
+                                                        } else {
+                                                            None
+                                                        }
+                                                    } else {
+                                                        Some(pw.clone())
+                                                    };
+
                                                     let is_unmasked = self.manage_passwords_show_all
                                                         || self.manage_passwords_unmasked_ids.contains(&sess.id);
                                                     let (pw_display, pw_col) = if is_pw_enc && !is_vault_unlocked {
                                                         ("[🔒 AES-256 Encrypted]".to_string(), Color32::from_rgb(251, 191, 36))
                                                     } else if is_unmasked {
-                                                        (pw.clone(), Color32::from_rgb(226, 232, 240))
+                                                        (decrypted_pw.clone().unwrap_or_else(|| pw.clone()), Color32::from_rgb(226, 232, 240))
                                                     } else {
                                                         ("••••••••••••".to_string(), Color32::from_rgb(148, 163, 184))
                                                     };
 
                                                     ui.horizontal(|ui| {
                                                         ui.label(RichText::new(pw_display).family(egui::FontFamily::Monospace).color(pw_col));
-                                                        if !(is_pw_enc && !is_vault_unlocked) {
+                                                        if let Some(ref plain) = decrypted_pw {
                                                             let eye_icon = if is_unmasked { "🔒" } else { "👁" };
                                                             if ui.small_button(eye_icon).on_hover_text("Toggle password visibility for this row").clicked() {
                                                                 if let Some(pos) = self.manage_passwords_unmasked_ids.iter().position(|id| id == &sess.id) {
@@ -6584,16 +6594,26 @@ impl eframe::App for RustyBoxApp {
                                                                     self.manage_passwords_unmasked_ids.push(sess.id.clone());
                                                                 }
                                                             }
+                                                            if ui.small_button("📋").on_hover_text("Copy password to clipboard").clicked() {
+                                                                copy_text_to_clipboard(ui, plain);
+                                                                self.status_toast = Some(("Password copied to clipboard".into(), std::time::Instant::now()));
+                                                            }
                                                         } else {
-                                                            if ui.small_button("🔓").on_hover_text("Unlock Vault to view decrypted password").clicked() {
+                                                            if ui.small_button("🔓").on_hover_text("Unlock Vault to view and copy decrypted password").clicked() {
                                                                 self.show_vault = true;
                                                             }
                                                         }
                                                     });
 
-                                                    if ui.small_button("🗑").on_hover_text("Delete saved password").clicked() {
-                                                        to_delete_id = Some(sess.id.clone());
-                                                    }
+                                                    ui.horizontal(|ui| {
+                                                        ui.add_space(28.0);
+                                                        if ui.add(egui::Button::new(RichText::new("🗑").color(Color32::from_rgb(248, 113, 113))).small())
+                                                            .on_hover_text("Delete saved password")
+                                                            .clicked()
+                                                        {
+                                                            to_delete_id = Some(sess.id.clone());
+                                                        }
+                                                    });
                                                     ui.end_row();
                                                 }
                                             }
@@ -6666,18 +6686,28 @@ impl eframe::App for RustyBoxApp {
                                                 ui.label(&cred.name);
                                                 ui.label(&cred.username);
                                                 let is_cred_enc = is_encrypted(&cred.password);
+                                                let decrypted_cred_pw = if is_cred_enc {
+                                                    if is_vault_unlocked {
+                                                        self.storage.vault_key().and_then(|k| decrypt_str(&k, &cred.password).ok())
+                                                    } else {
+                                                        None
+                                                    }
+                                                } else {
+                                                    Some(cred.password.clone())
+                                                };
+
                                                 let cred_unmasked = self.manage_passwords_show_all
                                                     || self.manage_passwords_unmasked_ids.contains(&format!("cred_{}", c_idx));
                                                 let (c_display, c_col) = if is_cred_enc && !is_vault_unlocked {
                                                     ("[🔒 AES-256 Encrypted]".to_string(), Color32::from_rgb(251, 191, 36))
                                                 } else if cred_unmasked {
-                                                    (cred.password.clone(), Color32::from_rgb(226, 232, 240))
+                                                    (decrypted_cred_pw.clone().unwrap_or_else(|| cred.password.clone()), Color32::from_rgb(226, 232, 240))
                                                 } else {
                                                     ("••••••••••••".to_string(), Color32::from_rgb(148, 163, 184))
                                                 };
                                                 ui.horizontal(|ui| {
                                                     ui.label(RichText::new(c_display).family(egui::FontFamily::Monospace).color(c_col));
-                                                    if !(is_cred_enc && !is_vault_unlocked) {
+                                                    if let Some(ref plain) = decrypted_cred_pw {
                                                         let eye = if cred_unmasked { "🔒" } else { "👁" };
                                                         if ui.small_button(eye).on_hover_text("Toggle password visibility").clicked() {
                                                             let key = format!("cred_{}", c_idx);
@@ -6687,15 +6717,25 @@ impl eframe::App for RustyBoxApp {
                                                                 self.manage_passwords_unmasked_ids.push(key);
                                                             }
                                                         }
+                                                        if ui.small_button("📋").on_hover_text("Copy password to clipboard").clicked() {
+                                                            copy_text_to_clipboard(ui, plain);
+                                                            self.status_toast = Some(("Credential password copied to clipboard".into(), std::time::Instant::now()));
+                                                        }
                                                     } else {
-                                                        if ui.small_button("🔓").on_hover_text("Unlock Vault to view decrypted password").clicked() {
+                                                        if ui.small_button("🔓").on_hover_text("Unlock Vault to view and copy decrypted password").clicked() {
                                                             self.show_vault = true;
                                                         }
                                                     }
                                                 });
-                                                if ui.small_button("🗑").on_hover_text("Delete credential").clicked() {
-                                                    to_delete_cred_idx = Some(c_idx);
-                                                }
+                                                ui.horizontal(|ui| {
+                                                    ui.add_space(28.0);
+                                                    if ui.add(egui::Button::new(RichText::new("🗑").color(Color32::from_rgb(248, 113, 113))).small())
+                                                        .on_hover_text("Delete credential")
+                                                        .clicked()
+                                                    {
+                                                        to_delete_cred_idx = Some(c_idx);
+                                                    }
+                                                });
                                                 ui.end_row();
                                             }
 

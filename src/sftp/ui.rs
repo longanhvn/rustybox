@@ -403,22 +403,77 @@ pub fn render_sftp_sidebar(ui: &mut Ui, explorer: &mut FileExplorer) {
                 }
 
                 ui.label(RichText::new("Quick Jump").size(11.0).weak());
-                if let Some(home) = dirs::home_dir() {
-                    if ui.button(format!("Home ({})", home.display())).clicked() {
-                        jump_to = Some(home);
+                if explorer.is_remote {
+                    let remote_home = explorer.remote_home_dir.clone().unwrap_or_else(|| {
+                        if explorer.remote_os == crate::sftp::remote::RemoteOsKind::Windows {
+                            PathBuf::from("C:\\")
+                        } else if let Some(ref lbl) = explorer.remote_label {
+                            if lbl.starts_with("root@") {
+                                PathBuf::from("/root")
+                            } else if let Some((u, _)) = lbl.split_once('@') {
+                                PathBuf::from(format!("/home/{}", u))
+                            } else {
+                                PathBuf::from("/root")
+                            }
+                        } else {
+                            PathBuf::from("/root")
+                        }
+                    });
+                    let home_disp = remote_home.to_string_lossy();
+                    if ui.button(format!("Home ({})", home_disp)).clicked() {
+                        jump_to = Some(remote_home);
                     }
-                }
-                if ui.button("/ (Root)").clicked() {
-                    jump_to = Some(PathBuf::from("/"));
-                }
-                if ui.button("/tmp").clicked() {
-                    jump_to = Some(PathBuf::from("/tmp"));
-                }
-                if ui.button("/var/log").clicked() {
-                    jump_to = Some(PathBuf::from("/var/log"));
-                }
-                if ui.button("/etc").clicked() {
-                    jump_to = Some(PathBuf::from("/etc"));
+                    if explorer.remote_os == crate::sftp::remote::RemoteOsKind::Posix {
+                        if ui.button("/ (Root)").clicked() {
+                            jump_to = Some(PathBuf::from("/"));
+                        }
+                        if ui.button("/tmp").clicked() {
+                            jump_to = Some(PathBuf::from("/tmp"));
+                        }
+                        if ui.button("/var/log").clicked() {
+                            jump_to = Some(PathBuf::from("/var/log"));
+                        }
+                        if ui.button("/etc").clicked() {
+                            jump_to = Some(PathBuf::from("/etc"));
+                        }
+                    } else {
+                        if ui.button("C:\\").clicked() {
+                            jump_to = Some(PathBuf::from("C:\\"));
+                        }
+                        if ui.button("C:\\Users").clicked() {
+                            jump_to = Some(PathBuf::from("C:\\Users"));
+                        }
+                        if ui.button("C:\\ProgramData").clicked() {
+                            jump_to = Some(PathBuf::from("C:\\ProgramData"));
+                        }
+                    }
+                } else {
+                    if let Some(home) = dirs::home_dir() {
+                        if ui.button(format!("Home ({})", home.display())).clicked() {
+                            jump_to = Some(home);
+                        }
+                    }
+                    #[cfg(windows)]
+                    {
+                        if ui.button("C:\\").clicked() {
+                            jump_to = Some(PathBuf::from("C:\\"));
+                        }
+                    }
+                    #[cfg(not(windows))]
+                    {
+                        if ui.button("/ (Root)").clicked() {
+                            jump_to = Some(PathBuf::from("/"));
+                        }
+                        if ui.button("/tmp").clicked() {
+                            jump_to = Some(PathBuf::from("/tmp"));
+                        }
+                        if ui.button("/var/log").clicked() {
+                            jump_to = Some(PathBuf::from("/var/log"));
+                        }
+                        if ui.button("/etc").clicked() {
+                            jump_to = Some(PathBuf::from("/etc"));
+                        }
+                    }
                 }
                 if !explorer.path_history.is_empty() {
                     ui.separator();
@@ -1349,7 +1404,7 @@ pub fn render_sftp_sidebar(ui: &mut Ui, explorer: &mut FileExplorer) {
                     }
                 }
                 if let Some(text) = context_copy_text {
-                    ui.output_mut(|o| o.copied_text = text);
+                    crate::terminal::widget::copy_text_to_clipboard(ui, &text);
                     explorer.status_message = Some("Copied to clipboard".into());
                 }
                 if context_toggle_hidden {
@@ -1944,6 +1999,9 @@ pub fn render_sftp_sidebar(ui: &mut Ui, explorer: &mut FileExplorer) {
                         .desired_width(f32::INFINITY)
                         .hint_text("Mật khẩu sudo..."),
                 );
+                if !resp.has_focus() {
+                    resp.request_focus();
+                }
                 if resp.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
                     do_confirm = true;
                 }

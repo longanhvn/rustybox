@@ -8,7 +8,7 @@ use parking_lot::Mutex;
 pub mod remote;
 pub mod ui;
 
-use remote::{RemoteSftpClient, SftpEvent, SftpTargetConfig, TransferProgressInfo};
+use remote::{RemoteOsKind, RemoteSftpClient, SftpEvent, SftpTargetConfig, TransferProgressInfo};
 
 #[derive(Clone, Debug)]
 pub struct ConflictItem {
@@ -80,6 +80,7 @@ pub struct RemoteSessionState {
     pub path_history: Vec<PathBuf>,
     pub remote_raw_entries: Vec<FileEntry>,
     pub remote_home_dir: Option<PathBuf>,
+    pub remote_os: RemoteOsKind,
     pub last_synced_terminal_cwd: Option<PathBuf>,
     pub selected_file: Option<PathBuf>,
     pub selected_files: Vec<PathBuf>,
@@ -120,6 +121,7 @@ pub struct FileExplorer {
     pub remote_telemetry: Option<crate::telemetry::RemoteSystemMetrics>,
     pub remote_raw_entries: Vec<FileEntry>,
     pub remote_home_dir: Option<PathBuf>,
+    pub remote_os: RemoteOsKind,
     pub last_synced_terminal_cwd: Option<PathBuf>,
     pub remote_sessions: HashMap<String, RemoteSessionState>,
     // View & RustyBox SFTP options
@@ -207,6 +209,7 @@ impl FileExplorer {
             remote_telemetry: None,
             remote_raw_entries: Vec::new(),
             remote_home_dir: None,
+            remote_os: RemoteOsKind::Posix,
             last_synced_terminal_cwd: None,
             remote_sessions: HashMap::new(),
             show_hidden: true,
@@ -260,14 +263,62 @@ impl FileExplorer {
         explorer
     }
 
+    pub fn format_path(&self, path: &Path) -> String {
+        Self::format_path_with_mode(path, self.is_remote, self.remote_os)
+    }
+
     pub fn format_display_path(path: &Path) -> String {
-        let raw = path.to_string_lossy().to_string();
-        if raw.ends_with('/') || raw.ends_with('\\') {
-            raw
-        } else if raw.contains('\\') {
-            format!("{}\\", raw)
+        Self::format_path_with_mode(path, false, RemoteOsKind::Posix)
+    }
+
+    pub fn format_path_with_mode(path: &Path, is_remote: bool, remote_os: RemoteOsKind) -> String {
+        let raw = path.to_string_lossy();
+        if is_remote {
+            match remote_os {
+                RemoteOsKind::Posix => {
+                    let clean = raw.replace('\\', "/");
+                    let trimmed = clean.trim();
+                    if trimmed.is_empty() || trimmed == "/" {
+                        "/".to_string()
+                    } else if trimmed.ends_with('/') {
+                        trimmed.to_string()
+                    } else {
+                        format!("{}/", trimmed)
+                    }
+                }
+                RemoteOsKind::Windows => {
+                    let clean = raw.replace('/', "\\");
+                    let trimmed = clean.trim();
+                    if trimmed.ends_with('\\') {
+                        trimmed.to_string()
+                    } else {
+                        format!("{}\\", trimmed)
+                    }
+                }
+            }
         } else {
-            format!("{}/", raw)
+            #[cfg(windows)]
+            {
+                let clean = raw.replace('/', "\\");
+                let trimmed = clean.trim();
+                if trimmed.ends_with('\\') {
+                    trimmed.to_string()
+                } else {
+                    format!("{}\\", trimmed)
+                }
+            }
+            #[cfg(not(windows))]
+            {
+                let clean = raw.replace('\\', "/");
+                let trimmed = clean.trim();
+                if trimmed.is_empty() || trimmed == "/" {
+                    "/".to_string()
+                } else if trimmed.ends_with('/') {
+                    trimmed.to_string()
+                } else {
+                    format!("{}/", trimmed)
+                }
+            }
         }
     }
 
@@ -358,6 +409,7 @@ impl FileExplorer {
             sess.path_history = self.path_history.clone();
             sess.remote_raw_entries = self.remote_raw_entries.clone();
             sess.remote_home_dir = self.remote_home_dir.clone();
+            sess.remote_os = self.remote_os;
             sess.last_synced_terminal_cwd = self.last_synced_terminal_cwd.clone();
             sess.selected_file = self.selected_file.clone();
             sess.selected_files = self.selected_files.clone();
@@ -380,6 +432,7 @@ impl FileExplorer {
             self.path_history = sess.path_history;
             self.remote_raw_entries = sess.remote_raw_entries;
             self.remote_home_dir = sess.remote_home_dir;
+            self.remote_os = sess.remote_os;
             self.last_synced_terminal_cwd = sess.last_synced_terminal_cwd;
             self.selected_file = sess.selected_file;
             self.selected_files = sess.selected_files;
@@ -434,6 +487,7 @@ impl FileExplorer {
             path_history: vec![default_dir.clone()],
             remote_raw_entries: Vec::new(),
             remote_home_dir: Some(default_dir),
+            remote_os: RemoteOsKind::Posix,
             last_synced_terminal_cwd: None,
             selected_file: None,
             selected_files: Vec::new(),
@@ -466,6 +520,7 @@ impl FileExplorer {
         self.remote_telemetry = None;
         self.remote_raw_entries.clear();
         self.remote_home_dir = None;
+        self.remote_os = RemoteOsKind::Posix;
         self.last_synced_terminal_cwd = None;
         self.current_path = dirs::home_dir().unwrap_or_else(|| PathBuf::from("."));
         self.path_input = Self::format_display_path(&self.current_path);
@@ -664,14 +719,15 @@ impl FileExplorer {
 
             for evt in events {
                 match evt {
-                    SftpEvent::Connected { initial_dir, .. } => {
+                    SftpEvent::Connected { initial_dir, remote_os, .. } => {
                         sess.is_connected = true;
                         sess.is_loading = false;
                         self.just_connected = true;
+                        sess.remote_os = remote_os;
                         let init_path = PathBuf::from(&initial_dir);
                         sess.remote_home_dir = Some(init_path.clone());
                         sess.current_path = init_path.clone();
-                        sess.path_input = Self::format_display_path(&sess.current_path);
+                        sess.path_input = Self::format_path_with_mode(&sess.current_path, true, remote_os);
                         if !sess.path_history.contains(&sess.current_path) {
                             sess.path_history.insert(0, sess.current_path.clone());
                         }
@@ -684,7 +740,7 @@ impl FileExplorer {
                     SftpEvent::DirListed { dir, entries } => {
                         sess.is_connected = true;
                         sess.current_path = PathBuf::from(&dir);
-                        sess.path_input = Self::format_display_path(&sess.current_path);
+                        sess.path_input = Self::format_path_with_mode(&sess.current_path, true, sess.remote_os);
                         sess.remote_raw_entries = entries;
                         sess.is_loading = false;
                         sess.error_message = None;
@@ -755,7 +811,7 @@ impl FileExplorer {
 
             if needs_dir_refresh {
                 sess.is_loading = true;
-                let path_str = sess.current_path.to_string_lossy().to_string();
+                let path_str = sess.current_path.to_string_lossy().replace('\\', "/");
                 sess.client.lock().list_dir(&path_str);
             }
         }
@@ -805,15 +861,44 @@ impl FileExplorer {
     pub fn set_path(&mut self, path: PathBuf) {
         self.clear_selection();
         if self.is_remote {
-            self.current_path = path.clone();
-            self.path_input = Self::format_display_path(&self.current_path);
+            let normalized = match self.remote_os {
+                RemoteOsKind::Posix => {
+                    let mut s = path.to_string_lossy().replace('\\', "/");
+                    if !s.starts_with('/') && !s.is_empty() {
+                        s = format!("/{}", s);
+                    }
+                    if s.len() > 1 && s.ends_with('/') {
+                        s.pop();
+                    }
+                    if s.is_empty() { "/".to_string() } else { s }
+                }
+                RemoteOsKind::Windows => {
+                    let s = path.to_string_lossy().replace('/', "\\");
+                    let trimmed = s.trim_end_matches('\\');
+                    if trimmed.is_empty() {
+                        "C:\\".to_string()
+                    } else if trimmed.len() == 2 && trimmed.ends_with(':') {
+                        format!("{}\\", trimmed)
+                    } else {
+                        trimmed.to_string()
+                    }
+                }
+            };
+            self.current_path = PathBuf::from(normalized);
+            self.path_input = self.format_path(&self.current_path);
+            if !self.path_history.contains(&self.current_path) {
+                self.path_history.insert(0, self.current_path.clone());
+                if self.path_history.len() > 12 {
+                    self.path_history.truncate(12);
+                }
+            }
             self.refresh();
             return;
         }
 
         if path.is_dir() {
             self.current_path = path.clone();
-            self.path_input = Self::format_display_path(&self.current_path);
+            self.path_input = self.format_path(&self.current_path);
             if !self.path_history.contains(&path) {
                 self.path_history.insert(0, path);
                 if self.path_history.len() > 12 {
@@ -941,12 +1026,33 @@ impl FileExplorer {
 
     pub fn go_up(&mut self) {
         if self.is_remote {
-            let path_str = self.current_path.to_string_lossy().to_string();
-            let parent_str = if let Some(parent) = Path::new(&path_str).parent() {
-                let p = parent.to_string_lossy().to_string();
-                if p.is_empty() { "/".to_string() } else { p }
-            } else {
-                "/".to_string()
+            let parent_str = match self.remote_os {
+                RemoteOsKind::Posix => {
+                    let s = self.current_path.to_string_lossy().replace('\\', "/");
+                    let trimmed = s.trim_end_matches('/');
+                    if let Some(pos) = trimmed.rfind('/') {
+                        if pos == 0 {
+                            "/".to_string()
+                        } else {
+                            trimmed[..pos].to_string()
+                        }
+                    } else {
+                        "/".to_string()
+                    }
+                }
+                RemoteOsKind::Windows => {
+                    let s = self.current_path.to_string_lossy().replace('/', "\\");
+                    let trimmed = s.trim_end_matches('\\');
+                    if let Some(pos) = trimmed.rfind('\\') {
+                        if pos <= 2 && trimmed.contains(':') {
+                            format!("{}\\", &trimmed[..=2])
+                        } else {
+                            trimmed[..pos].to_string()
+                        }
+                    } else {
+                        s
+                    }
+                }
             };
             self.set_path(PathBuf::from(parent_str));
             return;
@@ -963,7 +1069,10 @@ impl FileExplorer {
         if self.is_remote {
             if let Some(ref client) = self.remote_client {
                 self.is_loading = true;
-                let path_str = self.current_path.to_string_lossy().to_string();
+                let path_str = match self.remote_os {
+                    RemoteOsKind::Posix => self.current_path.to_string_lossy().replace('\\', "/"),
+                    RemoteOsKind::Windows => self.current_path.to_string_lossy().replace('\\', "/"), // OpenSSH sftp accepts forward slash
+                };
                 client.lock().list_dir(&path_str);
             }
             self.save_active_remote_state();
@@ -971,7 +1080,7 @@ impl FileExplorer {
         }
 
         self.entries.clear();
-        self.path_input = Self::format_display_path(&self.current_path);
+        self.path_input = self.format_path(&self.current_path);
 
         match fs::read_dir(&self.current_path) {
             Ok(read_dir) => {
@@ -1167,7 +1276,7 @@ impl FileExplorer {
         }
 
         if self.is_remote {
-            let path_str = path.to_string_lossy().to_string();
+            let path_str = path.to_string_lossy().replace('\\', "/");
             if let Some(ref client) = self.remote_client {
                 self.is_loading = true;
                 client.lock().read_file(&path_str);
@@ -1218,7 +1327,7 @@ impl FileExplorer {
 
     pub fn save_editor_file(&mut self, path: PathBuf, content: String, remote_label: Option<String>) {
         if let Some(ref target_label) = remote_label {
-            let path_str = path.to_string_lossy().to_string();
+            let path_str = path.to_string_lossy().replace('\\', "/");
             if let Some(sess) = self.remote_sessions.get_mut(target_label) {
                 sess.is_loading = true;
                 sess.client.lock().write_file(&path_str, &content);
@@ -1229,7 +1338,7 @@ impl FileExplorer {
             return;
         }
         if self.is_remote {
-            let path_str = path.to_string_lossy().to_string();
+            let path_str = path.to_string_lossy().replace('\\', "/");
             if let Some(ref client) = self.remote_client {
                 self.is_loading = true;
                 client.lock().write_file(&path_str, &content);
@@ -1258,7 +1367,7 @@ impl FileExplorer {
                 .or_else(|| self.remote_raw_entries.iter().find(|e| e.path == path))
                 .map(|e| e.is_dir)
                 .unwrap_or(false);
-            let path_str = path.to_string_lossy().to_string();
+            let path_str = path.to_string_lossy().replace('\\', "/");
             if let Some(ref client) = self.remote_client {
                 self.is_loading = true;
                 client.lock().delete(&path_str, is_dir);
@@ -1288,9 +1397,48 @@ impl FileExplorer {
     }
 
     pub fn delete_entries(&mut self, paths: &[PathBuf]) {
-        for p in paths {
-            self.delete_entry(p);
+        if self.is_remote {
+            let mut items = Vec::new();
+            for p in paths {
+                let is_dir = self
+                    .entries
+                    .iter()
+                    .find(|e| &e.path == p)
+                    .or_else(|| self.remote_raw_entries.iter().find(|e| &e.path == p))
+                    .map(|e| e.is_dir)
+                    .unwrap_or(false);
+                let clean_p = p.to_string_lossy().replace('\\', "/");
+                items.push((clean_p, is_dir));
+            }
+            if let Some(ref client) = self.remote_client {
+                self.is_loading = true;
+                client.lock().delete_many(items);
+            }
+            for p in paths {
+                if self.selected_file.as_deref() == Some(p.as_path()) {
+                    self.selected_file = None;
+                }
+                self.selected_files.retain(|sp| sp != p);
+            }
+            self.save_active_remote_state();
+            return;
         }
+
+        for p in paths {
+            let res = if p.is_dir() {
+                fs::remove_dir_all(p)
+            } else {
+                fs::remove_file(p)
+            };
+            if let Err(e) = res {
+                self.error_message = Some(format!("Delete failed: {}", e));
+            }
+            if self.selected_file.as_deref() == Some(p.as_path()) {
+                self.selected_file = None;
+            }
+            self.selected_files.retain(|sp| sp != p);
+        }
+        self.refresh();
     }
 
     pub fn create_folder(&mut self, name: &str) {
@@ -2492,6 +2640,7 @@ mod tests {
             path_history: vec![],
             remote_raw_entries: vec![],
             remote_home_dir: Some(PathBuf::from("/home/ubuntu")),
+            remote_os: RemoteOsKind::Posix,
             last_synced_terminal_cwd: None,
             selected_file: None,
             selected_files: Vec::new(),
@@ -2570,6 +2719,7 @@ mod tests {
             path_history: vec![],
             remote_raw_entries: vec![],
             remote_home_dir: Some(PathBuf::from("/home/ubuntu")),
+            remote_os: RemoteOsKind::Posix,
             last_synced_terminal_cwd: None,
             selected_file: None,
             selected_files: Vec::new(),
@@ -2669,5 +2819,145 @@ mod tests {
         assert!(explorer.get_selected_paths().is_empty());
 
         let _ = fs::remove_dir_all(&temp_dir);
+    }
+
+    #[test]
+    fn test_remote_sftp_delete_many_and_windows_backslash_clean() {
+        use std::sync::mpsc::channel;
+        use crate::sftp::remote::SftpCommand;
+
+        let mut explorer = FileExplorer::new();
+        let (cmd_tx, cmd_rx) = channel();
+        let (_event_tx, event_rx) = channel();
+        let client = RemoteSftpClient::new_mock(cmd_tx, event_rx);
+        let client_arc = std::sync::Arc::new(parking_lot::Mutex::new(client));
+
+        let label = "test_sess".to_string();
+        let sess = RemoteSessionState {
+            label: label.clone(),
+            config: SftpTargetConfig {
+                host: "198.51.100.42".into(),
+                port: 22,
+                user: "root".into(),
+                password: Some("secret".into()),
+                key_path: None,
+                sudo_mode: true,
+                sudo_password: Some("secret".into()),
+            },
+            current_path: PathBuf::from("/var/log"),
+            path_input: "/var/log".into(),
+            path_history: Vec::new(),
+            remote_raw_entries: Vec::new(),
+            remote_home_dir: None,
+            remote_os: RemoteOsKind::Posix,
+            last_synced_terminal_cwd: None,
+            selected_file: None,
+            selected_files: Vec::new(),
+            client: client_arc,
+            is_connected: true,
+            is_loading: false,
+            error_message: None,
+            status_message: None,
+            last_telemetry_poll: None,
+            remote_disk_stats: None,
+            remote_telemetry: None,
+            sudo_mode: true,
+            sudo_password: Some("secret".into()),
+        };
+
+        explorer.remote_sessions.insert(label.clone(), sess);
+        explorer.load_active_remote_state(&label);
+
+        // Populate entries with Windows-style backslash paths that might occur on Windows client
+        let p1 = PathBuf::from("/var/log\\nginx.log");
+        let p2 = PathBuf::from("/var/log\\syslog");
+        explorer.entries = vec![
+            FileEntry {
+                name: "nginx.log".into(),
+                path: p1.clone(),
+                is_dir: false,
+                is_hidden: false,
+                size: 100,
+                modified: None,
+                permissions: "-rw-r--r--".into(),
+                owner: "root".into(),
+                group: "root".into(),
+            },
+            FileEntry {
+                name: "syslog".into(),
+                path: p2.clone(),
+                is_dir: false,
+                is_hidden: false,
+                size: 200,
+                modified: None,
+                permissions: "-rw-r--r--".into(),
+                owner: "root".into(),
+                group: "root".into(),
+            },
+        ];
+
+        // Multi-select both files and batch delete
+        explorer.select_single(p1.clone());
+        explorer.toggle_select(p2.clone());
+        assert_eq!(explorer.get_selected_paths().len(), 2);
+
+        let targets = explorer.get_selected_paths();
+        explorer.delete_entries(&targets);
+
+        let cmd = cmd_rx.try_recv().expect("DeleteMany must be sent to worker");
+        match cmd {
+            SftpCommand::DeleteMany(items) => {
+                assert_eq!(items.len(), 2);
+                // Backslashes must be normalized to forward slashes!
+                assert_eq!(items[0].0, "/var/log/nginx.log");
+                assert_eq!(items[0].1, false);
+                assert_eq!(items[1].0, "/var/log/syslog");
+                assert_eq!(items[1].1, false);
+            }
+            other => panic!("Expected SftpCommand::DeleteMany, got {:?}", other),
+        }
+
+        assert!(explorer.get_selected_paths().is_empty());
+    }
+
+    #[test]
+    fn test_sftp_path_formatting_linux_vs_windows_remote() {
+        let mut explorer = FileExplorer::new();
+        explorer.is_remote = true;
+
+        // 1. Remote Linux/POSIX Server
+        explorer.remote_os = RemoteOsKind::Posix;
+        explorer.set_path(PathBuf::from(r"/var/log\nginx"));
+        // Must normalize to /var/log/nginx
+        assert_eq!(explorer.current_path.to_string_lossy(), "/var/log/nginx");
+        assert_eq!(explorer.path_input, "/var/log/nginx/");
+
+        // Test go_up on Linux
+        explorer.go_up();
+        assert_eq!(explorer.current_path.to_string_lossy(), "/var/log");
+        assert_eq!(explorer.path_input, "/var/log/");
+
+        explorer.go_up();
+        assert_eq!(explorer.current_path.to_string_lossy(), "/var");
+        assert_eq!(explorer.path_input, "/var/");
+
+        explorer.go_up();
+        assert_eq!(explorer.current_path.to_string_lossy(), "/");
+        assert_eq!(explorer.path_input, "/");
+
+        // 2. Remote Windows OpenSSH Server
+        explorer.remote_os = RemoteOsKind::Windows;
+        explorer.set_path(PathBuf::from("C:/Users/Administrator"));
+        assert_eq!(explorer.current_path.to_string_lossy(), r"C:\Users\Administrator");
+        assert_eq!(explorer.path_input, r"C:\Users\Administrator\");
+
+        // Test go_up on Windows
+        explorer.go_up();
+        assert_eq!(explorer.current_path.to_string_lossy(), r"C:\Users");
+        assert_eq!(explorer.path_input, r"C:\Users\");
+
+        explorer.go_up();
+        assert_eq!(explorer.current_path.to_string_lossy(), r"C:\");
+        assert_eq!(explorer.path_input, r"C:\");
     }
 }

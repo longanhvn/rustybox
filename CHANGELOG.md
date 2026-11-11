@@ -8,15 +8,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ---
 
 ## [v1.3.98] - 2026-11-10
-### Added & Improved (Kibi-inspired Modular Code Editor)
+### Added & Improved (Kibi Modular Code Editor, Sudo Batch Deletion & Remote SFTP Path Normalization)
 - **Tích hợp Kibi-inspired Modular Code Editor (PR #9)**:
   - Tách trình chỉnh sửa văn bản thành module độc lập (`src/editor/`), hỗ trợ tô màu cú pháp (Syntax Highlighting) chuyên nghiệp cho 18+ ngôn ngữ lập trình và cấu hình: Shell/Bash, YAML, JSON, TOML, Python, Rust, C/C++, SQL, HTML/XML, JavaScript/TypeScript, Go, PHP, CSS, Lua, Ruby, Java/C#, v.v.
   - Hỗ trợ cú pháp nhúng đa ngữ cảnh trong HTML (JS trong `<script>`, CSS trong `<style>`, PHP trong `<?php ?>`, Ruby/ERB trong `<% %>`).
   - Thước căn thụt dòng thông minh (Visual Indent Guides `┊`), nút công cụ `🧹 Clean Tabs` chuyển đổi nhanh tab thành khoảng trắng.
   - Tìm kiếm từ khóa mạnh mẽ (`Ctrl + F`, `F3`, `Shift + F3`), zoom kích thước chữ, ngắt dòng (word wrap), và trạng thái lưu file an toàn chống mất dữ liệu.
   - Tự động nhận diện và chặn mở các tệp nhị phân / tệp nén (`.gz`, `.zip`, `.tar`, ELF) để tránh lỗi UTF-8 hoặc tràn bộ nhớ.
+- **Khắc phục triệt để xóa file trong chế độ Sudo SFTP (Root Mode)**:
+  - Chuẩn hóa phân cách đường dẫn Windows `\` thành `/` POSIX khi gửi lệnh sang server Linux từ máy client Windows, khắc phục hiện tượng lệnh `rm -rf` không tìm thấy file.
+  - Thêm lệnh `DeleteMany` xử lý xóa hàng loạt đồng thời cho các file được bôi chuột quét chọn (marquee / multi-selection), loại bỏ race condition và refresh thừa.
+  - Bắt trọn vẹn thông báo lỗi `stderr` của sudo và tự động focus ô nhập mật khẩu Sudo Modal.
+- **Tự động nhận diện OS của Server từ xa (`RemoteOsKind::Posix` vs `Windows`)**:
+  - Chuẩn hóa đường dẫn hiển thị, chuyển thư mục cha (`go_up`), và danh mục Quick Jump phù hợp theo hệ điều hành của máy chủ từ xa.
+- **Bổ sung nút Copy Mật khẩu trong Password Settings & An toàn thao tác**:
+  - Thêm nút copy nhanh `📋` gọi trực tiếp Win32 clipboard API (`arboard`), tự động giải mã AES-256-GCM từ Vault trước khi copy.
+  - Tách khoảng cách an toàn cho nút xóa `🗑` màu đỏ nhạt, tránh nguy cơ click xóa nhầm khi thao tác copy.
 - **Nâng phiên bản**:
-  - Tăng số hiệu phiên bản lên **`v1.3.98`** tích hợp hoàn chỉnh PR #9.
+  - Tăng số hiệu phiên bản lên **`v1.3.98`** tích hợp hoàn chỉnh PR #9 và các bản vá SFTP/Vault.
 
 ---
 
