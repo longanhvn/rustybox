@@ -6442,12 +6442,15 @@ impl eframe::App for RustyBoxApp {
         if self.show_manage_passwords {
             let mut open = self.show_manage_passwords;
             let mut close_dialog = false;
+            let screen_center = ctx.screen_rect().center();
             egui::Window::new("RustyBox passwords settings")
                 .open(&mut open)
                 .collapsible(false)
                 .resizable(true)
-                .default_size(Vec2::new(720.0, 520.0))
-                .anchor(egui::Align2::CENTER_CENTER, Vec2::ZERO)
+                .default_size(Vec2::new(740.0, 580.0))
+                .min_size(Vec2::new(600.0, 420.0))
+                .pivot(egui::Align2::CENTER_CENTER)
+                .default_pos(screen_center)
                 .show(ctx, |ui| {
                     // 1. Radio: Save sessions passwords
                     let cfg_pwd = self.storage.load_config();
@@ -6516,6 +6519,8 @@ impl eframe::App for RustyBoxApp {
                         // 4. Passwords Table
                         let search_term = self.manage_passwords_search.to_lowercase().trim().to_string();
                         let mut to_delete_id: Option<String> = None;
+                        let table_h = (ui.available_height() - 110.0).max(180.0);
+                        let table_w = (ui.available_width() - 16.0).max(500.0);
 
                         egui::Frame::none()
                             .fill(Color32::from_rgb(13, 17, 23))
@@ -6523,8 +6528,14 @@ impl eframe::App for RustyBoxApp {
                             .rounding(4.0)
                             .inner_margin(egui::Margin::same(8.0))
                             .show(ui, |ui| {
-                                ScrollArea::vertical().max_height(200.0).show(ui, |ui| {
-                                    egui::Grid::new("manage_passwords_grid")
+                                ScrollArea::vertical()
+                                    .id_salt("manage_passwords_scroll")
+                                    .max_height(table_h)
+                                    .min_scrolled_height(table_h)
+                                    .auto_shrink([false, false])
+                                    .show(ui, |ui| {
+                                        ui.set_min_width(table_w);
+                                        egui::Grid::new("manage_passwords_grid")
                                         .num_columns(5)
                                         .striped(true)
                                         .spacing([14.0, 6.0])
@@ -6664,14 +6675,22 @@ impl eframe::App for RustyBoxApp {
                         ui.add_space(4.0);
 
                         let mut to_delete_cred_idx: Option<usize> = None;
+                        let table_h = (ui.available_height() - 80.0).max(180.0);
+                        let table_w = (ui.available_width() - 16.0).max(500.0);
                         egui::Frame::none()
                             .fill(Color32::from_rgb(13, 17, 23))
                             .stroke(egui::Stroke::new(1.0, Color32::from_rgb(48, 54, 61)))
                             .rounding(4.0)
                             .inner_margin(egui::Margin::same(8.0))
                             .show(ui, |ui| {
-                                ScrollArea::vertical().max_height(200.0).show(ui, |ui| {
-                                    egui::Grid::new("manage_credentials_grid")
+                                ScrollArea::vertical()
+                                    .id_salt("manage_credentials_scroll")
+                                    .max_height(table_h)
+                                    .min_scrolled_height(table_h)
+                                    .auto_shrink([false, false])
+                                    .show(ui, |ui| {
+                                        ui.set_min_width(table_w);
+                                        egui::Grid::new("manage_credentials_grid")
                                         .num_columns(5)
                                         .striped(true)
                                         .spacing([14.0, 6.0])

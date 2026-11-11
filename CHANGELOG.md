@@ -24,6 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Bổ sung nút Copy Mật khẩu trong Password Settings & An toàn thao tác**:
   - Thêm nút copy nhanh `📋` gọi trực tiếp Win32 clipboard API (`arboard`), tự động giải mã AES-256-GCM từ Vault trước khi copy.
   - Tách khoảng cách an toàn cho nút xóa `🗑` màu đỏ nhạt, tránh nguy cơ click xóa nhầm khi thao tác copy.
+  - Tăng kích thước mặc định form Password Settings (`740x580`), mở khóa hoàn toàn resize/move tự do (`pivot + default_pos`), danh sách cuộn co giãn linh hoạt theo kích thước cửa sổ.
 - **Nâng phiên bản**:
   - Tăng số hiệu phiên bản lên **`v1.3.98`** tích hợp hoàn chỉnh PR #9 và các bản vá SFTP/Vault.
 
