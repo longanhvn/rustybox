@@ -165,6 +165,8 @@ pub struct Session {
     #[serde(default)]
     pub comments: String,
     #[serde(default)]
+    pub startup_macro: String,
+    #[serde(default)]
     pub last_connected_at: Option<String>,
     #[serde(default)]
     pub connect_count: u32,
@@ -203,6 +205,7 @@ impl Session {
             ssh_keepalive: true,
             tab_color: String::new(),
             comments: String::new(),
+            startup_macro: String::new(),
             last_connected_at: None,
             connect_count: 0,
         }
@@ -245,6 +248,7 @@ impl Session {
             ssh_keepalive: true,
             tab_color: String::new(),
             comments: String::new(),
+            startup_macro: String::new(),
             last_connected_at: None,
             connect_count: 0,
         }
@@ -598,5 +602,13 @@ mod tests {
         let edited = dlg.to_session();
         assert_eq!(edited.id, "legacy-1");
         assert_eq!(edited.name, "Legacy Server Renamed");
+        assert_eq!(edited.startup_macro, "");
+
+        // Test duplicating session preserves startup macro
+        parsed.startup_macro = "docker ps".to_string();
+        let mut dup = parsed.clone();
+        dup.id = uuid::Uuid::new_v4().to_string();
+        dup.name = format!("{} (Copy)", dup.name);
+        assert_eq!(dup.startup_macro, "docker ps");
     }
 }

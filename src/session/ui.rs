@@ -10,6 +10,7 @@ pub struct NewSessionDialog {
     pub request_open_passwords: bool,
     pub request_open_import: bool,
     pub available_credentials: Vec<crate::session::storage::Credential>,
+    pub available_macros: Vec<(String, String)>,
     pub session_name: String,
     pub folder_name: String,
     pub protocol_tab: usize, // 0: SSH, 1: Shell, 2: Serial, 3: Telnet, 4: RDP, 5: VNC, 6: FTP, 7: WSL, 8: SFTP
@@ -113,6 +114,7 @@ impl NewSessionDialog {
             request_open_passwords: false,
             request_open_import: false,
             available_credentials: Vec::new(),
+            available_macros: Vec::new(),
             session_name: "".into(),
             folder_name: "Servers".into(),
             protocol_tab: 0,
@@ -261,7 +263,8 @@ impl NewSessionDialog {
         } else {
             s.tab_color.clone()
         };
-        self.comments = s.comments.clone();
+        self.comments = s.comments.trim().to_string();
+        self.startup_macro = if s.startup_macro.is_empty() { "None".to_string() } else { s.startup_macro.clone() };
 
         match &s.session_type {
             SessionType::Ssh {
@@ -340,92 +343,96 @@ impl NewSessionDialog {
     }
 
     pub fn to_session(&self) -> Session {
-        let effective_user = if self.specify_username && !self.ssh_user.trim().is_empty() {
-            self.ssh_user.trim().to_string()
+        let clean_str = |s: &str| -> String {
+            s.replace(['\r', '\n', '\t'], "").trim().to_string()
+        };
+
+        let effective_user = if self.specify_username && !clean_str(&self.ssh_user).is_empty() {
+            clean_str(&self.ssh_user)
         } else {
             "root".to_string()
         };
 
-        let jump_str = if self.use_ssh_gateway && !self.gateway_host.trim().is_empty() {
-            if self.gateway_user.trim().is_empty() {
-                Some(format!("{}:{}", self.gateway_host.trim(), self.gateway_port))
+        let jump_str = if self.use_ssh_gateway && !clean_str(&self.gateway_host).is_empty() {
+            if clean_str(&self.gateway_user).is_empty() {
+                Some(format!("{}:{}", clean_str(&self.gateway_host), self.gateway_port))
             } else {
                 Some(format!(
                     "{}@{}:{}",
-                    self.gateway_user.trim(),
-                    self.gateway_host.trim(),
+                    clean_str(&self.gateway_user),
+                    clean_str(&self.gateway_host),
                     self.gateway_port
                 ))
             }
-        } else if !self.ssh_jump_host.trim().is_empty() {
-            Some(self.ssh_jump_host.trim().to_string())
+        } else if !clean_str(&self.ssh_jump_host).is_empty() {
+            Some(clean_str(&self.ssh_jump_host))
         } else {
             None
         };
 
         let session_type = match self.protocol_tab {
             1 => SessionType::LocalShell {
-                custom_shell: if self.local_shell.trim().is_empty() {
+                custom_shell: if clean_str(&self.local_shell).is_empty() {
                     None
                 } else {
-                    Some(self.local_shell.trim().to_string())
+                    Some(clean_str(&self.local_shell))
                 },
-                working_dir: if self.local_workdir.trim().is_empty() {
+                working_dir: if clean_str(&self.local_workdir).is_empty() {
                     None
                 } else {
-                    Some(self.local_workdir.trim().to_string())
+                    Some(clean_str(&self.local_workdir))
                 },
             },
             2 => SessionType::Serial {
-                port_name: self.serial_port.trim().to_string(),
+                port_name: clean_str(&self.serial_port),
                 baud_rate: self.serial_baud,
             },
             3 => SessionType::Telnet {
-                host: self.telnet_host.trim().to_string(),
+                host: clean_str(&self.telnet_host),
                 port: self.telnet_port,
             },
             4 => SessionType::Rdp {
-                host: self.rdp_host.trim().to_string(),
+                host: clean_str(&self.rdp_host),
                 port: self.rdp_port,
-                user: self.rdp_user.trim().to_string(),
+                user: clean_str(&self.rdp_user),
             },
             5 => SessionType::Vnc {
-                host: self.vnc_host.trim().to_string(),
+                host: clean_str(&self.vnc_host),
                 port: self.vnc_port,
             },
             6 | 8 => SessionType::Ftp {
-                host: self.ftp_host.trim().to_string(),
+                host: clean_str(&self.ftp_host),
                 port: self.ftp_port,
-                user: self.ftp_user.trim().to_string(),
+                user: clean_str(&self.ftp_user),
             },
             7 => SessionType::Wsl {
-                distro: if self.wsl_distro.trim().is_empty() {
+                distro: if clean_str(&self.wsl_distro).is_empty() {
                     "Ubuntu".into()
                 } else {
-                    self.wsl_distro.trim().to_string()
+                    clean_str(&self.wsl_distro)
                 },
-                user: if self.wsl_user.trim().is_empty() {
+                user: if clean_str(&self.wsl_user).is_empty() {
                     None
                 } else {
-                    Some(self.wsl_user.trim().to_string())
+                    Some(clean_str(&self.wsl_user))
                 },
-                working_dir: if self.wsl_workdir.trim().is_empty() {
+                working_dir: if clean_str(&self.wsl_workdir).is_empty() {
                     None
                 } else {
-                    Some(self.wsl_workdir.trim().to_string())
+                    Some(clean_str(&self.wsl_workdir))
                 },
             },
             _ => SessionType::Ssh {
-                host: self.ssh_host.trim().to_string(),
+                host: clean_str(&self.ssh_host),
                 port: self.ssh_port,
                 user: effective_user,
-                auth_method: if self.use_private_key && !self.ssh_key_path.trim().is_empty() {
+                auth_method: if self.use_private_key && !clean_str(&self.ssh_key_path).is_empty() {
                     AuthMethod::PrivateKey
                 } else {
                     self.ssh_auth.clone()
                 },
-                key_path: if self.use_private_key && !self.ssh_key_path.trim().is_empty() {
-                    Some(self.ssh_key_path.trim().to_string())
+                key_path: if self.use_private_key && !clean_str(&self.ssh_key_path).is_empty() {
+                    Some(clean_str(&self.ssh_key_path))
                 } else {
                     None
                 },
@@ -441,32 +448,33 @@ impl NewSessionDialog {
 
         Session {
             id,
-            name: if self.session_name.trim().is_empty() {
+            name: if clean_str(&self.session_name).is_empty() {
                 match self.protocol_tab {
                     0 => {
-                        if self.ssh_host.trim().is_empty() {
+                        let h = clean_str(&self.ssh_host);
+                        if h.is_empty() {
                             "New SSH".into()
                         } else {
-                            self.ssh_host.trim().to_string()
+                            h
                         }
                     }
                     1 => "Local Shell".into(),
-                    2 => self.serial_port.clone(),
-                    3 => self.telnet_host.clone(),
-                    4 => format!("RDP: {}", self.rdp_host),
-                    5 => format!("VNC: {}", self.vnc_host),
-                    6 => format!("FTP: {}", self.ftp_host),
-                    8 => format!("SFTP: {}", self.ftp_host),
-                    7 => format!("WSL: {}", self.wsl_distro),
+                    2 => clean_str(&self.serial_port),
+                    3 => clean_str(&self.telnet_host),
+                    4 => format!("RDP: {}", clean_str(&self.rdp_host)),
+                    5 => format!("VNC: {}", clean_str(&self.vnc_host)),
+                    6 => format!("FTP: {}", clean_str(&self.ftp_host)),
+                    8 => format!("SFTP: {}", clean_str(&self.ftp_host)),
+                    7 => format!("WSL: {}", clean_str(&self.wsl_distro)),
                     _ => "Session".to_string(),
                 }
             } else {
-                self.session_name.trim().to_string()
+                clean_str(&self.session_name)
             },
-            folder: if self.folder_name.trim().is_empty() {
+            folder: if clean_str(&self.folder_name).is_empty() {
                 "Default".to_string()
             } else {
-                self.folder_name.trim().to_string()
+                clean_str(&self.folder_name)
             },
             session_type,
             auto_sftp: self.ssh_auto_sftp,
@@ -495,7 +503,8 @@ impl NewSessionDialog {
             gateway_key: self.gateway_key.clone(),
             ssh_keepalive: self.ssh_keepalive,
             tab_color: self.tab_color.clone(),
-            comments: self.comments.clone(),
+            comments: self.comments.trim().to_string(),
+            startup_macro: if self.startup_macro == "None" { String::new() } else { self.startup_macro.clone() },
             last_connected_at: None,
             connect_count: 0,
         }
@@ -1660,8 +1669,14 @@ pub fn render_new_session_dialog(
                     .selected_text(&dialog.startup_macro)
                     .width(180.0)
                     .show_ui(ui, |ui| {
-                        for m in &["None", "htop", "docker ps", "df -h", "tmux attach"] {
-                            ui.selectable_value(&mut dialog.startup_macro, (*m).to_string(), *m);
+                        ui.selectable_value(&mut dialog.startup_macro, "None".to_string(), "None");
+                        for (name, _cmd) in &dialog.available_macros {
+                            ui.selectable_value(&mut dialog.startup_macro, name.clone(), name);
+                        }
+                        for m in &["htop", "docker ps", "df -h", "tmux attach"] {
+                            if !dialog.available_macros.iter().any(|(name, _)| name == *m) {
+                                ui.selectable_value(&mut dialog.startup_macro, (*m).to_string(), *m);
+                            }
                         }
                     });
                 if ui.button("↺ Reset defaults").clicked() {

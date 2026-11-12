@@ -18,6 +18,7 @@ pub struct TerminalWidget<'a> {
     pub copy_on_select: bool,
     pub highlight_rules: Option<&'a [HighlightRule]>,
     pub highlight_enabled: bool,
+    pub suppress_escape: bool,
 }
 
 pub enum TerminalAction {
@@ -49,7 +50,13 @@ impl<'a> TerminalWidget<'a> {
             copy_on_select: true,
             highlight_rules: None,
             highlight_enabled: true,
+            suppress_escape: false,
         }
+    }
+
+    pub fn with_suppress_escape(mut self, suppress: bool) -> Self {
+        self.suppress_escape = suppress;
+        self
     }
 
     pub fn with_font_family(mut self, family: FontFamily) -> Self {
@@ -455,6 +462,7 @@ impl<'a> TerminalWidget<'a> {
         });
 
         // Lock Tab, Escape, and Arrow keys to the terminal when focused so egui never cycles focus away on Tab autocomplete
+        // If a popup/modal is open or suppress_escape is true, do NOT lock Escape so egui modal can handle Escape cleanly!
         if has_focus {
             ui.memory_mut(|m| {
                 if m.focused().is_none() {
@@ -467,7 +475,7 @@ impl<'a> TerminalWidget<'a> {
                             tab: true,
                             horizontal_arrows: true,
                             vertical_arrows: true,
-                            escape: true,
+                            escape: !self.suppress_escape,
                         },
                     );
                 }
@@ -980,7 +988,11 @@ impl<'a> TerminalWidget<'a> {
                                     input_bytes.extend_from_slice(b"\t");
                                 }
                             }
-                            Key::Escape => input_bytes.extend_from_slice(b"\x1b"),
+                            Key::Escape => {
+                                if !self.suppress_escape {
+                                    input_bytes.extend_from_slice(b"\x1b");
+                                }
+                            }
                             Key::ArrowUp if shift && !ctrl && !alt => {
                                 scroll_delta_lines += 3;
                             }
@@ -1863,7 +1875,11 @@ pub fn copy_text_to_clipboard(ui: &Ui, text: &str) {
     }
     ui.output_mut(|o| o.copied_text = text.to_string());
 
-    let mut guard = GLOBAL_CLIPBOARD.lock();
+    let guard_opt = GLOBAL_CLIPBOARD.try_lock_for(std::time::Duration::from_millis(200));
+    let mut guard = match guard_opt {
+        Some(g) => g,
+        None => return,
+    };
     if guard.is_none() {
         *guard = arboard::Clipboard::new().ok();
     }
@@ -1905,12 +1921,16 @@ pub fn copy_text_to_clipboard(ui: &Ui, text: &str) {
 /// Copies `text` only to the PRIMARY selection on Linux (for middle-click paste),
 /// without overwriting the system CLIPBOARD (Ctrl+V) or triggering clipboard manager extensions.
 pub fn copy_text_to_primary_selection(text: &str) {
-    if text.is_empty() {
-        return;
-    }
     #[cfg(target_os = "linux")]
     {
-        let mut guard = GLOBAL_CLIPBOARD.lock();
+        if text.is_empty() {
+            return;
+        }
+        let guard_opt = GLOBAL_CLIPBOARD.try_lock_for(std::time::Duration::from_millis(200));
+        let mut guard = match guard_opt {
+            Some(g) => g,
+            None => return,
+        };
         if guard.is_none() {
             *guard = arboard::Clipboard::new().ok();
         }
@@ -1935,7 +1955,8 @@ pub fn copy_text_to_primary_selection(text: &str) {
 /// On Linux, `prefer_primary = true` (e.g. for middle-click paste or Shift+Insert) queries `PRIMARY` first,
 /// falling back to `CLIPBOARD`.
 pub fn get_clipboard_text(ui: &Ui, prefer_primary: bool) -> Option<String> {
-    let mut guard = GLOBAL_CLIPBOARD.lock();
+    // Use timeout on mutex lock to prevent terminal UI thread freeze if clipboard owner hangs
+    let mut guard = GLOBAL_CLIPBOARD.try_lock_for(std::time::Duration::from_millis(200))?;
     if guard.is_none() {
         *guard = arboard::Clipboard::new().ok();
     }

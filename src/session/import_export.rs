@@ -284,8 +284,24 @@ pub fn parse_sessions_from_text(content: &str, default_folder: &str) -> Vec<Sess
             if right_trimmed.starts_with('#') {
                 let name = left.trim();
                 let def_part = right_trimmed.trim_start_matches('#');
-                // Tokens can be separated by '#' or '%'
-                let tokens: Vec<&str> = def_part.split(|c| c == '#' || c == '%').collect();
+                // In MobaXterm bookmark definition:
+                // Full line format is often: #type_id#opt%Host%Port%User%...#MobaFont%...
+                // So the parameters block is after the first separator block.
+                // If there's an embedded '#' separating section properties (like font), take the main session portion.
+                let session_body = if let Some((main, _extra)) = def_part.split_once("#Moba") {
+                    main
+                } else if def_part.matches('#').count() >= 4 {
+                    // Delimited purely by '#'
+                    def_part
+                } else {
+                    def_part
+                };
+
+                let tokens: Vec<&str> = if session_body.matches('#').count() >= 4 {
+                    session_body.split('#').collect()
+                } else {
+                    session_body.split(|c| c == '#' || c == '%').collect()
+                };
                 // Typically: type_id (e.g. 109=SSH, 91=RDP), opt/sub_type, host, port, user...
                 if tokens.len() >= 5 {
                     let type_id = tokens[0].trim();
@@ -473,7 +489,7 @@ pub fn merge_imported_sessions(
                 existing_keys.insert(format!("rdp:{}:{}:{}", host.trim().to_lowercase(), port, user.trim()));
             }
             _ => {
-                existing_keys.insert(s.name.clone());
+                existing_keys.insert(s.name.trim().to_lowercase());
             }
         }
     }
@@ -489,7 +505,7 @@ pub fn merge_imported_sessions(
             SessionType::Rdp { host, port, user } => {
                 format!("rdp:{}:{}:{}", host.trim().to_lowercase(), port, user.trim())
             }
-            _ => s.name.clone(),
+            _ => s.name.trim().to_lowercase(),
         };
 
         if existing_keys.contains(&key) {
@@ -563,6 +579,18 @@ vnc:vncuser@45.82.250.75 = SwevW3f0
             panic!("Expected VNC session");
         }
 
+        // Test MobaXterm session with percent sign in username (# separator)
+        let moba_percent_user = "PercentSrv=#109#0#192.168.1.100#22#domain%user#";
+        let parsed_percent = parse_sessions_from_text(moba_percent_user, "Servers");
+        assert_eq!(parsed_percent.len(), 1);
+        if let SessionType::Ssh { ref user, ref host, port, .. } = parsed_percent[0].session_type {
+            assert_eq!(user, "domain%user");
+            assert_eq!(host, "192.168.1.100");
+            assert_eq!(port, 22);
+        } else {
+            panic!("Expected SSH session");
+        }
+
         // Test merge
         let mut existing = Vec::new();
         let summary = merge_imported_sessions(&mut existing, parsed);
@@ -577,6 +605,21 @@ vnc:vncuser@45.82.250.75 = SwevW3f0
         assert_eq!(summary2.new_imported, 0);
         assert_eq!(summary2.duplicates_skipped, 4);
         assert_eq!(existing.len(), 4);
+
+        // Case-insensitive name collision test for non-SSH sessions (e.g. Local Shell / Serial)
+        let mut local_existing = vec![
+            Session::new_local("My Shell", "Servers"),
+        ];
+        let imported_local = vec![
+            Session::new_local("my shell", "Servers"),
+            Session::new_local("MY SHELL  ", "Servers"),
+            Session::new_local("Different Shell", "Servers"),
+        ];
+        let summary_local = merge_imported_sessions(&mut local_existing, imported_local);
+        assert_eq!(summary_local.total_parsed, 3);
+        assert_eq!(summary_local.duplicates_skipped, 2);
+        assert_eq!(summary_local.new_imported, 1);
+        assert_eq!(local_existing.len(), 2);
     }
 
     #[test]

@@ -68,6 +68,8 @@ impl Editor {
         self.original_content = content;
         self.status = None;
         self.syntax = detected;
+        self.show_search = false;
+        self.search_query.clear();
         self.search_matches = 0;
         self.active_match_idx = 0;
         self.show_unsaved_confirm = false;

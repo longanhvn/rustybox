@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [v1.3.99] - 2026-11-12
+### Fixed & Improved (MobaXterm 95-Version Changelog Audit & System Hardening)
+- **Khắc phục xung đột phím Escape khi đóng Modal/Dialog**:
+  - Tự động bỏ khóa focus phím Escape của terminal và chặn phát byte `\x1b` khi có bất kỳ cửa sổ Popup/Modal nào đang mở (Settings, Manage Passwords, SFTP dialogs, v.v.), tránh làm ảnh hưởng đến shell hay thoát ứng dụng TUI bên trong terminal ngoài ý muốn.
+- **Làm sạch khoảng trắng trường Ghi chú (Comments)**:
+  - Tự động `.trim()` chuỗi ghi chú khi mở chỉnh sửa và khi lưu session, chống hiện tượng tích tụ khoảng trắng ở cuối chuỗi qua nhiều lần biên tập.
+- **Khử trùng lặp tên Session không phân biệt hoa/thường**:
+  - Chuẩn hóa bộ khóa nhận diện trùng lặp trong `merge_imported_sessions` sang dạng `.to_lowercase()` cho tất cả các loại session phi SSH (Local Terminal, WSL, Serial, v.v.).
+- **Chống treo giao diện khi Paste Clipboard**:
+  - Dùng `try_lock_for(Duration::from_millis(200))` cho clipboard toàn cục, tránh kẹt luồng UI nếu ứng dụng ngoài đang giữ khóa Win32 Clipboard.
+- **Bảo toàn Startup Macro**:
+  - Thêm trường `startup_macro` vào model `Session`, hỗ trợ nạp macro khi duplicate và tự động kích hoạt macro khi kết nối tab SSH / terminal cục bộ.
+- **Làm sạch địa chỉ IP / Hostname khi Paste**:
+  - Lọc bỏ triệt để ký tự `\r`, `\n`, `\t` khi copy/paste địa chỉ máy chủ, username hoặc jump host từ các ứng dụng chat.
+- **Chặn ký tự ngoặc trong tên Profile Credential**:
+  - Lọc bỏ các ký tự ngoặc `[]`, `{}` để đảm bảo tính toàn vẹn cho cấu trúc lưu trữ và serialize INI/JSON.
+- **Reset trạng thái tìm kiếm trong Code Editor**:
+  - Đóng thanh tìm kiếm và xóa query cũ khi mở file văn bản mới qua SFTP.
+
 ## [v1.3.98] - 2026-11-10
 ### Added & Improved (Kibi Modular Code Editor, Sudo Batch Deletion & Remote SFTP Path Normalization)
 - **Tích hợp Kibi-inspired Modular Code Editor (PR #9)**:

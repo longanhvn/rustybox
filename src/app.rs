@@ -372,6 +372,31 @@ pub struct RustyBoxApp {
 }
 
 impl RustyBoxApp {
+    pub fn is_any_modal_open(&self) -> bool {
+        self.show_network_tools
+            || self.show_services_modal
+            || self.show_tunnels
+            || self.show_tunnel_edit
+            || self.show_keygen
+            || self.show_pwdgen
+            || self.show_diff
+            || self.show_mobapt
+            || self.show_macro_manager
+            || self.show_vault
+            || self.show_settings_dialog
+            || self.show_hotkeys_dialog
+            || self.show_about
+            || self.show_manage_passwords
+            || self.show_import_dialog
+            || self.new_session_dialog.is_open
+            || self.connect_as_target.is_some()
+            || self.rename_session_target.is_some()
+            || self.rename_folder_target.is_some()
+            || self.pending_paste_text.is_some()
+            || self.show_new_cred_modal
+            || self.show_highlight_modal
+    }
+
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
         let storage = StorageManager::new();
         let config = storage.load_config();
@@ -865,7 +890,7 @@ impl RustyBoxApp {
                     id: uuid::Uuid::new_v4().to_string(),
                     title: title.to_string(),
                     session,
-                    session_def,
+                    session_def: session_def.clone(),
                     custom_cmd: shell.map(|s| s.to_string()),
                     workdir: workdir.map(|w| w.to_string()),
                     telemetry,
@@ -877,6 +902,18 @@ impl RustyBoxApp {
                 self.sync_sidebar_with_active_tab();
                 self.sidebar_tab = 0;
                 self.scroll_active_tab_into_view = true;
+
+                // Execute startup macro if configured
+                if let Some(ref s) = session_def {
+                    if !s.startup_macro.is_empty() && s.startup_macro != "None" {
+                        let cmd_to_run = if let Some((_, cmd)) = self.quick_macros.iter().find(|(name, _)| name == &s.startup_macro) {
+                            cmd.clone()
+                        } else {
+                            format!("{}\n", s.startup_macro)
+                        };
+                        self.execute_macro(&cmd_to_run);
+                    }
+                }
             }
             Err(e) => {
                 eprintln!("Failed to spawn local terminal: {}", e);
@@ -973,6 +1010,16 @@ impl RustyBoxApp {
                         self.show_sftp_sidebar = true;
                     }
                     self.scroll_active_tab_into_view = true;
+
+                    // Execute startup macro if configured
+                    if !s.startup_macro.is_empty() && s.startup_macro != "None" {
+                        let cmd_to_run = if let Some((_, cmd)) = self.quick_macros.iter().find(|(name, _)| name == &s.startup_macro) {
+                            cmd.clone()
+                        } else {
+                            format!("{}\n", s.startup_macro)
+                        };
+                        self.execute_macro(&cmd_to_run);
+                    }
                 }
                 Err(e) => {
                     eprintln!("Failed to spawn SSH session: {}", e);
@@ -1476,14 +1523,14 @@ impl RustyBoxApp {
 
         let (user, host, port) = if let Some((u, rest)) = input.split_once('@') {
             if let Some((h, p)) = rest.split_once(':') {
-                (u.to_string(), h.to_string(), p.parse::<u16>().unwrap_or(22))
+                (u.trim().to_string(), h.replace(['\r', '\n', '\t'], "").trim().to_string(), p.parse::<u16>().unwrap_or(22))
             } else {
-                (u.to_string(), rest.to_string(), 22)
+                (u.trim().to_string(), rest.replace(['\r', '\n', '\t'], "").trim().to_string(), 22)
             }
         } else if let Some((h, p)) = input.split_once(':') {
-            ("root".to_string(), h.to_string(), p.parse::<u16>().unwrap_or(22))
+            ("root".to_string(), h.replace(['\r', '\n', '\t'], "").trim().to_string(), p.parse::<u16>().unwrap_or(22))
         } else {
-            ("root".to_string(), input.to_string(), 22)
+            ("root".to_string(), input.replace(['\r', '\n', '\t'], "").trim().to_string(), 22)
         };
 
         let sess = Session::new_ssh(&format!("{}@{}", user, host), "Quick Connect", &host, port, &user);
@@ -2110,7 +2157,7 @@ impl eframe::App for RustyBoxApp {
                         .inner_margin(egui::Margin::symmetric(5.0, 1.5))
                         .show(ui, |ui| {
                             ui.label(
-                                RichText::new("v1.3.98")
+                                RichText::new("v1.3.99")
                                     .color(Color32::from_rgb(147, 197, 253))
                                     .size(10.5)
                                     .strong(),
@@ -4299,6 +4346,10 @@ impl eframe::App for RustyBoxApp {
             let current_theme = self.theme;
             let current_active_idx = self.active_tab_idx.min(num_tabs - 1);
             let mut newly_focused_tab_idx: Option<usize> = None;
+            let copy_on_select = self.copy_on_select;
+            let highlight_rules = &self.highlight_rules;
+            let highlight_rules_enabled = self.highlight_rules_enabled;
+            let modal_open = self.is_any_modal_open();
 
             let render_pane = |ui: &mut egui::Ui,
                                pane_idx: usize,
@@ -4352,8 +4403,9 @@ impl eframe::App for RustyBoxApp {
                     .with_active_pane(is_active)
                     .with_backspace_ctrl_h(bs_ctrl_h)
                     .with_right_click_paste(rc_paste)
-                    .with_copy_on_select(self.copy_on_select)
-                    .with_highlight_rules(Some(&self.highlight_rules), self.highlight_rules_enabled);
+                    .with_copy_on_select(copy_on_select)
+                    .with_highlight_rules(Some(highlight_rules), highlight_rules_enabled)
+                    .with_suppress_escape(modal_open);
                 let _ = pane_idx;
                 widget.ui(ui, broadcast_tx)
             };
@@ -4676,6 +4728,7 @@ impl eframe::App for RustyBoxApp {
 
         // New Session Dialog
         self.new_session_dialog.available_credentials = self.credentials.clone();
+        self.new_session_dialog.available_macros = self.quick_macros.clone();
         if let Some(mut new_session) = render_new_session_dialog(ctx, &mut self.new_session_dialog) {
             if let Some(idx) = self.sessions.iter().position(|s| s.id == new_session.id) {
                 // Editing existing session: preserve connection history metadata
@@ -6837,6 +6890,11 @@ impl eframe::App for RustyBoxApp {
                             ui.add(TextEdit::singleline(&mut self.new_cred_name).desired_width(260.0).margin(Margin::symmetric(8.0, 5.0)).hint_text("e.g. Root VPS"));
                             ui.end_row();
 
+                            // Filter out bracket characters [] {} () to prevent INI/JSON section parsing corruption
+                            if self.new_cred_name.contains(['[', ']', '{', '}', '<', '>']) {
+                                self.new_cred_name.retain(|c| !matches!(c, '[' | ']' | '{' | '}' | '<' | '>'));
+                            }
+
                             ui.label(RichText::new("Username:").size(12.5).color(Color32::from_rgb(226, 232, 240)));
                             ui.add(TextEdit::singleline(&mut self.new_cred_user).desired_width(260.0).margin(Margin::symmetric(8.0, 5.0)).hint_text("e.g. root / admin"));
                             ui.end_row();
@@ -7178,7 +7236,7 @@ impl eframe::App for RustyBoxApp {
                         ui.heading("🚀 RustyBox");
                         ui.label(RichText::new("Complete Remote Toolbox & Terminal Suite in Pure Rust").strong());
                         ui.add_space(4.0);
-                        ui.label(RichText::new("Version v1.3.98").color(Color32::from_rgb(147, 197, 253)).strong());
+                        ui.label(RichText::new("Version v1.3.99").color(Color32::from_rgb(147, 197, 253)).strong());
                         ui.add_space(8.0);
                         ui.label("High-performance, zero-install, lightweight remote terminal toolbox.");
                         ui.label("Runs natively on Windows, macOS, and Linux.");
