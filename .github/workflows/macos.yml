@@ -9,6 +9,8 @@ on:
 jobs:
   macos-build-and-verify:
     runs-on: macos-15
+    permissions:
+      contents: write
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
