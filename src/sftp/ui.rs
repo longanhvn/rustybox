@@ -19,7 +19,12 @@ pub fn render_sftp_sidebar(ui: &mut Ui, explorer: &mut FileExplorer) {
         ui.horizontal(|ui| {
             if explorer.is_remote {
                 let label = explorer.remote_label.as_deref().unwrap_or("VPS");
-                ui.label(RichText::new("●").color(Color32::from_rgb(63, 185, 80)).size(12.0));
+                let dot_color = if !explorer.is_connected {
+                    Color32::from_rgb(248, 81, 73)
+                } else {
+                    Color32::from_rgb(63, 185, 80)
+                };
+                ui.label(RichText::new("●").color(dot_color).size(12.0));
                 ui.label(RichText::new(format!("SFTP: {}", label)).strong().size(11.5).color(Color32::from_rgb(88, 166, 255)));
                 if explorer.is_loading {
                     ui.spinner();
@@ -643,8 +648,28 @@ pub fn render_sftp_sidebar(ui: &mut Ui, explorer: &mut FileExplorer) {
                 });
         }
 
+        let mut error_reconnect = false;
         if let Some(ref err) = explorer.error_message {
-            ui.colored_label(Color32::from_rgb(248, 81, 73), RichText::new(err).size(11.0));
+            let is_disconnect = !explorer.is_connected
+                || crate::sftp::remote::is_fatal_ssh_error(err)
+                || err.contains("rebooted")
+                || err.contains("disconnected");
+            // Only show top error line if entries is not empty or error is not a disconnect
+            if !explorer.entries.is_empty() || !is_disconnect {
+                ui.horizontal(|ui| {
+                    let display_err = if is_disconnect { "⚠️ SFTP disconnected" } else { err.as_str() };
+                    ui.colored_label(Color32::from_rgb(248, 81, 73), RichText::new(display_err).size(11.0))
+                        .on_hover_text(err);
+                    if is_disconnect {
+                        if ui.add_sized([80.0, 19.0], egui::Button::new(RichText::new("🔄 Reconnect").size(10.5).color(Color32::from_rgb(88, 166, 255)))).clicked() {
+                            error_reconnect = true;
+                        }
+                    }
+                });
+            }
+        }
+        if error_reconnect {
+            explorer.refresh();
         }
         if let Some(ref msg) = explorer.status_message {
             ui.colored_label(Color32::from_rgb(63, 185, 80), RichText::new(msg).size(11.0));
@@ -906,6 +931,34 @@ pub fn render_sftp_sidebar(ui: &mut Ui, explorer: &mut FileExplorer) {
                                         ui.close_menu();
                                     }
                                 });
+
+                                if explorer.entries.is_empty() && explorer.is_remote && !explorer.is_connected {
+                                    ui.add_space(20.0);
+                                    let badge_w = 200.0f32.min(avail_w - 24.0);
+                                    let badge_h = 26.0f32;
+                                    let offset_x = ((avail_w - badge_w) / 2.0).max(6.0);
+
+                                    let (row_rect, _) = ui.allocate_exact_size(vec2(table_w, badge_h + 8.0), Sense::hover());
+                                    let badge_rect = Rect::from_min_size(
+                                        pos2(row_rect.left() + offset_x, row_rect.top() + 4.0),
+                                        vec2(badge_w, badge_h),
+                                    );
+
+                                    let p = ui.painter();
+                                    p.rect_filled(badge_rect, Rounding::same(13.0), Color32::from_rgb(22, 27, 34));
+                                    p.rect_stroke(badge_rect, Rounding::same(13.0), Stroke::new(1.0, Color32::from_rgb(56, 68, 77)));
+
+                                    ui.allocate_new_ui(egui::UiBuilder::new().max_rect(badge_rect), |ui| {
+                                        ui.horizontal_centered(|ui| {
+                                            ui.add_space(10.0);
+                                            ui.label(RichText::new("⚠️ Disconnected").size(11.0).color(Color32::from_rgb(248, 81, 73)));
+                                            ui.label(RichText::new("·").size(10.0).color(Color32::from_rgb(100, 116, 139)));
+                                            if ui.add(egui::Button::new(RichText::new("🔄 Reconnect").size(10.5).color(Color32::from_rgb(88, 166, 255))).frame(false)).on_hover_text("Tái kết nối SFTP với máy chủ").clicked() {
+                                                context_refresh = true;
+                                            }
+                                        });
+                                    });
+                                }
 
                                 for entry in &explorer.entries {
                                     let is_selected = explorer.is_entry_selected(&entry.path);

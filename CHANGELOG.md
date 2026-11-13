@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [v1.4.1] - 2026-11-13
+### Fixed & Improved (SFTP Reconnection & Session-43 FXP_OPEN Error)
+- **Khắc phục triệt để lỗi `[Session(-43)] Unable to send FXP_OPEN*` khi reboot server**:
+  - Tự động phát hiện lỗi ngắt kết nối kênh SSH / socket disconnect (`is_fatal_ssh_error`) trong luồng SFTP worker và giải phóng phiên chết ngay lập tức thay vì giữ lại phiên lỗi.
+  - Bổ sung lệnh `SftpCommand::ForceReconnect` và kiểm tra tính hợp lệ sống còn của channel trước khi tái sử dụng session trong `Connect`.
+  - Cải tiến hàm `refresh()`: Tự động nhận diện nếu SFTP đang mất kết nối thì kích hoạt tái kết nối đầy đủ (`force_reconnect_remote`) thay vì cố đọc thư mục trên socket hỏng.
+  - Bổ sung nút **`🔄 Reconnect`** trực quan ngay tại thanh thông báo lỗi SFTP và banner thông báo khi bảng file trống do mất kết nối.
+  - Tự động tái kết nối SFTP khi chuyển tab hoặc khi restart tab terminal sau khi server reboot xong.
+
 ## [v1.4.0] - 2026-11-13
 ### Added & Improved (UI Ergonomics, SFTP Resizable Columns & Auto-Reconnect)
 - **Tối ưu hóa hộp thoại Master Password**:

@@ -38,6 +38,7 @@ pub struct SftpTargetConfig {
 #[derive(Debug)]
 pub enum SftpCommand {
     Connect(SftpTargetConfig),
+    ForceReconnect(SftpTargetConfig),
     Disconnect,
     ListDir(String),
     ReadFile(String),
@@ -156,6 +157,13 @@ impl RemoteSftpClient {
         let _ = self.cmd_tx.send(SftpCommand::Connect(config));
     }
 
+    pub fn force_reconnect(&mut self, config: SftpTargetConfig) {
+        self.is_busy = true;
+        self.is_connected = false;
+        self.active_target = Some(format!("{}@{}:{}", config.user, config.host, config.port));
+        let _ = self.cmd_tx.send(SftpCommand::ForceReconnect(config));
+    }
+
     pub fn disconnect(&mut self) {
         self.is_connected = false;
         self.is_busy = false;
@@ -231,6 +239,110 @@ impl RemoteSftpClient {
     }
 }
 
+pub fn is_fatal_ssh_error(err: &str) -> bool {
+    let lower = err.to_lowercase();
+    err.contains("Session(-43)")
+        || err.contains("Session(-37)")
+        || err.contains("FXP_OPEN")
+        || lower.contains("unable to send")
+        || lower.contains("broken pipe")
+        || lower.contains("connection reset")
+        || lower.contains("socket disconnect")
+        || lower.contains("channel closed")
+        || lower.contains("not connected")
+        || lower.contains("transport read")
+}
+
+fn connect_and_emit(
+    cfg: &SftpTargetConfig,
+    event_tx: &Sender<SftpEvent>,
+    current_sess: &mut Option<(
+        ssh2::Session,
+        ssh2::Sftp,
+        SftpTargetConfig,
+        HashMap<u32, String>,
+        HashMap<u32, String>,
+        RemoteOsKind,
+    )>,
+    last_net_sample: &mut Option<(u64, u64, Instant)>,
+) {
+    *current_sess = None;
+    match connect_sftp(cfg) {
+        Ok((sess, sftp)) => {
+            // Detect remote OS and resolve initial dir via realpath(".")
+            let (remote_os, valid_dir) = match sftp.realpath(Path::new(".")) {
+                Ok(real_p) => {
+                    let p_str = real_p.to_string_lossy();
+                    let norm = p_str.replace('\\', "/");
+                    let is_win = (norm.len() >= 2 && norm.as_bytes()[1] == b':')
+                        || (norm.starts_with('/') && norm.len() >= 4 && norm.as_bytes()[2] == b':');
+                    if is_win {
+                        let win_dir = if norm.starts_with('/') && norm.len() >= 4 && norm.as_bytes()[2] == b':' {
+                            norm[1..].to_string()
+                        } else {
+                            norm
+                        };
+                        (RemoteOsKind::Windows, win_dir)
+                    } else {
+                        (RemoteOsKind::Posix, norm)
+                    }
+                }
+                Err(_) => {
+                    let initial_dir = if cfg.user == "root" {
+                        "/root".to_string()
+                    } else {
+                        format!("/home/{}", cfg.user)
+                    };
+                    let v = if sftp.stat(Path::new(&initial_dir)).is_ok() {
+                        initial_dir
+                    } else if sftp.stat(Path::new("/")).is_ok() {
+                        "/".to_string()
+                    } else {
+                        "C:/".to_string()
+                    };
+                    let os = if v.starts_with('/') { RemoteOsKind::Posix } else { RemoteOsKind::Windows };
+                    (os, v)
+                }
+            };
+
+            let target = format!("{}@{}:{}", cfg.user, cfg.host, cfg.port);
+            let _ = event_tx.send(SftpEvent::Connected {
+                target,
+                initial_dir: valid_dir.clone(),
+                remote_os,
+            });
+
+            // Cache remote user and group mappings from /etc/passwd and /etc/group
+            let (users, groups) = load_remote_id_cache(&sftp, &cfg.user);
+
+            // Automatically fetch directory entries for the initial dir
+            if let Ok(entries) = read_sftp_dir(&sftp, &valid_dir, &cfg.user, &users, &groups) {
+                let _ = event_tx.send(SftpEvent::DirListed {
+                    dir: valid_dir.clone(),
+                    entries,
+                });
+            }
+
+            // Also fetch remote disk stats
+            if let Ok((used, total, pct)) = fetch_remote_disk(&sess, &valid_dir) {
+                let _ = event_tx.send(SftpEvent::DiskUsage { used, total, pct });
+            }
+
+            // Also immediately fetch initial telemetry probe
+            if let Ok(raw) = execute_remote_cmd(&sess, crate::telemetry::TELEMETRY_PROBE_CMD) {
+                let (metrics, next_sample) = crate::telemetry::parse_remote_telemetry_output(&raw, *last_net_sample);
+                *last_net_sample = next_sample;
+                let _ = event_tx.send(SftpEvent::Telemetry(metrics));
+            }
+
+            *current_sess = Some((sess, sftp, cfg.clone(), users, groups, remote_os));
+        }
+        Err(e) => {
+            let _ = event_tx.send(SftpEvent::ConnectionFailed(e));
+        }
+    }
+}
+
 fn run_sftp_worker(
     cmd_rx: Receiver<SftpCommand>,
     event_tx: Sender<SftpEvent>,
@@ -253,9 +365,15 @@ fn run_sftp_worker(
             }
 
             SftpCommand::Connect(cfg) => {
-                // If already connected to the same config, keep it
-                if let Some((_, _, ref active_cfg, _, _, active_os)) = current_sess {
-                    if *active_cfg == cfg {
+                // If already connected to the same config AND channel is actually healthy, keep it
+                let is_alive = if let Some((_, ref sftp, ref active_cfg, _, _, _)) = current_sess {
+                    *active_cfg == cfg && sftp.stat(Path::new(".")).is_ok()
+                } else {
+                    false
+                };
+
+                if is_alive {
+                    if let Some((_, _, _, _, _, active_os)) = current_sess {
                         let _ = event_tx.send(SftpEvent::Connected {
                             target: format!("{}@{}:{}", cfg.user, cfg.host, cfg.port),
                             initial_dir: if cfg.user == "root" { "/root".into() } else { format!("/home/{}", cfg.user) },
@@ -265,81 +383,11 @@ fn run_sftp_worker(
                     }
                 }
 
-                current_sess = None;
-                match connect_sftp(&cfg) {
-                    Ok((sess, sftp)) => {
-                        // Detect remote OS and resolve initial dir via realpath(".")
-                        let (remote_os, valid_dir) = match sftp.realpath(Path::new(".")) {
-                            Ok(real_p) => {
-                                let p_str = real_p.to_string_lossy();
-                                let norm = p_str.replace('\\', "/");
-                                let is_win = (norm.len() >= 2 && norm.as_bytes()[1] == b':')
-                                    || (norm.starts_with('/') && norm.len() >= 4 && norm.as_bytes()[2] == b':');
-                                if is_win {
-                                    let win_dir = if norm.starts_with('/') && norm.len() >= 4 && norm.as_bytes()[2] == b':' {
-                                        norm[1..].to_string()
-                                    } else {
-                                        norm
-                                    };
-                                    (RemoteOsKind::Windows, win_dir)
-                                } else {
-                                    (RemoteOsKind::Posix, norm)
-                                }
-                            }
-                            Err(_) => {
-                                let initial_dir = if cfg.user == "root" {
-                                    "/root".to_string()
-                                } else {
-                                    format!("/home/{}", cfg.user)
-                                };
-                                let v = if sftp.stat(Path::new(&initial_dir)).is_ok() {
-                                    initial_dir
-                                } else if sftp.stat(Path::new("/")).is_ok() {
-                                    "/".to_string()
-                                } else {
-                                    "C:/".to_string()
-                                };
-                                let os = if v.starts_with('/') { RemoteOsKind::Posix } else { RemoteOsKind::Windows };
-                                (os, v)
-                            }
-                        };
+                connect_and_emit(&cfg, &event_tx, &mut current_sess, &mut last_net_sample);
+            }
 
-                        let target = format!("{}@{}:{}", cfg.user, cfg.host, cfg.port);
-                        let _ = event_tx.send(SftpEvent::Connected {
-                            target,
-                            initial_dir: valid_dir.clone(),
-                            remote_os,
-                        });
-
-                        // Cache remote user and group mappings from /etc/passwd and /etc/group
-                        let (users, groups) = load_remote_id_cache(&sftp, &cfg.user);
-
-                        // Automatically fetch directory entries for the initial dir
-                        if let Ok(entries) = read_sftp_dir(&sftp, &valid_dir, &cfg.user, &users, &groups) {
-                            let _ = event_tx.send(SftpEvent::DirListed {
-                                dir: valid_dir.clone(),
-                                entries,
-                            });
-                        }
-
-                        // Also fetch remote disk stats
-                        if let Ok((used, total, pct)) = fetch_remote_disk(&sess, &valid_dir) {
-                            let _ = event_tx.send(SftpEvent::DiskUsage { used, total, pct });
-                        }
-
-                        // Also immediately fetch initial telemetry probe
-                        if let Ok(raw) = execute_remote_cmd(&sess, crate::telemetry::TELEMETRY_PROBE_CMD) {
-                            let (metrics, next_sample) = crate::telemetry::parse_remote_telemetry_output(&raw, last_net_sample);
-                            last_net_sample = next_sample;
-                            let _ = event_tx.send(SftpEvent::Telemetry(metrics));
-                        }
-
-                        current_sess = Some((sess, sftp, cfg, users, groups, remote_os));
-                    }
-                    Err(e) => {
-                        let _ = event_tx.send(SftpEvent::ConnectionFailed(e));
-                    }
-                }
+            SftpCommand::ForceReconnect(cfg) => {
+                connect_and_emit(&cfg, &event_tx, &mut current_sess, &mut last_net_sample);
             }
 
             SftpCommand::Disconnect => {
@@ -368,7 +416,12 @@ fn run_sftp_worker(
                             }
                         }
                         Err(e) => {
-                            let _ = event_tx.send(SftpEvent::OperationError(format!("Read dir error: {}", e)));
+                            if is_fatal_ssh_error(&e) {
+                                current_sess = None;
+                                let _ = event_tx.send(SftpEvent::ConnectionFailed(format!("SFTP connection lost (server rebooted or disconnected): {}", e)));
+                            } else {
+                                let _ = event_tx.send(SftpEvent::OperationError(format!("Read dir error: {}", e)));
+                            }
                         }
                     }
                 } else {

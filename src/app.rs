@@ -1134,7 +1134,7 @@ impl RustyBoxApp {
                     };
 
                     let target_label = format!("{}@{}:{}", user, host, port);
-                    if self.explorer.is_remote && self.explorer.remote_label.as_deref() == Some(&target_label) {
+                    if self.explorer.is_remote && self.explorer.remote_label.as_deref() == Some(&target_label) && self.explorer.is_connected {
                         if let Some(ref p) = tab_last_sftp {
                             self.explorer.sync_terminal_cwd(p);
                         } else if let Some(detected) = self.open_tabs.get(idx).and_then(detect_terminal_cwd) {
@@ -1143,7 +1143,7 @@ impl RustyBoxApp {
                             self.explorer.sync_terminal_cwd(w);
                         }
                     } else {
-                        self.explorer.connect_remote(crate::sftp::remote::SftpTargetConfig {
+                        self.explorer.force_reconnect_remote(crate::sftp::remote::SftpTargetConfig {
                             host: host.clone(),
                             port,
                             user: user.clone(),
@@ -2169,7 +2169,7 @@ impl eframe::App for RustyBoxApp {
                         .inner_margin(egui::Margin::symmetric(5.0, 1.5))
                         .show(ui, |ui| {
                             ui.label(
-                                RichText::new("v1.4.0")
+                                RichText::new("v1.4.1")
                                     .color(Color32::from_rgb(147, 197, 253))
                                     .size(10.5)
                                     .strong(),
@@ -7272,7 +7272,7 @@ impl eframe::App for RustyBoxApp {
                         ui.heading("🚀 RustyBox");
                         ui.label(RichText::new("Complete Remote Toolbox & Terminal Suite in Pure Rust").strong());
                         ui.add_space(4.0);
-                        ui.label(RichText::new("Version v1.4.0").color(Color32::from_rgb(147, 197, 253)).strong());
+                        ui.label(RichText::new("Version v1.4.1").color(Color32::from_rgb(147, 197, 253)).strong());
                         ui.add_space(8.0);
                         ui.label("High-performance, zero-install, lightweight remote terminal toolbox.");
                         ui.label("Runs natively on Windows, macOS, and Linux.");

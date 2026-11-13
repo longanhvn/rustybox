@@ -114,6 +114,7 @@ pub struct FileExplorer {
     // Remote SFTP State & Multi-Server Pool
     pub is_remote: bool,
     pub is_loading: bool,
+    pub is_connected: bool,
     pub just_connected: bool,
     pub remote_label: Option<String>,
     pub remote_client: Option<Arc<Mutex<RemoteSftpClient>>>,
@@ -203,6 +204,7 @@ impl FileExplorer {
             status_message: None,
             is_remote: false,
             is_loading: false,
+            is_connected: false,
             just_connected: false,
             remote_label: None,
             remote_client: None,
@@ -405,6 +407,7 @@ impl FileExplorer {
             return;
         };
         if let Some(sess) = self.remote_sessions.get_mut(label) {
+            sess.is_connected = self.is_connected;
             sess.is_loading = self.is_loading;
             sess.current_path = self.current_path.clone();
             sess.path_input = self.path_input.clone();
@@ -428,6 +431,7 @@ impl FileExplorer {
             self.remote_label = Some(label.to_string());
             self.active_remote_label = Some(label.to_string());
             self.remote_client = Some(sess.client);
+            self.is_connected = sess.is_connected;
             self.is_loading = sess.is_loading;
             self.current_path = sess.current_path;
             self.path_input = sess.path_input;
@@ -455,7 +459,7 @@ impl FileExplorer {
             existing.is_connected = false;
             existing.is_loading = true;
             existing.error_message = None;
-            existing.client.lock().connect(cfg);
+            existing.client.lock().force_reconnect(cfg);
             self.load_active_remote_state(&label);
             return;
         }
@@ -464,7 +468,7 @@ impl FileExplorer {
 
     pub fn connect_remote(&mut self, cfg: SftpTargetConfig) {
         let label = format!("{}@{}:{}", cfg.user, cfg.host, cfg.port);
-        if self.is_remote && self.remote_label.as_deref() == Some(&label) {
+        if self.is_remote && self.remote_label.as_deref() == Some(&label) && self.is_connected {
             return;
         }
 
@@ -479,9 +483,10 @@ impl FileExplorer {
             }
             // If credentials changed, update config and reconnect
             existing.config = cfg.clone();
+            existing.is_connected = false;
             existing.is_loading = true;
             existing.error_message = None;
-            existing.client.lock().connect(cfg);
+            existing.client.lock().force_reconnect(cfg);
             self.load_active_remote_state(&label);
             return;
         }
@@ -535,6 +540,7 @@ impl FileExplorer {
         }
         self.remote_client = None;
         self.is_remote = false;
+        self.is_connected = false;
         self.is_loading = false;
         self.active_remote_label = None;
         self.remote_disk_stats = None;
@@ -744,6 +750,10 @@ impl FileExplorer {
                         sess.is_connected = true;
                         sess.is_loading = false;
                         self.just_connected = true;
+                        if self.remote_label.as_deref() == Some(label.as_str()) {
+                            self.is_connected = true;
+                            self.is_loading = false;
+                        }
                         sess.remote_os = remote_os;
                         let init_path = PathBuf::from(&initial_dir);
                         sess.remote_home_dir = Some(init_path.clone());
@@ -757,9 +767,17 @@ impl FileExplorer {
                         sess.is_connected = false;
                         sess.error_message = Some(format!("SFTP Error: {}", err));
                         sess.is_loading = false;
+                        if self.remote_label.as_deref() == Some(label.as_str()) {
+                            self.is_connected = false;
+                            self.error_message = sess.error_message.clone();
+                            self.is_loading = false;
+                        }
                     }
                     SftpEvent::DirListed { dir, entries } => {
                         sess.is_connected = true;
+                        if self.remote_label.as_deref() == Some(label.as_str()) {
+                            self.is_connected = true;
+                        }
                         sess.current_path = PathBuf::from(&dir);
                         sess.path_input = Self::format_path_with_mode(&sess.current_path, true, sess.remote_os);
                         sess.remote_raw_entries = entries;
@@ -812,10 +830,18 @@ impl FileExplorer {
                         needs_dir_refresh = true;
                     }
                     SftpEvent::OperationError(err) => {
+                        if crate::sftp::remote::is_fatal_ssh_error(&err) {
+                            sess.is_connected = false;
+                            if self.remote_label.as_deref() == Some(label.as_str()) {
+                                self.is_connected = false;
+                            }
+                        }
                         sess.error_message = Some(err);
                         sess.is_loading = false;
                         if self.remote_label.as_deref() == Some(label.as_str()) {
                             self.transfer_progress = None;
+                            self.error_message = sess.error_message.clone();
+                            self.is_loading = false;
                         }
                     }
                     SftpEvent::DiskUsage { used, total, pct } => {
@@ -1088,6 +1114,15 @@ impl FileExplorer {
     pub fn refresh(&mut self) {
         self.error_message = None;
         if self.is_remote {
+            if !self.is_connected {
+                if let Some(ref label) = self.remote_label {
+                    if let Some(sess) = self.remote_sessions.get(label) {
+                        let cfg = sess.config.clone();
+                        self.force_reconnect_remote(cfg);
+                        return;
+                    }
+                }
+            }
             if let Some(ref client) = self.remote_client {
                 self.is_loading = true;
                 let path_str = match self.remote_os {
