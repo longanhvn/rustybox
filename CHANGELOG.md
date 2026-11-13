@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [v1.4.2] - 2026-11-13
+### Fixed & Improved (Smooth Startup & Flicker Prevention)
+- **Khắc phục hiện tượng chớp hình khi khởi động ứng dụng trên Windows**:
+  - Triển khai `clear_color` trong `eframe::App` đồng bộ chuẩn màu nền Dark `#0F121A` (100% opacity), loại bỏ việc clear canvas sang màu bán trong suốt mặc định ở frame đầu tiên.
+  - Tối ưu lệnh phóng to cửa sổ `Maximized`: Bỏ qua việc gửi lệnh `ShowWindow(SW_MAXIMIZE)` trùng lặp khi cửa sổ đã được Windows khởi tạo ở trạng thái maximized (`viewport().maximized == Some(true)`), ngăn chặn hiện tượng DWM vẽ lại khung viền gây chớp màn hình.
+  - Khởi tạo tỷ lệ thu phóng `set_zoom_factor(ui_scale)` ngay trong hàm khởi dựng `new(cc)` và chỉ cập nhật lại khi người dùng thay đổi tỷ lệ thay vì gọi gán lại liên tục mỗi frame.
+
 ## [v1.4.1] - 2026-11-13
 ### Fixed & Improved (SFTP Reconnection & Session-43 FXP_OPEN Error)
 - **Khắc phục triệt để lỗi `[Session(-43)] Unable to send FXP_OPEN*` khi reboot server**:

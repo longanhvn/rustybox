@@ -631,6 +631,7 @@ impl RustyBoxApp {
         cc.egui_ctx.set_visuals_of(egui::Theme::Dark, visuals.clone());
         cc.egui_ctx.set_visuals_of(egui::Theme::Light, visuals.clone());
         cc.egui_ctx.set_visuals(visuals);
+        cc.egui_ctx.set_zoom_factor(ui_scale);
 
         // Note: Do not spawn a background local terminal on startup to avoid
         // any brief console flash (conhost.exe) on Windows. The user starts at Home Dashboard.
@@ -1955,20 +1956,28 @@ impl RustyBoxApp {
 }
 
 impl eframe::App for RustyBoxApp {
+    fn clear_color(&self, _visuals: &egui::Visuals) -> [f32; 4] {
+        Color32::from_rgb(15, 18, 26).to_normalized_gamma_f32()
+    }
+
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
         // Enforce dark theme mode across all frames regardless of OS appearance events
         if ctx.theme() != egui::Theme::Dark {
             ctx.set_theme(egui::ThemePreference::Dark);
         }
 
-        // Enforce Window Maximized on launch
+        // Enforce Window Maximized on launch only if not already maximized
         if !self.is_maximized_requested {
-            ctx.send_viewport_cmd(egui::ViewportCommand::Maximized(true));
+            if ctx.input(|i| i.viewport().maximized) != Some(true) {
+                ctx.send_viewport_cmd(egui::ViewportCommand::Maximized(true));
+            }
             self.is_maximized_requested = true;
         }
 
-        // Enforce UI zoom / font scale factor
-        ctx.set_zoom_factor(self.ui_scale);
+        // Enforce UI zoom / font scale factor only when changed
+        if (ctx.zoom_factor() - self.ui_scale).abs() > 0.001 {
+            ctx.set_zoom_factor(self.ui_scale);
+        }
 
         // Synchronize left explorer (Sessions tree & SFTP browser) if active tab changed
         self.check_and_sync_active_tab();
@@ -2169,7 +2178,7 @@ impl eframe::App for RustyBoxApp {
                         .inner_margin(egui::Margin::symmetric(5.0, 1.5))
                         .show(ui, |ui| {
                             ui.label(
-                                RichText::new("v1.4.1")
+                                RichText::new("v1.4.2")
                                     .color(Color32::from_rgb(147, 197, 253))
                                     .size(10.5)
                                     .strong(),
@@ -7272,7 +7281,7 @@ impl eframe::App for RustyBoxApp {
                         ui.heading("🚀 RustyBox");
                         ui.label(RichText::new("Complete Remote Toolbox & Terminal Suite in Pure Rust").strong());
                         ui.add_space(4.0);
-                        ui.label(RichText::new("Version v1.4.1").color(Color32::from_rgb(147, 197, 253)).strong());
+                        ui.label(RichText::new("Version v1.4.2").color(Color32::from_rgb(147, 197, 253)).strong());
                         ui.add_space(8.0);
                         ui.label("High-performance, zero-install, lightweight remote terminal toolbox.");
                         ui.label("Runs natively on Windows, macOS, and Linux.");
