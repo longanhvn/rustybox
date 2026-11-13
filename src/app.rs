@@ -1241,6 +1241,16 @@ impl RustyBoxApp {
 
                 let (effective_jump, ssh_cfg) = self.build_ssh_spawn_config(s, tunnel_x11);
 
+                let sftp_reconnect_cfg = crate::sftp::remote::SftpTargetConfig {
+                    host: host.clone(),
+                    port,
+                    user: user.clone(),
+                    password: final_password.map(|p| p.to_string()),
+                    key_path: key_path.clone(),
+                    sudo_mode: false,
+                    sudo_password: None,
+                };
+
                 if let Ok(session) = PtySession::spawn_ssh_with_config(
                     24,
                     80,
@@ -1257,6 +1267,8 @@ impl RustyBoxApp {
                         tab.telemetry.is_connected = true;
                         tab.telemetry.last_updated = std::time::Instant::now();
                     }
+                    // Automatically re-establish SFTP session if this was an SSH tab
+                    self.explorer.force_reconnect_remote(sftp_reconnect_cfg);
                 }
             }
         } else {
@@ -2157,7 +2169,7 @@ impl eframe::App for RustyBoxApp {
                         .inner_margin(egui::Margin::symmetric(5.0, 1.5))
                         .show(ui, |ui| {
                             ui.label(
-                                RichText::new("v1.3.99")
+                                RichText::new("v1.4.0")
                                     .color(Color32::from_rgb(147, 197, 253))
                                     .size(10.5)
                                     .strong(),
@@ -4682,10 +4694,15 @@ impl eframe::App for RustyBoxApp {
         if self.pending_paste_text.is_some() {
             let mut close = false;
             let mut run_paste = false;
+            let mut copy_pending = false;
+            let text_to_copy = self.pending_paste_text.clone();
 
             egui::Window::new("⚠ Multi-line Paste Warning")
-                .default_size(Vec2::new(520.0, 320.0))
+                .default_size(Vec2::new(540.0, 340.0))
+                .pivot(egui::Align2::CENTER_CENTER)
+                .default_pos(ctx.screen_rect().center())
                 .collapsible(false)
+                .resizable(true)
                 .show(ctx, |ui| {
                     ui.label(RichText::new("Warning: The clipboard text contains newlines!").color(Color32::from_rgb(255, 180, 50)).strong());
                     ui.label("Review or modify commands before executing in the terminal:");
@@ -4695,21 +4712,39 @@ impl eframe::App for RustyBoxApp {
                         let lines_count = text.lines().count();
                         ui.label(RichText::new(format!("Total lines: {} | Characters: {}", lines_count, text.len())).weak().size(11.0));
 
-                        ScrollArea::vertical().max_height(160.0).show(ui, |ui| {
-                            ui.add(TextEdit::multiline(text).font(egui::TextStyle::Monospace).desired_width(f32::INFINITY));
+                        let available_h = (ui.available_height() - 50.0).clamp(140.0, 400.0);
+                        ScrollArea::vertical().max_height(available_h).show(ui, |ui| {
+                            let text_resp = ui.add(TextEdit::multiline(text).font(egui::TextStyle::Monospace).desired_width(f32::INFINITY));
+                            text_resp.context_menu(|ui| {
+                                if ui.button("📋 Copy").clicked() {
+                                    copy_pending = true;
+                                    ui.close_menu();
+                                }
+                            });
                         });
                     }
 
                     ui.add_space(8.0);
                     ui.horizontal(|ui| {
-                        if ui.button(RichText::new("✔ Execute in Terminal").strong().color(Color32::from_rgb(80, 240, 120))).clicked() {
+                        if ui.add_sized([160.0, 26.0], egui::Button::new(RichText::new("✔ Execute in Terminal").strong().color(Color32::from_rgb(80, 240, 120)))).clicked() {
                             run_paste = true;
                         }
-                        if ui.button("Cancel").clicked() {
+                        if ui.add_sized([110.0, 26.0], egui::Button::new("📋 Copy Text")).on_hover_text("Sao chép toàn bộ nội dung lệnh vào clipboard").clicked() {
+                            copy_pending = true;
+                        }
+                        if ui.add_sized([80.0, 26.0], egui::Button::new("Cancel")).clicked() {
                             close = true;
                         }
                     });
+
+                    if copy_pending {
+                        if let Some(ref text) = text_to_copy {
+                            copy_text_to_clipboard(ui, text);
+                        }
+                    }
                 });
+
+            let _ = copy_pending;
 
             if run_paste {
                 if let Some(text) = self.pending_paste_text.take() {
@@ -6327,8 +6362,9 @@ impl eframe::App for RustyBoxApp {
                 .open(&mut open)
                 .collapsible(false)
                 .resizable(false)
-                .default_size(Vec2::new(480.0, 320.0))
-                .anchor(egui::Align2::CENTER_CENTER, Vec2::ZERO)
+                .default_size(Vec2::new(500.0, 340.0))
+                .pivot(egui::Align2::CENTER_CENTER)
+                .default_pos(ctx.screen_rect().center())
                 .show(ctx, |ui| {
                     ui.heading(RichText::new("RustyBox Credentials Vault").color(Color32::from_rgb(56, 189, 248)));
                     ui.label("Military-grade AES-256-GCM encryption with Argon2id key derivation.");
@@ -6478,9 +6514,9 @@ impl eframe::App for RustyBoxApp {
                         ui.label(RichText::new(st).color(color).strong());
                     }
 
-                    ui.add_space(10.0);
+                    ui.add_space(14.0);
                     ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                        if ui.button("Close").clicked() {
+                        if ui.add_sized([90.0, 26.0], egui::Button::new("Close")).clicked() {
                             close_vault = true;
                         }
                     });
@@ -7236,7 +7272,7 @@ impl eframe::App for RustyBoxApp {
                         ui.heading("🚀 RustyBox");
                         ui.label(RichText::new("Complete Remote Toolbox & Terminal Suite in Pure Rust").strong());
                         ui.add_space(4.0);
-                        ui.label(RichText::new("Version v1.3.99").color(Color32::from_rgb(147, 197, 253)).strong());
+                        ui.label(RichText::new("Version v1.4.0").color(Color32::from_rgb(147, 197, 253)).strong());
                         ui.add_space(8.0);
                         ui.label("High-performance, zero-install, lightweight remote terminal toolbox.");
                         ui.label("Runs natively on Windows, macOS, and Linux.");

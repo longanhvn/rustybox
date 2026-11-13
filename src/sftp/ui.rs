@@ -1,3 +1,4 @@
+use crate::terminal::widget::copy_text_to_clipboard;
 use super::{
     format_modified_time, format_size_kb, ExternalOpenMode, FileEntry, FileExplorer,
     SftpSortColumn,
@@ -344,6 +345,16 @@ pub fn render_sftp_sidebar(ui: &mut Ui, explorer: &mut FileExplorer) {
                 .desired_width((input_rect.width() - 16.0).max(60.0))
                 .hint_text("/home/..."),
         );
+        let mut path_copy_requested = false;
+        path_resp.context_menu(|ui| {
+            if ui.button("📋 Copy Path").clicked() {
+                path_copy_requested = true;
+                ui.close_menu();
+            }
+        });
+        if path_copy_requested {
+            copy_text_to_clipboard(ui, &explorer.path_input);
+        }
         if path_resp.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
             let trimmed = explorer.path_input.trim().to_string();
             if !trimmed.is_empty() {
@@ -658,7 +669,8 @@ pub fn render_sftp_sidebar(ui: &mut Ui, explorer: &mut FileExplorer) {
                 let fixed_cols_total = col_size_w + col_date_w + col_owner_w + col_group_w + col_access_w; // 388.0
 
                 let avail_w = ui.available_width();
-                let col_name_w = (avail_w - fixed_cols_total).max(165.0);
+                let base_name_w = (avail_w - fixed_cols_total).max(165.0);
+                let col_name_w = explorer.col_name_width_override.unwrap_or(base_name_w).max(120.0);
                 let table_w = col_name_w + fixed_cols_total;
 
                 let mut clicked_dir: Option<PathBuf> = None;
@@ -730,11 +742,32 @@ pub fn render_sftp_sidebar(ui: &mut Ui, explorer: &mut FileExplorer) {
                         let r_group = Rect::from_min_max(pos2(r_owner.max.x, hdr_rect.min.y), pos2(r_owner.max.x + col_group_w, hdr_rect.max.y));
                         let r_access = Rect::from_min_max(pos2(r_group.max.x, hdr_rect.min.y), pos2(hdr_rect.max.x, hdr_rect.max.y));
 
-                        // Vertical Column Dividers
+                        // Vertical Column Dividers & Resizer for Name Column
+                        let resizer_rect = Rect::from_center_size(pos2(r_name.max.x, hdr_rect.center().y), vec2(8.0, hdr_rect.height()));
+                        let resizer_id = ui.id().with("sftp_col_name_resizer");
+                        let resizer_resp = ui.interact(resizer_rect, resizer_id, Sense::drag());
+                        if resizer_resp.hovered() || resizer_resp.dragged() {
+                            ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeColumn);
+                        }
+                        if resizer_resp.dragged() {
+                            let delta = resizer_resp.drag_delta().x;
+                            let new_w = (col_name_w + delta).clamp(100.0, 1600.0);
+                            explorer.col_name_width_override = Some(new_w);
+                        }
+                        if resizer_resp.double_clicked() {
+                            // Reset to auto/default width
+                            explorer.col_name_width_override = None;
+                        }
+
                         for &div_x in &[r_name.max.x, r_size.max.x, r_date.max.x, r_owner.max.x, r_group.max.x] {
+                            let stroke_col = if div_x == r_name.max.x && (resizer_resp.hovered() || resizer_resp.dragged()) {
+                                Color32::from_rgb(88, 166, 255)
+                            } else {
+                                Color32::from_rgb(48, 54, 61)
+                            };
                             p.line_segment(
                                 [pos2(div_x, hdr_rect.top() + 3.0), pos2(div_x, hdr_rect.bottom() - 3.0)],
-                                Stroke::new(1.0, Color32::from_rgb(48, 54, 61)),
+                                Stroke::new(1.0, stroke_col),
                             );
                         }
 

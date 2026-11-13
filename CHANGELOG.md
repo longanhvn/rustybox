@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [v1.4.0] - 2026-11-13
+### Added & Improved (UI Ergonomics, SFTP Resizable Columns & Auto-Reconnect)
+- **Tối ưu hóa hộp thoại Master Password**:
+  - Đổi cơ chế hiển thị sang `.pivot(CENTER_CENTER).default_pos(center)`, tăng kích thước `500x340 px`.
+  - Tăng kích thước nút `Close` lên `90x26 px` và canh lề phải cân đối, hài hòa chuẩn UI.
+- **Tối ưu hóa cảnh báo Multi-line Paste Warning**:
+  - Cho phép resize cửa sổ cảnh báo dán nhiều dòng.
+  - Thêm nút tiện ích **`📋 Copy Text`** trên thanh công cụ và menu chuột phải `📋 Copy` ngay trong khung soạn thảo để copy nhanh nội dung lệnh mà không cần bôi đen phức tạp.
+- **Bổ sung Copy trên thanh đường dẫn SFTP**:
+  - Hỗ trợ click chuột phải (Context Menu) vào ô đường dẫn SFTP hiển thị tùy chọn **`📋 Copy Path`** tiện lợi.
+- **Kéo thả co giãn độ rộng cột Name trong SFTP**:
+  - Bổ sung Resizer (`col_name_width_override`) tại vạch phân cách giữa cột `Name` và `Size`.
+  - Cho phép người dùng rê chuột kéo giãn tùy thích khi tên file quá dài; nhấp đúp (Double Click) để tự động reset về độ rộng mặc định.
+- **Tự động kết nối lại SFTP khi Terminal khởi động lại (Reboot / Restart)**:
+  - Khi tab SSH được kích hoạt khởi động lại qua phím `Enter` hoặc menu context, phiên SFTP tương ứng sẽ tự động tái kết nối nền mà không cần đóng mở lại toàn bộ ứng dụng.
+
 ## [v1.3.99] - 2026-11-12
 ### Fixed & Improved (MobaXterm 95-Version Changelog Audit & System Hardening)
 - **Khắc phục xung đột phím Escape khi đóng Modal/Dialog**:

@@ -128,6 +128,7 @@ pub struct FileExplorer {
     pub show_hidden: bool,
     pub sort_column: SftpSortColumn,
     pub sort_ascending: bool,
+    pub col_name_width_override: Option<f32>,
     pub follow_terminal_folder: bool,
     pub remote_monitoring_enabled: bool,
     pub active_remote_label: Option<String>,
@@ -215,6 +216,7 @@ impl FileExplorer {
             show_hidden: true,
             sort_column: SftpSortColumn::Name,
             sort_ascending: true,
+            col_name_width_override: None,
             follow_terminal_folder: false,
             remote_monitoring_enabled: true,
             active_remote_label: None,
@@ -444,6 +446,22 @@ impl FileExplorer {
         }
     }
 
+    pub fn force_reconnect_remote(&mut self, cfg: SftpTargetConfig) {
+        let label = format!("{}@{}:{}", cfg.user, cfg.host, cfg.port);
+        self.save_active_remote_state();
+
+        if let Some(existing) = self.remote_sessions.get_mut(&label) {
+            existing.config = cfg.clone();
+            existing.is_connected = false;
+            existing.is_loading = true;
+            existing.error_message = None;
+            existing.client.lock().connect(cfg);
+            self.load_active_remote_state(&label);
+            return;
+        }
+        self.connect_remote(cfg);
+    }
+
     pub fn connect_remote(&mut self, cfg: SftpTargetConfig) {
         let label = format!("{}@{}:{}", cfg.user, cfg.host, cfg.port);
         if self.is_remote && self.remote_label.as_deref() == Some(&label) {
@@ -454,13 +472,16 @@ impl FileExplorer {
         self.save_active_remote_state();
 
         if let Some(existing) = self.remote_sessions.get_mut(&label) {
-            // If credentials changed (e.g., Vault unlocked) and previous connection attempt failed, retry connect
-            if !existing.is_connected && !existing.is_loading && existing.config != cfg {
-                existing.config = cfg.clone();
-                existing.is_loading = true;
-                existing.error_message = None;
-                existing.client.lock().connect(cfg);
+            // If config matches, load existing session state
+            if existing.config == cfg {
+                self.load_active_remote_state(&label);
+                return;
             }
+            // If credentials changed, update config and reconnect
+            existing.config = cfg.clone();
+            existing.is_loading = true;
+            existing.error_message = None;
+            existing.client.lock().connect(cfg);
             self.load_active_remote_state(&label);
             return;
         }
