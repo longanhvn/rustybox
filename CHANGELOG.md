@@ -8,7 +8,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ---
 
 ## [v1.4.2] - 2026-11-13
-### Fixed & Improved (Smooth Startup & Flicker Prevention)
+### Fixed & Improved (Smooth Startup & Accurate SFTP Disconnect Detection)
+- **Sửa triệt để lỗi popup "⚠️ Disconnected · 🔄 Reconnect" tự động hiện khi đang loading**:
+  - Bổ sung hàm kiểm tra chính xác `is_confirmed_disconnected()`: Chỉ xác nhận mất kết nối khi thỏa mãn đồng thời: phiên là remote, không đang trong quá trình tải (`!is_loading`), đã ngắt kết nối (`!is_connected`) và có thông báo lỗi ngắt kết nối socket/fatal error từ server.
+  - Tuyệt đối không bao giờ hiển thị popup/badge mất kết nối khi đang kết nối, đang refresh hoặc tải thư mục rỗng.
+  - Chấm tròn trạng thái trên thanh SFTP: chuyển màu vàng cam khi đang loading/connecting, xanh lá khi kết nối bình thường, và chỉ chuyển đỏ khi có lỗi ngắt kết nối thực sự.
 - **Khắc phục hiện tượng chớp hình khi khởi động ứng dụng trên Windows**:
   - Triển khai `clear_color` trong `eframe::App` đồng bộ chuẩn màu nền Dark `#0F121A` (100% opacity), loại bỏ việc clear canvas sang màu bán trong suốt mặc định ở frame đầu tiên.
   - Tối ưu lệnh phóng to cửa sổ `Maximized`: Bỏ qua việc gửi lệnh `ShowWindow(SW_MAXIMIZE)` trùng lặp khi cửa sổ đã được Windows khởi tạo ở trạng thái maximized (`viewport().maximized == Some(true)`), ngăn chặn hiện tượng DWM vẽ lại khung viền gây chớp màn hình.

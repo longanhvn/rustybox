@@ -335,6 +335,28 @@ impl FileExplorer {
         false
     }
 
+    /// Checks if the SFTP session is confirmed to be disconnected with a fatal socket error.
+    /// Returns false while loading/connecting or when no fatal disconnect error has occurred.
+    pub fn is_confirmed_disconnected(&self) -> bool {
+        if !self.is_remote || self.is_loading || self.is_connected {
+            return false;
+        }
+        if let Some(ref err) = self.error_message {
+            crate::sftp::remote::is_fatal_ssh_error(err)
+                || err.contains("rebooted")
+                || err.contains("disconnected")
+                || err.contains("connection lost")
+                || err.contains("Connection lost")
+                || err.contains("ConnectionFailed")
+                || err.contains("Failed to connect")
+                || err.contains("Authentication failed")
+                || err.contains("Timed out")
+                || err.contains("SFTP Error")
+        } else {
+            false
+        }
+    }
+
     pub fn toggle_sudo_mode(&mut self) {
         if !self.is_remote {
             return;
@@ -3015,5 +3037,41 @@ mod tests {
         explorer.go_up();
         assert_eq!(explorer.current_path.to_string_lossy(), r"C:\");
         assert_eq!(explorer.path_input, r"C:\");
+    }
+
+    #[test]
+    fn test_sftp_confirmed_disconnected_predicate() {
+        let mut explorer = FileExplorer::new();
+        // 1. Local explorer -> must NOT be confirmed disconnected
+        assert!(!explorer.is_confirmed_disconnected());
+
+        // 2. Remote while loading/connecting -> must NOT be confirmed disconnected
+        explorer.is_remote = true;
+        explorer.is_loading = true;
+        explorer.is_connected = false;
+        explorer.error_message = None;
+        assert!(!explorer.is_confirmed_disconnected(), "While loading, must never report disconnected");
+
+        // 3. Remote connected normal -> must NOT be confirmed disconnected
+        explorer.is_loading = false;
+        explorer.is_connected = true;
+        assert!(!explorer.is_confirmed_disconnected());
+
+        // 4. Remote with non-fatal error (e.g. Permission denied) while connected -> must NOT be confirmed disconnected
+        explorer.error_message = Some("Permission denied".to_string());
+        assert!(!explorer.is_confirmed_disconnected());
+
+        // 5. Remote disconnected without error message (e.g. initial clean state) -> must NOT be confirmed disconnected
+        explorer.is_connected = false;
+        explorer.error_message = None;
+        assert!(!explorer.is_confirmed_disconnected());
+
+        // 6. Remote disconnected with fatal socket disconnect error -> MUST be confirmed disconnected
+        explorer.error_message = Some("Read dir error: Readdir error: [Session(-43)] Unable to send FXP_OPEN*".to_string());
+        assert!(explorer.is_confirmed_disconnected(), "Fatal Session(-43) must report confirmed disconnected");
+
+        // 7. But if user triggers reconnect (is_loading becomes true) -> must immediately NOT report disconnected
+        explorer.is_loading = true;
+        assert!(!explorer.is_confirmed_disconnected(), "When reconnecting, must suppress disconnected banner");
     }
 }

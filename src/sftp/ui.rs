@@ -19,7 +19,9 @@ pub fn render_sftp_sidebar(ui: &mut Ui, explorer: &mut FileExplorer) {
         ui.horizontal(|ui| {
             if explorer.is_remote {
                 let label = explorer.remote_label.as_deref().unwrap_or("VPS");
-                let dot_color = if !explorer.is_connected {
+                let dot_color = if explorer.is_loading {
+                    Color32::from_rgb(234, 179, 8)
+                } else if explorer.is_confirmed_disconnected() {
                     Color32::from_rgb(248, 81, 73)
                 } else {
                     Color32::from_rgb(63, 185, 80)
@@ -649,23 +651,22 @@ pub fn render_sftp_sidebar(ui: &mut Ui, explorer: &mut FileExplorer) {
         }
 
         let mut error_reconnect = false;
-        if let Some(ref err) = explorer.error_message {
-            let is_disconnect = !explorer.is_connected
-                || crate::sftp::remote::is_fatal_ssh_error(err)
-                || err.contains("rebooted")
-                || err.contains("disconnected");
-            // Only show top error line if entries is not empty or error is not a disconnect
-            if !explorer.entries.is_empty() || !is_disconnect {
-                ui.horizontal(|ui| {
-                    let display_err = if is_disconnect { "⚠️ SFTP disconnected" } else { err.as_str() };
-                    ui.colored_label(Color32::from_rgb(248, 81, 73), RichText::new(display_err).size(11.0))
-                        .on_hover_text(err);
-                    if is_disconnect {
-                        if ui.add_sized([80.0, 19.0], egui::Button::new(RichText::new("🔄 Reconnect").size(10.5).color(Color32::from_rgb(88, 166, 255)))).clicked() {
-                            error_reconnect = true;
+        if !explorer.is_loading {
+            if let Some(ref err) = explorer.error_message {
+                let is_disconnect = explorer.is_confirmed_disconnected();
+                // Only show top error line if entries is not empty or error is not a disconnect
+                if !explorer.entries.is_empty() || !is_disconnect {
+                    ui.horizontal(|ui| {
+                        let display_err = if is_disconnect { "⚠️ SFTP disconnected" } else { err.as_str() };
+                        ui.colored_label(Color32::from_rgb(248, 81, 73), RichText::new(display_err).size(11.0))
+                            .on_hover_text(err);
+                        if is_disconnect {
+                            if ui.add_sized([80.0, 19.0], egui::Button::new(RichText::new("🔄 Reconnect").size(10.5).color(Color32::from_rgb(88, 166, 255)))).clicked() {
+                                error_reconnect = true;
+                            }
                         }
-                    }
-                });
+                    });
+                }
             }
         }
         if error_reconnect {
@@ -932,7 +933,7 @@ pub fn render_sftp_sidebar(ui: &mut Ui, explorer: &mut FileExplorer) {
                                     }
                                 });
 
-                                if explorer.entries.is_empty() && explorer.is_remote && !explorer.is_connected {
+                                if explorer.is_confirmed_disconnected() && explorer.entries.is_empty() {
                                     ui.add_space(20.0);
                                     let badge_w = 200.0f32.min(avail_w - 24.0);
                                     let badge_h = 26.0f32;
