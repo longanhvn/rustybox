@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [v1.4.5] - 2026-11-23
+### Fixed
+- Prevent UTF-8 byte-boundary panic when extracting Windows drive paths preceded by multi-byte characters.
+- Fix launching Telnet, Serial, and Windows WSL sessions with arguments via `PtySession`.
+- Eliminate per-frame `load_config()` disk reads in the Master Password Vault and Password Manager modals, and avoid idle 100% CPU repainting when Multi-Exec is enabled.
+- Stream files in the embedded HTTP Server instead of buffering entire files into RAM, add 10s read timeout, HTML-escape directory listings, and cap HTTP/Syslog/TFTP daemon logs to 2000 lines.
+- Normalize SFTP `sudo chmod` paths with `clean_remote`, guard `DeleteMany` against empty/root paths, clean up temporary `ssh-keygen` files on failure, and resolve all 4 Windows compiler warnings.
+
 ## [v1.4.4] - 2026-11-23
 ### Changed
 - Redesign sidebar session folder tree in MobaXterm style with `[+]`/`[-]` toggle boxes, solid yellow folder icons, crisp labels, and right-aligned count badges.

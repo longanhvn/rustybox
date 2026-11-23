@@ -648,6 +648,11 @@ fn run_sftp_worker(
                         let mut last_err = String::new();
                         for (p_str, is_dir) in &items {
                             let clean = p_str.replace('\\', "/");
+                            let trimmed = clean.trim();
+                            if trimmed.is_empty() || trimmed == "/" || trimmed == "." || trimmed == ".." {
+                                last_err = "Refusing to delete root or invalid path".to_string();
+                                continue;
+                            }
                             let p = Path::new(&clean);
                             let res = if *is_dir {
                                 remove_sftp_dir_recursive(sftp, p, 0)
@@ -719,7 +724,7 @@ fn run_sftp_worker(
                         }
                         Err(e) => {
                             if cfg.sudo_mode {
-                                let chmod_cmd = format!("chmod {:o} '{}'", mode, remote_path.replace('\'', "'\\''"));
+                                let chmod_cmd = format!("chmod {:o} '{}'", mode, clean_remote.replace('\'', "'\\''"));
                                 match execute_sudo_cmd(sess, &chmod_cmd, cfg.sudo_password.as_deref().or(cfg.password.as_deref())) {
                                     Ok(_) => {
                                         let _ = event_tx.send(SftpEvent::OperationSuccess("Permissions updated on VPS (sudo)".into()));

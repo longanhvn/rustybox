@@ -27,9 +27,8 @@ pub fn extract_cwd_from_title(title: &str) -> Option<String> {
 
     // 1. Windows drive path in title (e.g. "C:\Users\Long" or "cmd - C:\Users\Long\Projects")
     if let Some(pos) = raw.find(":\\")
-        && pos > 0 {
-            let drive_char = raw.as_bytes()[pos - 1] as char;
-            if drive_char.is_ascii_alphabetic() {
+        && let Some(drive_char) = raw[..pos].chars().next_back()
+            && drive_char.is_ascii_alphabetic() {
                 let start = pos - 1;
                 let candidate = raw[start..].split(" - ").next().unwrap_or(&raw[start..]).trim();
                 let clean = candidate.trim_end_matches(['>', '$', '#', ' ']);
@@ -37,7 +36,6 @@ pub fn extract_cwd_from_title(title: &str) -> Option<String> {
                     return Some(clean.to_string());
                 }
             }
-        }
 
     // 2. Unix / SSH path in title (e.g. "user@host: /var/log" or "user@host:/var/log" or "root@srv: ~/app - bash")
     if let Some((_user_host, rest)) = raw.split_once(':') {
@@ -70,16 +68,14 @@ pub fn extract_cwd_from_screen(screen_text: &str) -> Option<String> {
         if let Some(gt_idx) = trimmed.rfind('>') {
             let before_gt = trimmed[..gt_idx].trim();
             if let Some(pos) = before_gt.find(":\\")
-                && pos > 0 {
-                    let drive_char = before_gt.as_bytes()[pos - 1] as char;
-                    if drive_char.is_ascii_alphabetic() {
+                && let Some(drive_char) = before_gt[..pos].chars().next_back()
+                    && drive_char.is_ascii_alphabetic() {
                         let path_cand = before_gt[pos - 1..].trim();
                         let path_cand = path_cand.trim_start_matches("PS ").trim();
                         if !path_cand.is_empty() {
                             return Some(path_cand.to_string());
                         }
                     }
-                }
         }
 
         // 2. Linux / SSH prompt:
@@ -1574,6 +1570,8 @@ impl RustyBoxApp {
                 let _ = std::fs::remove_file(&pub_file);
                 return;
             }
+        let _ = std::fs::remove_file(&tmp_path);
+        let _ = std::fs::remove_file(format!("{}.pub", tmp_path));
         // If ssh-keygen is unavailable, report clear error instead of generating cryptographically invalid fake keys
         self.keygen_public = "❌ Error: ssh-keygen command failed or is not available on this system.".to_string();
         self.keygen_private = "Please install OpenSSH client (ssh-keygen) to generate secure cryptographic key pairs.".to_string();
@@ -2108,13 +2106,18 @@ impl eframe::App for RustyBoxApp {
         };
 
         // Clear has_new_data on background inactive tabs so it doesn't linger
+        let mut any_bg_has_data = false;
         for (i, t) in self.open_tabs.iter().enumerate() {
             if i != self.active_tab_idx {
-                t.session.has_new_data.store(false, std::sync::atomic::Ordering::Relaxed);
+                if self.multi_exec_enabled {
+                    any_bg_has_data |= t.session.has_new_data.swap(false, std::sync::atomic::Ordering::Relaxed);
+                } else {
+                    t.session.has_new_data.store(false, std::sync::atomic::Ordering::Relaxed);
+                }
             }
         }
 
-        if visible_has_data || self.multi_exec_enabled {
+        if visible_has_data || any_bg_has_data {
             ctx.request_repaint();
         } else {
             ctx.request_repaint_after(std::time::Duration::from_millis(50));
@@ -2143,7 +2146,7 @@ impl eframe::App for RustyBoxApp {
                         .inner_margin(egui::Margin::symmetric(5.0, 1.5))
                         .show(ui, |ui| {
                             ui.label(
-                                RichText::new("v1.4.4")
+                                RichText::new("v1.4.5")
                                     .color(Color32::from_rgb(147, 197, 253))
                                     .size(10.5)
                                     .strong(),
@@ -6390,8 +6393,7 @@ impl eframe::App for RustyBoxApp {
         if self.show_vault {
             let mut open = self.show_vault;
             let mut close_vault = false;
-            let cfg = self.storage.load_config();
-            let is_vault_configured = cfg.vault.is_some();
+            let is_vault_configured = self.storage.is_vault_configured();
             let is_unlocked = self.storage.is_vault_unlocked();
 
             egui::Window::new("🔒 Master Password & AES-256 Vault")
@@ -6481,7 +6483,7 @@ impl eframe::App for RustyBoxApp {
                                     .fill(Color32::from_rgb(56, 189, 248))
                             ).clicked()
                                 || trigger_unlock)
-                                && let Some(ref meta) = cfg.vault {
+                                && let Some(ref meta) = self.storage.load_config().vault {
                                     match unlock_vault(meta, &self.master_password) {
                                         Ok(key) => {
                                             self.storage.set_vault_key(Some(key));
@@ -6573,8 +6575,7 @@ impl eframe::App for RustyBoxApp {
                 .default_pos(screen_center)
                 .show(ctx, |ui| {
                     // 1. Radio: Save sessions passwords
-                    let cfg_pwd = self.storage.load_config();
-                    let is_vault_configured = cfg_pwd.vault.is_some();
+                    let is_vault_configured = self.storage.is_vault_configured();
                     let is_vault_unlocked = self.storage.is_vault_unlocked();
 
                     if is_vault_configured && !is_vault_unlocked {
@@ -7297,7 +7298,7 @@ impl eframe::App for RustyBoxApp {
                         ui.heading("🚀 RustyBox");
                         ui.label(RichText::new("Complete Remote Toolbox & Terminal Suite in Pure Rust").strong());
                         ui.add_space(4.0);
-                        ui.label(RichText::new("Version v1.4.4").color(Color32::from_rgb(147, 197, 253)).strong());
+                        ui.label(RichText::new("Version v1.4.5").color(Color32::from_rgb(147, 197, 253)).strong());
                         ui.add_space(8.0);
                         ui.label("High-performance, zero-install, lightweight remote terminal toolbox.");
                         ui.label("Runs natively on Windows, macOS, and Linux.");

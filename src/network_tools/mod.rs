@@ -5,6 +5,32 @@ use std::time::{Duration, Instant};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::{TcpListener, TcpStream, UdpSocket};
 
+const MAX_DAEMON_LOGS: usize = 2000;
+
+fn push_bounded_log(logs: &Arc<parking_lot::Mutex<Vec<String>>>, line: String) {
+    let mut guard = logs.lock();
+    if guard.len() >= MAX_DAEMON_LOGS {
+        let excess = guard.len() - MAX_DAEMON_LOGS + 1;
+        guard.drain(0..excess);
+    }
+    guard.push(line);
+}
+
+fn escape_html(input: &str) -> String {
+    let mut out = String::with_capacity(input.len());
+    for ch in input.chars() {
+        match ch {
+            '&' => out.push_str("&amp;"),
+            '<' => out.push_str("&lt;"),
+            '>' => out.push_str("&gt;"),
+            '"' => out.push_str("&quot;"),
+            '\'' => out.push_str("&#39;"),
+            _ => out.push(ch),
+        }
+    }
+    out
+}
+
 #[derive(Clone, Debug)]
 pub struct ScanResult {
     pub port: u16,
@@ -391,14 +417,15 @@ impl NetworkTools {
                                     let logs_inner = Arc::clone(&logs);
                                     tokio::spawn(async move {
                                         let mut buf = [0u8; 4096];
-                                        if let Ok(n) = socket.read(&mut buf).await
+                                        if let Ok(Ok(n)) = tokio::time::timeout(Duration::from_secs(10), socket.read(&mut buf)).await
                                             && n > 0 {
                                                 let req_str = String::from_utf8_lossy(&buf[..n]);
                                                 let first_line = req_str.lines().next().unwrap_or("");
                                                 let parts: Vec<&str> = first_line.split_whitespace().collect();
-                                                let path = if parts.len() > 1 { parts[1] } else { "/" };
+                                                let raw_path = if parts.len() > 1 { parts[1] } else { "/" };
+                                                let path = raw_path.split('?').next().unwrap_or(raw_path);
 
-                                                logs_inner.lock().push(format!("Peer {} -> {} {}", peer, parts.first().unwrap_or(&""), path));
+                                                push_bounded_log(&logs_inner, format!("Peer {} -> {} {}", peer, parts.first().unwrap_or(&""), path));
 
                                                 let decoded_path = percent_decode(path);
                                                 let clean_path = decoded_path.trim_start_matches('/');
@@ -419,7 +446,8 @@ impl NetworkTools {
                                                     let response = format!("HTTP/1.1 403 Forbidden\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}", forbidden.len(), forbidden);
                                                     let _ = socket.write_all(response.as_bytes()).await;
                                                 } else if target.is_dir() {
-                                                    let mut html = format!("<html><head><title>RustyBox File Server</title><meta charset='utf-8'></head><body style='font-family:sans-serif;background:#1e1e24;color:#eee;padding:20px;'><h2>📁 Index of {}</h2><hr><ul>", path);
+                                                    let safe_title = escape_html(path);
+                                                    let mut html = format!("<html><head><title>RustyBox File Server</title><meta charset='utf-8'></head><body style='font-family:sans-serif;background:#1e1e24;color:#eee;padding:20px;'><h2>📁 Index of {}</h2><hr><ul>", safe_title);
                                                     if let Ok(entries) = std::fs::read_dir(&target) {
                                                         for entry in entries.flatten() {
                                                             let name = entry.file_name().to_string_lossy().to_string();
@@ -431,17 +459,25 @@ impl NetworkTools {
                                                                 format!("{}/{}{}", path, name, slash)
                                                             };
                                                             let icon = if is_dir { "📁" } else { "📄" };
-                                                            html.push_str(&format!("<li>{} <a style='color:#68d391;text-decoration:none;' href='{}'>{}{}</a></li>", icon, href, name, slash));
+                                                            html.push_str(&format!(
+                                                                "<li>{} <a style='color:#68d391;text-decoration:none;' href='{}'>{}{}</a></li>",
+                                                                icon,
+                                                                escape_html(&href),
+                                                                escape_html(&name),
+                                                                slash
+                                                            ));
                                                         }
                                                     }
                                                     html.push_str("</ul><hr><p style='color:#777;font-size:12px;'>Powered by RustyBox HTTP Daemon</p></body></html>");
                                                     let response = format!("HTTP/1.1 200 OK\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{}", html.len(), html);
                                                     let _ = socket.write_all(response.as_bytes()).await;
                                                 } else if target.is_file() {
-                                                    if let Ok(data) = tokio::fs::read(&target).await {
-                                                        let header = format!("HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\nContent-Length: {}\r\nConnection: close\r\n\r\n", data.len());
-                                                        let _ = socket.write_all(header.as_bytes()).await;
-                                                        let _ = socket.write_all(&data).await;
+                                                    if let Ok(mut file) = tokio::fs::File::open(&target).await {
+                                                        let file_len = file.metadata().await.map(|m| m.len()).unwrap_or(0);
+                                                        let header = format!("HTTP/1.1 200 OK\r\nContent-Type: application/octet-stream\r\nContent-Length: {}\r\nConnection: close\r\n\r\n", file_len);
+                                                        if socket.write_all(header.as_bytes()).await.is_ok() {
+                                                            let _ = tokio::io::copy(&mut file, &mut socket).await;
+                                                        }
                                                     } else {
                                                         let _ = socket.write_all(b"HTTP/1.1 403 Forbidden\r\nContent-Length: 0\r\n\r\n").await;
                                                     }
@@ -495,7 +531,7 @@ impl NetworkTools {
                             res = socket.recv_from(&mut buf) => {
                                 if let Ok((len, peer)) = res {
                                     let msg = String::from_utf8_lossy(&buf[..len]);
-                                    logs.lock().push(format!("[{}] {}", peer, msg.trim()));
+                                    push_bounded_log(&logs, format!("[{}] {}", peer, msg.trim()));
                                 }
                             }
                             _ = tokio::time::sleep(Duration::from_millis(100)) => {}
@@ -607,7 +643,7 @@ impl NetworkTools {
                                         _ => "UNKNOWN",
                                     };
                                     let now = chrono::Local::now().format("%H:%M:%S");
-                                    logs.lock().push(format!("[{}] TFTP {} from {} ({} bytes)", now, op_str, src, len));
+                                    push_bounded_log(&logs, format!("[{}] TFTP {} from {} ({} bytes)", now, op_str, src, len));
                                 }
                             }
                             _ = tokio::time::sleep(Duration::from_millis(200)) => {}

@@ -393,6 +393,7 @@ pub fn collect_local_telemetry(
 ) {
     #[cfg(target_os = "windows")]
     {
+        let _ = (last_net, last_time);
         if let Ok(h) = std::env::var("COMPUTERNAME") { local.host = h; }
         if let Ok(u) = std::env::var("USERNAME") { local.user = u; }
         local.cores = std::thread::available_parallelism().map(|n| n.get() as u32).ok();

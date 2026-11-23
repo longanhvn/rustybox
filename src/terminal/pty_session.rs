@@ -131,12 +131,24 @@ impl PtySession {
             .map_err(|e| format!("Failed to open PTY: {}", e))?;
 
         let mut cmd = if let Some(s) = custom_shell {
-            let mut c = CommandBuilder::new(s);
+            let trimmed = s.trim();
+            let mut c = if !std::path::Path::new(trimmed).exists() && trimmed.contains(char::is_whitespace) {
+                let mut parts = trimmed.split_whitespace();
+                let prog = parts.next().unwrap_or(trimmed);
+                let mut builder = CommandBuilder::new(prog);
+                for arg in parts {
+                    builder.arg(arg);
+                }
+                builder
+            } else {
+                CommandBuilder::new(trimmed)
+            };
             #[cfg(not(target_os = "windows"))]
             {
                 c.env("TERM", "xterm-256color");
                 c.env("COLORTERM", "truecolor");
             }
+            let _ = &mut c;
             c
         } else {
             #[cfg(target_os = "windows")]

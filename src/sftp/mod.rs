@@ -1232,6 +1232,7 @@ impl FileExplorer {
     }
 
     fn get_local_owner_group(meta: &Option<fs::Metadata>) -> (String, String) {
+        let _ = meta;
         #[cfg(unix)]
         {
             use std::os::unix::fs::MetadataExt;
