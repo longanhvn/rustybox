@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [v1.4.4] - 2026-11-23
+### Changed
+- Redesign sidebar session folder tree in MobaXterm style with `[+]`/`[-]` toggle boxes, solid yellow folder icons, crisp labels, and right-aligned count badges.
+- Add inline clear (`✖`) button to the session search/filter bar and refine sidebar bottom tip.
+- Increase default left sidebar width from 280px to 320px.
+
 ## [v1.4.3] - 2026-11-16
 ### Changed
 - Merge PR #10: refresh the RustyBox logo and synchronize PNG, ICO and embedded RGBA assets.

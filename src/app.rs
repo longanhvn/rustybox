@@ -2143,7 +2143,7 @@ impl eframe::App for RustyBoxApp {
                         .inner_margin(egui::Margin::symmetric(5.0, 1.5))
                         .show(ui, |ui| {
                             ui.label(
-                                RichText::new("v1.4.3")
+                                RichText::new("v1.4.4")
                                     .color(Color32::from_rgb(147, 197, 253))
                                     .size(10.5)
                                     .strong(),
@@ -2959,7 +2959,7 @@ impl eframe::App for RustyBoxApp {
                             self.sidebar_tab = 1;
                         }
             }
-            let max_sidebar_w = (ctx.screen_rect().width() * 0.50).max(280.0);
+            let max_sidebar_w = (ctx.screen_rect().width() * 0.50).max(320.0);
             ctx.style_mut(|s| {
                 s.interaction.resize_grab_radius_side = 8.0;
             });
@@ -2971,7 +2971,7 @@ impl eframe::App for RustyBoxApp {
                         .inner_margin(egui::Margin::symmetric(8.0, 8.0))
                 )
                 .resizable(true)
-                .default_width(280.0)
+                .default_width(320.0)
                 .width_range(180.0..=max_sidebar_w)
                 .show(ctx, |ui| {
                     // Modern segmented pill switcher
@@ -3012,12 +3012,30 @@ impl eframe::App for RustyBoxApp {
 
                     if self.sidebar_tab == 0 {
                         // SESSIONS TREE
-                        let filter_hint = format!("🔍 Filter {} sessions...", self.sessions.len());
-                        ui.add(
-                            TextEdit::singleline(&mut self.session_search)
-                                .hint_text(filter_hint)
-                                .desired_width(ui.available_width())
-                        );
+                        // Modern Search bar with inline clear button
+                        ui.horizontal(|ui| {
+                            let filter_hint = format!("🔍 Filter {} sessions...", self.sessions.len());
+                            let has_search = !self.session_search.is_empty();
+                            let avail_w = ui.available_width() - if has_search { 28.0 } else { 0.0 };
+                            ui.add(
+                                TextEdit::singleline(&mut self.session_search)
+                                    .hint_text(filter_hint)
+                                    .desired_width(avail_w),
+                            );
+                            if has_search
+                                && ui
+                                    .add(
+                                        egui::Button::new(RichText::new("✖").size(11.0).color(Color32::from_rgb(148, 163, 184)))
+                                            .fill(Color32::from_rgb(22, 28, 40))
+                                            .rounding(4.0)
+                                            .min_size(egui::vec2(22.0, 20.0)),
+                                    )
+                                    .on_hover_text("Clear filter")
+                                    .clicked()
+                            {
+                                self.session_search.clear();
+                            }
+                        });
                         ui.add_space(6.0);
 
                         let is_searching = !self.session_search.trim().is_empty();
@@ -3046,16 +3064,17 @@ impl eframe::App for RustyBoxApp {
                         let mut to_delete_folder: Option<String> = None;
 
                         ScrollArea::vertical().show(ui, |ui| {
-                            ui.spacing_mut().item_spacing.y = 4.0;
-                            ui.spacing_mut().button_padding = egui::vec2(6.0, 5.5);
+                            ui.spacing_mut().item_spacing.y = 2.0;
+                            ui.spacing_mut().button_padding = egui::vec2(4.0, 2.0);
                             ui.spacing_mut().indent = 16.0;
-                            ui.visuals_mut().indent_has_left_vline = false;
+                            ui.visuals_mut().indent_has_left_vline = true;
+                            ui.visuals_mut().widgets.noninteractive.bg_stroke = egui::Stroke::new(1.0, Color32::from_rgb(51, 65, 85));
 
                             let root_header = egui::CollapsingHeader::new(
                                 RichText::new(format!("★ User sessions ({})", total_filtered_sessions))
                                     .color(Color32::from_rgb(234, 179, 8))
                                     .strong()
-                                    .size(13.5),
+                                    .size(13.0),
                             )
                             .id_salt("user_sessions_root_tree")
                             .default_open(true)
@@ -3065,17 +3084,95 @@ impl eframe::App for RustyBoxApp {
                                 for (folder, list) in grouped {
                                     let folder_name = folder.clone();
                                     let display_folder = if folder.is_empty() { "Default" } else { &folder };
-                                    let header = egui::CollapsingHeader::new(
-                                        RichText::new(format!("📁  {} ({})", display_folder, list.len()))
-                                            .strong()
-                                            .size(13.0)
-                                            .color(Color32::from_rgb(220, 227, 235)),
-                                    )
-                                    .id_salt(format!("user_sessions_folder_{}", folder))
-                                    .default_open(false)
-                                    .open(if is_searching { Some(true) } else { None });
+                                    let folder_count = list.len();
+                                    let folder_id = ui.make_persistent_id(format!("user_sessions_folder_{}", folder));
+                                    let mut state = egui::collapsing_header::CollapsingState::load_with_default_open(ui.ctx(), folder_id, false);
+                                    if is_searching {
+                                        state.set_open(true);
+                                    }
+                                    let is_open = state.is_open();
 
-                                    let res = header.show(ui, |ui| {
+                                    // Custom MobaXterm-style Folder Header Row (filled yellow folder icon + crisp white label + count badge)
+                                    let header_res = ui.allocate_response(egui::vec2(ui.available_width(), 25.0), egui::Sense::click());
+                                    let rect = header_res.rect;
+
+                                    if header_res.clicked() {
+                                        state.toggle(ui);
+                                    }
+
+                                    let bg = if header_res.hovered() {
+                                        Color32::from_rgb(30, 41, 59)
+                                    } else if is_open {
+                                        Color32::from_rgb(20, 27, 40)
+                                    } else {
+                                        Color32::TRANSPARENT
+                                    };
+                                    if bg != Color32::TRANSPARENT {
+                                        ui.painter().rect_filled(rect, 4.0, bg);
+                                    }
+
+                                    // +/- box or chevron like MobaXterm
+                                    let box_center = egui::pos2(rect.left() + 8.0, rect.center().y);
+                                    let box_rect = egui::Rect::from_center_size(box_center, egui::vec2(10.0, 10.0));
+                                    ui.painter().rect_stroke(box_rect, 1.5, egui::Stroke::new(1.0, Color32::from_rgb(148, 163, 184)));
+                                    // Horizontal line '-'
+                                    ui.painter().line_segment(
+                                        [egui::pos2(box_center.x - 2.5, box_center.y), egui::pos2(box_center.x + 2.5, box_center.y)],
+                                        egui::Stroke::new(1.2, Color32::from_rgb(226, 232, 240)),
+                                    );
+                                    // Vertical line '+' when closed
+                                    if !is_open {
+                                        ui.painter().line_segment(
+                                            [egui::pos2(box_center.x, box_center.y - 2.5), egui::pos2(box_center.x, box_center.y + 2.5)],
+                                            egui::Stroke::new(1.2, Color32::from_rgb(226, 232, 240)),
+                                        );
+                                    }
+
+                                    // Solid Filled Yellow Folder Icon drawn crisp with painter
+                                    let f_left = rect.left() + 18.0;
+                                    let f_top = rect.center().y - 6.0;
+                                    let tab_rect = egui::Rect::from_min_size(egui::pos2(f_left, f_top), egui::vec2(7.0, 3.5));
+                                    let body_rect = egui::Rect::from_min_size(egui::pos2(f_left, f_top + 2.5), egui::vec2(15.0, 10.0));
+                                    let folder_fill = if is_open {
+                                        Color32::from_rgb(250, 204, 21) // Vàng sáng
+                                    } else {
+                                        Color32::from_rgb(234, 179, 8) // Vàng đậm
+                                    };
+                                    let folder_flap = Color32::from_rgb(254, 240, 138);
+                                    ui.painter().rect_filled(tab_rect, egui::Rounding { nw: 2.0, ne: 2.0, sw: 0.0, se: 0.0 }, Color32::from_rgb(202, 138, 4));
+                                    ui.painter().rect_filled(body_rect, 2.0, folder_fill);
+                                    if is_open {
+                                        // Slight open flap highlight
+                                        let open_rect = egui::Rect::from_min_size(egui::pos2(f_left + 1.5, f_top + 5.5), egui::vec2(14.5, 7.0));
+                                        ui.painter().rect_filled(open_rect, 1.5, folder_flap);
+                                    }
+
+                                    // Folder Name (crisp off-white / bright white, readable like MobaXterm)
+                                    let text_col = if is_open { Color32::from_rgb(254, 240, 138) } else { Color32::from_rgb(241, 245, 249) };
+                                    ui.painter().text(
+                                        egui::pos2(f_left + 21.0, rect.center().y),
+                                        egui::Align2::LEFT_CENTER,
+                                        display_folder,
+                                        egui::FontId::proportional(13.0),
+                                        text_col,
+                                    );
+
+                                    // Right-aligned session count badge
+                                    let count_txt = format!("{}", folder_count);
+                                    let badge_rect = egui::Rect::from_min_size(
+                                        egui::pos2(rect.right() - 28.0, rect.center().y - 8.0),
+                                        egui::vec2(22.0, 16.0),
+                                    );
+                                    ui.painter().rect_filled(badge_rect, 8.0, Color32::from_rgb(30, 41, 59));
+                                    ui.painter().text(
+                                        badge_rect.center(),
+                                        egui::Align2::CENTER_CENTER,
+                                        count_txt,
+                                        egui::FontId::proportional(10.5),
+                                        Color32::from_rgb(148, 163, 184),
+                                    );
+
+                                    state.show_body_indented(&header_res, ui, |ui| {
                                         for s in list {
                                         let icon = match s.session_type {
                                             SessionType::LocalShell { .. } => ">_ ",
@@ -3238,7 +3335,7 @@ impl eframe::App for RustyBoxApp {
                                     }
                                 });
 
-                                res.header_response.context_menu(|ui| {
+                                header_res.context_menu(|ui| {
                                     if ui.button("➕ New session in this folder...").clicked() {
                                         to_new_in_folder = Some(folder_name.clone());
                                         ui.close_menu();
@@ -3264,7 +3361,11 @@ impl eframe::App for RustyBoxApp {
 
                             ui.add_space(8.0);
                             ui.separator();
-                            ui.label(RichText::new("Double-click to connect • Right-click for menu").weak().size(10.0));
+                            ui.add_space(2.0);
+                            ui.horizontal(|ui| {
+                                ui.label(RichText::new("💡 Tip:").color(Color32::from_rgb(234, 179, 8)).size(10.5).strong());
+                                ui.label(RichText::new("Double-click to connect · Right-click for menu").color(Color32::from_rgb(148, 163, 184)).size(10.5));
+                            });
                         });
 
                         if let Some(s) = to_launch {
@@ -7196,7 +7297,7 @@ impl eframe::App for RustyBoxApp {
                         ui.heading("🚀 RustyBox");
                         ui.label(RichText::new("Complete Remote Toolbox & Terminal Suite in Pure Rust").strong());
                         ui.add_space(4.0);
-                        ui.label(RichText::new("Version v1.4.3").color(Color32::from_rgb(147, 197, 253)).strong());
+                        ui.label(RichText::new("Version v1.4.4").color(Color32::from_rgb(147, 197, 253)).strong());
                         ui.add_space(8.0);
                         ui.label("High-performance, zero-install, lightweight remote terminal toolbox.");
                         ui.label("Runs natively on Windows, macOS, and Linux.");
