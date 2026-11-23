@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [v1.4.6] - 2026-11-23
+### Fixed
+- Fix macOS compilation error in `get_local_free_space` (`statvfs.f_bavail` `u32` to `u64` cast) and silence unused telemetry parameter warnings on macOS.
+
 ## [v1.4.5] - 2026-11-23
 ### Fixed
 - Prevent UTF-8 byte-boundary panic when extracting Windows drive paths preceded by multi-byte characters.

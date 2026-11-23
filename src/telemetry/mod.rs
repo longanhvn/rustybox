@@ -400,6 +400,7 @@ pub fn collect_local_telemetry(
     }
     #[cfg(target_os = "macos")]
     {
+        let _ = (last_net, last_time);
         if let Ok(u) = std::env::var("USER") {
             local.user = u;
         }

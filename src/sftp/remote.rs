@@ -1255,7 +1255,8 @@ pub fn get_local_available_space(_path: &Path) -> Result<u64, String> {
         if ret == 0 {
             let stat = unsafe { stat.assume_init() };
             // f_bavail is free blocks available to unprivileged users
-            let avail = stat.f_bavail.saturating_mul(stat.f_frsize);
+            #[allow(clippy::unnecessary_cast)]
+            let avail = (stat.f_bavail as u64).saturating_mul(stat.f_frsize as u64);
             return Ok(avail);
         }
     }
