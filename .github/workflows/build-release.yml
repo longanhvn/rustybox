@@ -79,6 +79,22 @@ jobs:
     permissions:
       contents: write
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Extract latest release notes from CHANGELOG
+        run: |
+          python3 -c "
+          import re
+          with open('CHANGELOG.md', 'r', encoding='utf-8') as f:
+              content = f.read()
+          match = re.search(r'(##\s*\[v[^\]]+\].*?)(?=\n##\s*\[v|\Z)', content, re.DOTALL)
+          notes = match.group(1).strip() if match else ''
+          header = 'Tác giả: Long kakaka (longanhvn)\n\n'
+          with open('RELEASE_NOTES.md', 'w', encoding='utf-8') as out:
+              out.write(header + notes + '\n')
+          "
+
       - name: Download build artifacts
         uses: actions/download-artifact@v4
         with:
@@ -89,5 +105,6 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: artifacts/*
+          body_path: RELEASE_NOTES.md
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
