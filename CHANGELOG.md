@@ -26,7 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [v1.4.4] - 2026-11-23
 ### Changed
-- Redesign sidebar session folder tree in MobaXterm style with `[+]`/`[-]` toggle boxes, solid yellow folder icons, crisp labels, and right-aligned count badges.
+- Redesign sidebar session folder tree with classic hierarchical `[+]`/`[-]` toggle boxes, solid yellow folder icons, crisp labels, and right-aligned count badges.
 - Add inline clear (`✖`) button to the session search/filter bar and refine sidebar bottom tip.
 - Increase default left sidebar width from 280px to 320px.
 
@@ -76,7 +76,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Khi tab SSH được kích hoạt khởi động lại qua phím `Enter` hoặc menu context, phiên SFTP tương ứng sẽ tự động tái kết nối nền mà không cần đóng mở lại toàn bộ ứng dụng.
 
 ## [v1.3.99] - 2026-11-12
-### Fixed & Improved (MobaXterm 95-Version Changelog Audit & System Hardening)
+### Fixed & Improved (v1.3.95 Changelog Audit & System Hardening)
 - **Khắc phục xung đột phím Escape khi đóng Modal/Dialog**:
   - Tự động bỏ khóa focus phím Escape của terminal và chặn phát byte `\x1b` khi có bất kỳ cửa sổ Popup/Modal nào đang mở (Settings, Manage Passwords, SFTP dialogs, v.v.), tránh làm ảnh hưởng đến shell hay thoát ứng dụng TUI bên trong terminal ngoài ý muốn.
 - **Làm sạch khoảng trắng trường Ghi chú (Comments)**:
@@ -302,14 +302,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ---
 
 ## [v1.3-83] - 2026-11-06
-### Added & Improved (SFTP Recursive Folder Transfer & MobaXterm Top Controls)
+### Added & Improved (SFTP Recursive Folder Transfer & Top Controls)
 - **Tải lên & Tải xuống đệ quy cả thư mục (Recursive Folder Transfer)**:
   - Bổ sung menu ngữ cảnh chuột phải: `📤 Upload file(s)...`, `📁 Upload folder...`, `📥 Download folder`.
   - Hỗ trợ chọn thư mục nội bộ qua `rfd::FileDialog` và tự động tạo cây thư mục đệ quy cả hai chiều upload và download qua SFTP.
 - **Tối ưu tốc độ truyền tải SFTP (Speed Optimization)**:
   - Cấu hình TCP socket qua `socket2`: Kích hoạt `TCP_NODELAY = true`, mở rộng buffer gửi/nhận socket hệ thống lên **1MB** (`1024 * 1024`).
   - Nâng kích thước buffer đọc/ghi luồng SFTP lên **256KB** bằng `BufReader` và `BufWriter`, gia tăng đáng kể thông lượng truyền file lớn.
-- **Tái cấu trúc thanh điều khiển SFTP chuẩn MobaXterm**:
+- **Tái cấu trúc thanh điều khiển SFTP trực quan**:
   - Đưa cụm nút **Remote monitoring** (kèm icon ECG monitor) và checkbox **Follow terminal folder** lên vị trí đầu trang ngay bên dưới thanh địa chỉ (Path bar), phía trên danh sách file, không còn bị khuất ở chân trang khi danh sách tệp dài.
   - Tự động kích hoạt hiển thị tab SFTP Browser ngay khi mở phiên kết nối SSH.
 
@@ -317,7 +317,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [v1.3-82] - 2026-11-06
 ### Fixed & Improved (Terminal Selection & Quick Copy)
-- **Cải tiến bôi đen kéo chuột & sao chép tức thời phong cách MobaXterm**:
+- **Cải tiến bôi đen kéo chuột & sao chép tức thời**:
   - Chuẩn hóa tọa độ click và kéo chuột trong widget terminal (`pos_to_abs_cell`), hỗ trợ bôi đen liên tục qua các trang cuộn scrollback.
   - Thao tác nhanh: Double-click bôi đen và sao chép từ/token, Triple-click bôi đen và sao chép toàn bộ dòng lệnh.
   - Tự động sao chép văn bản vào clipboard ngay khi nhả chuột (Select-to-copy) và xóa vùng chọn khi click chuột trái đơn lẻ hoặc khi người dùng gõ phím.
@@ -336,10 +336,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [v1.3-80] - 2026-11-06
 ### Improved (Sessions Tree Sidebar Polish)
-- **Tối ưu cây thư mục Sessions bên sidebar rộng rãi, thoáng mắt chuẩn MobaXterm**:
+- **Tối ưu cây thư mục Sessions bên sidebar rộng rãi, thoáng mắt**:
   - **Tăng kích thước & chiều cao hàng thư mục**: Nới lỏng khoảng đệm nút thư mục `button_padding = vec2(6.0, 5.5)` và khoảng cách dọc `item_spacing.y = 4.0`, nâng chiều cao mỗi hàng lên ~27-28px cho hit-box thoải mái, dễ bấm.
   - **Tăng cỡ chữ thư mục to rõ nét**: Nâng font chữ gốc `★ User sessions` lên **13.5px**, các thư mục con lên **13.0px** đậm nét, tăng khoảng cách giữa icon `📁` và tên thư mục.
-  - **Loại bỏ vạch kẻ dọc phân cấp rườm rà (`indent_has_left_vline = false`)**: Tắt các đường kẻ nối dọc của egui, sử dụng khoảng thụt lề tự nhiên `indent = 16.0` tạo cảm giác thanh thoát, rộng rãi tương tự MobaXterm.
+  - **Loại bỏ vạch kẻ dọc phân cấp rườm rà (`indent_has_left_vline = false`)**: Tắt các đường kẻ nối dọc của egui, sử dụng khoảng thụt lề tự nhiên `indent = 16.0` tạo cảm giác thanh thoát, rộng rãi và dễ quan sát.
   - **Mở rộng kích thước thẻ session con**: Tăng chiều cao thẻ session 2 dòng từ 36px lên 38px, font tiêu đề session lên 12.5px cân đối với kích thước hàng thư mục.
 
 ---
@@ -353,8 +353,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ---
 
 ## [v1.3-78] - 2026-11-06
-### Added & Improved (SFTP Remote Sidebar Parity with MobaXterm)
-- **Nâng cấp toàn diện SFTP Sidebar đạt độ tương đồng 100% với MobaXterm gốc**:
+### Added & Improved (Full SFTP Remote Sidebar)
+- **Nâng cấp toàn diện SFTP Sidebar với đầy đủ tính năng duyệt file từ xa**:
   - **Đầy đủ 6 cột dữ liệu**: Bổ sung hiển thị trọn vẹn **Name**, **Size (KB)**, **Last modified**, **Owner**, **Group**, và **Access** (UNIX permissions `drwxrwxr-x`, `-rw-r--r--`).
   - **Tự động ánh xạ UID/GID sang Username/Groupname thật**: SFTP backend worker tự động đọc và cache bảng `/etc/passwd` và `/etc/group` qua SFTP stream khi kết nối, hiển thị tên tài khoản thật (`php`, `root`) thay vì ID số.
   - **Sắp xếp linh hoạt đa cột (Multi-column sorting)**: Hỗ trợ click header để sort theo bất kỳ cột nào kèm mũi tên chỉ hướng tăng/giảm dần (`▲`/`▼`).
@@ -460,7 +460,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Hoạt động thuần túy phía client, không can thiệp hay sửa đổi bất kỳ tệp cấu hình/shell nào trên máy chủ từ xa.
   - Thuật toán quét hiệu năng cao 1 lần/dòng theo chỉ mục UTF-8, hỗ trợ kiểm tra ranh giới từ (`whole_word`) và phân biệt hoa/thường (`match_case`).
   - Hộp thoại quản lý danh sách quy tắc với 16 bộ quy tắc mặc định, bảng màu swatch trực quan và khung Live Preview kiểm tra log tức thời.
-- **SFTP Explorer Context Menu Đạt 100% Tính Năng Chuẩn MobaXterm**:
+- **SFTP Explorer Context Menu Đầy Đủ Tính Năng Chuyên Nghiệp**:
   - Context menu chuột phải chuyên sâu cho File (12 tác vụ: Open, Edit with, Diff Viewer, Download, Duplicate, Rename, Chmod permissions, Copy Path/Name, Delete), Folder và Vùng trống.
   - Tích hợp Diff Viewer so sánh nội dung 2 tập tin.
   - Nhấp chuột giữa (Middle-click) vào tệp/thư mục để dán nhanh đường dẫn vào cửa sổ dòng lệnh.

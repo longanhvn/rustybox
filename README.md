@@ -7,7 +7,7 @@
 [![GitHub Repo](https://img.shields.io/badge/GitHub-longanhvn%2Frustybox-blue?logo=github)](https://github.com/longanhvn/rustybox)
 
 > **RustyBox** là bộ công cụ Remote Terminal, SSH Client & SFTP Toolbox đa nền tảng hiện đại, hiệu năng cực cao, viết 100% bằng **Rust** (sử dụng framework đồ họa `egui`/`eframe`). 
-> Ứng dụng hoạt động hoàn toàn độc lập (**Portable**), khởi động tức thì, dung lượng siêu nhẹ (~10 MB sau khi strip), không phụ thuộc runtime cồng kềnh, được thiết kế làm giải pháp thay thế mạnh mẽ, bảo mật và hiện đại cho MobaXterm, Termius và PuTTY.
+> Ứng dụng hoạt động hoàn toàn độc lập (**Portable**), khởi động tức thì, dung lượng siêu nhẹ (~10 MB sau khi strip), không phụ thuộc runtime cồng kềnh, được thiết kế làm giải pháp quản lý kết nối từ xa đa nền tảng mạnh mẽ, bảo mật và hiện đại (hỗ trợ import cấu hình từ OpenSSH, MobaXterm, PuTTY, JSON).
 
 ![RustyBox Preview](docs/screenshots/rustybox_preview.png)
 
