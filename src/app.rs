@@ -2146,7 +2146,7 @@ impl eframe::App for RustyBoxApp {
                         .inner_margin(egui::Margin::symmetric(5.0, 1.5))
                         .show(ui, |ui| {
                             ui.label(
-                                RichText::new("v1.4.6")
+                                RichText::new("v1.4.7")
                                     .color(Color32::from_rgb(147, 197, 253))
                                     .size(10.5)
                                     .strong(),
@@ -3495,7 +3495,13 @@ impl eframe::App for RustyBoxApp {
             let strip_height = 28.0;
             let (strip_rect, _) = ui.allocate_exact_size(vec2(ui.available_width(), strip_height), egui::Sense::hover());
             let tab_count = self.open_tabs.len();
-            let switcher_w = if tab_count > 1 { 60.0f32 } else { 0.0f32 };
+            let tabs_overflow_id = ui.id().with("tabs_bar_overflow");
+            let prev_overflow: bool = ui.ctx().data(|d| d.get_temp(tabs_overflow_id).unwrap_or(false));
+            let switcher_w = if tab_count > 1 {
+                if prev_overflow { 104.0f32 } else { 60.0f32 }
+            } else {
+                0.0f32
+            };
             let right_w = switcher_w;
             let tabs_rect = if right_w > 0.0 {
                 egui::Rect::from_min_max(strip_rect.min, pos2(strip_rect.max.x - right_w - 4.0, strip_rect.max.y))
@@ -3514,12 +3520,12 @@ impl eframe::App for RustyBoxApp {
             let num_tabs = self.open_tabs.len().max(1);
             let dynamic_tab_w = ((avail_tabs_w - 20.0) / num_tabs as f32).clamp(80.0, 180.0);
 
-            // 1. TABS AREA (Home + Scrollable tab strip)
+            // 1. TABS AREA (Home + Scrollable tab strip, scrollbar hidden so it never steals tab clicks/hover)
             let mut tabs_ui = ui.new_child(egui::UiBuilder::new().max_rect(tabs_rect).layout(Layout::left_to_right(Align::Center)));
-            ScrollArea::horizontal()
+            let tab_scroll_out = ScrollArea::horizontal()
                 .id_salt("tabs_scroll_area")
                 .auto_shrink([false, false])
-                .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::VisibleWhenNeeded)
+                .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysHidden)
                 .show(&mut tabs_ui, |ui| {
                     ui.horizontal(|ui| {
                         // Home Tab (Engineered inside the exact same row as all other tabs)
@@ -3727,6 +3733,12 @@ impl eframe::App for RustyBoxApp {
                         });
                     });
 
+            let tabs_max_scroll_x = (tab_scroll_out.content_size.x - tab_scroll_out.inner_rect.width()).max(0.0);
+            let tabs_overflow = tabs_max_scroll_x > 2.0;
+            if tabs_overflow != prev_overflow {
+                ui.ctx().data_mut(|d| d.insert_temp(tabs_overflow_id, tabs_overflow));
+            }
+
             if let Some(idx) = switch_to_tab {
                 self.is_home_active = false;
                 self.active_tab_idx = idx;
@@ -3740,7 +3752,7 @@ impl eframe::App for RustyBoxApp {
                 });
             }
 
-            // 2. RIGHT TAB SWITCHER DROPDOWN (when multiple tabs exist)
+            // 2. RIGHT TAB SWITCHER DROPDOWN + OVERFLOW ARROWS (when multiple tabs exist)
             if tab_count > 1 {
                 let mut right_ui = ui.new_child(egui::UiBuilder::new().max_rect(right_rect).layout(Layout::right_to_left(Align::Center)));
                 right_ui.menu_button(
@@ -3803,6 +3815,33 @@ impl eframe::App for RustyBoxApp {
                         }
                     },
                 );
+                if tabs_overflow {
+                    let cur_x = tab_scroll_out.state.offset.x;
+                    if right_ui
+                        .add_enabled(
+                            cur_x < tabs_max_scroll_x - 1.0,
+                            egui::Button::new(RichText::new("▶").size(10.0)).min_size(vec2(18.0, 20.0)),
+                        )
+                        .on_hover_text("Scroll tabs right")
+                        .clicked()
+                    {
+                        let mut st = tab_scroll_out.state;
+                        st.offset.x = (cur_x + 180.0).min(tabs_max_scroll_x);
+                        st.store(ctx, tab_scroll_out.id);
+                    }
+                    if right_ui
+                        .add_enabled(
+                            cur_x > 1.0,
+                            egui::Button::new(RichText::new("◀").size(10.0)).min_size(vec2(18.0, 20.0)),
+                        )
+                        .on_hover_text("Scroll tabs left")
+                        .clicked()
+                    {
+                        let mut st = tab_scroll_out.state;
+                        st.offset.x = (cur_x - 180.0).max(0.0);
+                        st.store(ctx, tab_scroll_out.id);
+                    }
+                }
             }
 
             // Tab Right-Click Context Menu (Floating Foreground Area)
@@ -7298,7 +7337,7 @@ impl eframe::App for RustyBoxApp {
                         ui.heading("🚀 RustyBox");
                         ui.label(RichText::new("Complete Remote Toolbox & Terminal Suite in Pure Rust").strong());
                         ui.add_space(4.0);
-                        ui.label(RichText::new("Version v1.4.6").color(Color32::from_rgb(147, 197, 253)).strong());
+                        ui.label(RichText::new("Version v1.4.7").color(Color32::from_rgb(147, 197, 253)).strong());
                         ui.add_space(8.0);
                         ui.label("High-performance, zero-install, lightweight remote terminal toolbox.");
                         ui.label("Runs natively on Windows, macOS, and Linux.");

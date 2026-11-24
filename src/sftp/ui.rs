@@ -730,13 +730,20 @@ pub fn render_sftp_sidebar(ui: &mut Ui, explorer: &mut FileExplorer) {
                 let mut click_range: Option<PathBuf> = None;
                 let mut clear_sel = false;
 
+                let horiz_id = ui.id().with("sftp_horiz_offset");
+                let horiz_offset: f32 = ui.ctx().data(|d| d.get_temp(horiz_id).unwrap_or(0.0));
+                ui.spacing_mut().scroll.floating = false;
+                ui.spacing_mut().item_spacing.y = 0.0;
+
+                // 1. STICKY HEADER ROW (Synced horizontally with body ScrollArea::both)
                 ScrollArea::horizontal()
-                    .id_salt("sftp_horiz_scroll")
-                    .auto_shrink([false, false])
+                    .id_salt("sftp_hdr_scroll")
+                    .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysHidden)
+                    .horizontal_scroll_offset(horiz_offset)
+                    .enable_scrolling(false)
                     .show(ui, |ui| {
                         ui.set_min_width(table_w);
 
-                        // 1. STICKY HEADER ROW (Matching MobaXterm 6 Columns)
                         let (hdr_rect, _) = ui.allocate_exact_size(vec2(table_w, 24.0), Sense::hover());
                         let p = ui.painter();
                         p.rect_filled(
@@ -876,15 +883,16 @@ pub fn render_sftp_sidebar(ui: &mut Ui, explorer: &mut FileExplorer) {
                         if explorer.sort_column == SftpSortColumn::Access {
                             draw_sort_arrow(p, r_access.left() + 50.0, r_access.center().y, explorer.sort_ascending);
                         }
+                    });
 
-                        let list_h = (table_h - 26.0).max(90.0);
+                let list_h = (table_h - 26.0).max(90.0);
 
-                        ScrollArea::vertical()
-                            .id_salt("sftp_entries_scroll")
-                            .max_height(list_h)
-                            .min_scrolled_height(list_h)
-                            .auto_shrink([false, false])
-                            .show(ui, |ui| {
+                let scroll_out = ScrollArea::both()
+                    .id_salt("sftp_entries_scroll")
+                    .max_height(list_h)
+                    .min_scrolled_height(list_h)
+                    .auto_shrink([false, false])
+                    .show(ui, |ui| {
                                 ui.set_min_width(table_w);
                                 ui.spacing_mut().item_spacing.y = 1.0;
 
@@ -1332,7 +1340,10 @@ pub fn render_sftp_sidebar(ui: &mut Ui, explorer: &mut FileExplorer) {
                             }
                         });
                     });
-                });
+                if (scroll_out.state.offset.x - horiz_offset).abs() > 0.1 {
+                    ui.ctx().data_mut(|d| d.insert_temp(horiz_id, scroll_out.state.offset.x));
+                    ui.ctx().request_repaint();
+                }
 
                 // Rubber-band (Marquee) drag multi-selection & Click selection state updates
                 if let Some(start_pos) = explorer.drag_select_start {

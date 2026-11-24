@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [v1.4.7] - 2026-11-23
+### Fixed
+- Fix SFTP file list scrollbar flickering on hover by replacing nested `ScrollArea::horizontal`/`ScrollArea::vertical` with a unified `ScrollArea::both` (non-floating scrollbar) and syncing the sticky header horizontal offset.
+- Hide the overlapping horizontal scrollbar on the top open-tabs strip so moving the mouse onto tabs never catches the scrollbar, and add `◀`/`▶` scroll buttons beside the tab switcher when tabs overflow.
+
 ## [v1.4.6] - 2026-11-23
 ### Fixed
 - Fix macOS compilation error in `get_local_free_space` (`statvfs.f_bavail` `u32` to `u64` cast) and silence unused telemetry parameter warnings on macOS.
