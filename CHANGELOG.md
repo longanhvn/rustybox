@@ -181,7 +181,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Khi phiên SSH được khởi tạo và kết nối thành công, ứng dụng tự động hiển thị tab Terminal của phiên đó đồng thời chuyển thanh điều hướng trái sang tab **SFTP Explorer** (`sidebar_tab = 1`) bám sát đúng máy chủ từ xa.
   - Tự động bắt sự kiện `SftpEvent::Connected` từ tiến trình nền để đảm bảo cây thư mục SFTP của VPS hiển thị tức thời ngay khi xác thực thành công.
 - **Cập nhật thông tin tác giả**:
-  - Cập nhật hiển thị tên tác giả theo nickname: `Long kakaka (longanhvn)` trong hộp thoại About và `README.md`.
+  - Cập nhật hiển thị thông tin theo nickname: `longanhvn` trong hộp thoại About và `README.md`.
 
 ---
 

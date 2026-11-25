@@ -7343,8 +7343,8 @@ impl eframe::App for RustyBoxApp {
                         ui.label("Runs natively on Windows, macOS, and Linux.");
                         ui.add_space(8.0);
                         ui.horizontal(|ui| {
-                            ui.label(RichText::new("Tác giả:").strong());
-                            ui.label("Long kakaka (longanhvn)");
+                            ui.label(RichText::new("Nickname:").strong());
+                            ui.label("longanhvn");
                         });
                         ui.add_space(3.0);
                         ui.horizontal(|ui| {
