@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [v1.4.8] - 2026-11-25
+### Added & Improved
+- **Bilingual UI (English & Vietnamese):**
+  - Added `AppLanguage` (`English` / `Vietnamese`) persisted in `data/RustyBox.json` with backward-compatible `#[serde(default)]`.
+  - Added instant language switcher button (`🌐 EN` / `🌐 VI`) on the top-right menu bar and a **Language / Ngôn ngữ** selector in **Settings → General**.
+  - Translated top menus, utility buttons, toolbar controls, Settings tabs, and the About modal across both languages.
+- **Crisp Vietnamese & Unicode Font Rendering:**
+  - Updated `build_font_definitions` (`src/terminal/fonts.rs`) to load native system Unicode UI fonts (`Segoe UI` / `Tahoma` / `Arial` on Windows, `SFNS` / `Arial Unicode` on macOS, `Noto Sans` / `DejaVu Sans` on Linux) at the top of `FontFamily::Proportional` with embedded `DejaVuSans` fallback, eliminating missing Vietnamese diacritics/square glyphs.
+- **Documentation & Preview:**
+  - Refreshed `docs/screenshots/rustybox_preview.png` (`1380×840`), updated `README.md` download links and feature highlights for `v1.4.8`.
+
 ## [v1.4.7] - 2026-11-23
 ### Fixed
 - Fix SFTP file list scrollbar flickering on hover by replacing nested `ScrollArea::horizontal`/`ScrollArea::vertical` with a unified `ScrollArea::both` (non-floating scrollbar) and syncing the sticky header horizontal offset.

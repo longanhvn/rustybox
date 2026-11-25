@@ -19,10 +19,10 @@ Người dùng tải về là chạy trực tiếp được ngay (**Zero Install
 
 | Hệ điều hành | Tệp thực thi Portable | Dung lượng | Hướng dẫn sử dụng |
 | :--- | :--- | :--- | :--- |
-| **🪟 Windows 10 / 11 (x64)** | [**`RustyBox-windows-x64.exe`**](https://github.com/longanhvn/rustybox/releases/download/v1.4.7/RustyBox-windows-x64.exe) | ~20 MB | Tải về nhấp đúp chạy ngay |
-| **🐧 Linux (Ubuntu / Debian / Fedora)** | [**`RustyBox-linux-x64`**](https://github.com/longanhvn/rustybox/releases/download/v1.4.7/RustyBox-linux-x64) | ~18 MB | `chmod +x RustyBox-linux-x64 && ./RustyBox-linux-x64` |
-| **🍎 macOS Universal (Apple Silicon & Intel)** | [**`RustyBox-macos-universal`**](https://github.com/longanhvn/rustybox/releases/download/v1.4.7/RustyBox-macos-universal) | ~33 MB | `chmod +x RustyBox-macos-universal && ./RustyBox-macos-universal` |
-| **🍎 macOS Apple Silicon (M1/M2/M3/M4)** | [**`RustyBox-macos-arm64`**](https://github.com/longanhvn/rustybox/releases/download/v1.4.7/RustyBox-macos-arm64) | ~17 MB | `chmod +x RustyBox-macos-arm64 && ./RustyBox-macos-arm64` |
+| **🪟 Windows 10 / 11 (x64)** | [**`RustyBox-windows-x64.exe`**](https://github.com/longanhvn/rustybox/releases/download/v1.4.8/RustyBox-windows-x64.exe) | ~13 MB | Tải về nhấp đúp chạy ngay |
+| **🐧 Linux (Ubuntu / Debian / Fedora)** | [**`RustyBox-linux-x64`**](https://github.com/longanhvn/rustybox/releases/download/v1.4.8/RustyBox-linux-x64) | ~18 MB | `chmod +x RustyBox-linux-x64 && ./RustyBox-linux-x64` |
+| **🍎 macOS Universal (Apple Silicon & Intel)** | [**`RustyBox-macos-universal`**](https://github.com/longanhvn/rustybox/releases/download/v1.4.8/RustyBox-macos-universal) | ~33 MB | `chmod +x RustyBox-macos-universal && ./RustyBox-macos-universal` |
+| **🍎 macOS Apple Silicon (M1/M2/M3/M4)** | [**`RustyBox-macos-arm64`**](https://github.com/longanhvn/rustybox/releases/download/v1.4.8/RustyBox-macos-arm64) | ~17 MB | `chmod +x RustyBox-macos-arm64 && ./RustyBox-macos-arm64` |
 
 *👉 Xem danh sách toàn bộ các bản phát hành tại: [**GitHub Releases**](https://github.com/longanhvn/rustybox/releases)*
 
@@ -51,7 +51,9 @@ Người dùng tải về là chạy trực tiếp được ngay (**Zero Install
 - Hộp thoại cảnh báo an toàn tự động xuất hiện khi dán đoạn văn bản có chứa nhiều dòng hoặc ký tự xuống dòng (`\n`).
 - Cho phép xem trước chính xác nội dung câu lệnh trước khi thực thi để ngăn ngừa việc vô tình chạy nhầm lệnh phá hủy hệ thống.
 
-### 4. 🎨 Themes & Tùy biến Font Terminal
+### 4. 🎨 Themes, Tùy biến Font & Đa ngôn ngữ (English / Tiếng Việt)
+- **Chuyển đổi ngôn ngữ tức thì (`🌐 EN` / `🌐 VI`):** Hỗ trợ đầy đủ **English** và **Tiếng Việt** qua nút chuyển nhanh ở góc phải thanh Menu Bar hoặc trong **Settings → General**, tự động lưu cấu hình vào `RustyBox.json`.
+- **Hiển thị tiếng Việt chuẩn Unicode trên mọi hệ điều hành:** Tự động nạp font hệ thống (`Segoe UI` trên Windows, `SFNS` / `Arial Unicode` trên macOS, `Noto Sans` trên Linux) kết hợp bộ font `DejaVu Sans` & `Noto Sans Mono` nhúng sẵn — sắc nét, không lỗi dấu hay ô vuông.
 - **6 Bảng màu Terminal chuyên nghiệp:** *RustyBox Dark*, *Dracula*, *Solarized Dark*, *Monokai*, *Nord*, và *Hacker Matrix*.
 - **Hỗ trợ phông chữ lập trình đa dạng:** Cascadia Code, JetBrains Mono, Fira Code, Consolas, Courier New, MesloLGS NF, DejaVu Sans Mono kèm thanh trượt cỡ chữ và độ mờ nền (Background Opacity).
 

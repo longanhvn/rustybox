@@ -140,9 +140,38 @@ pub fn build_font_definitions(preferred_mono_font: &str) -> egui::FontDefinition
         mono.insert(0, item);
     }
 
-    // Put DejaVu Sans at top of Proportional family for crisp UI text
+    // Put system Unicode font (Segoe UI / SFNS / NotoSans) + DejaVu Sans at top of Proportional family for crisp Vietnamese & Unicode UI text
     let prop = fonts.families.entry(egui::FontFamily::Proportional).or_default();
     prop.insert(0, "dejavu_sans".to_owned());
+
+    let sys_candidates: &[&str] = if cfg!(target_os = "windows") {
+        &[
+            r"C:\Windows\Fonts\segoeui.ttf",
+            r"C:\Windows\Fonts\tahoma.ttf",
+            r"C:\Windows\Fonts\arial.ttf",
+        ]
+    } else if cfg!(target_os = "macos") {
+        &[
+            "/System/Library/Fonts/SFNS.ttf",
+            "/System/Library/Fonts/Supplemental/Arial Unicode.ttf",
+            "/Library/Fonts/Arial.ttf",
+        ]
+    } else {
+        &[
+            "/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf",
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+        ]
+    };
+    for path in sys_candidates {
+        if let Ok(bytes) = std::fs::read(path) {
+            fonts.font_data.insert(
+                "sys_ui_unicode".to_owned(),
+                Arc::new(egui::FontData::from_owned(bytes)),
+            );
+            prop.insert(0, "sys_ui_unicode".to_owned());
+            break;
+        }
+    }
 
     fonts
 }

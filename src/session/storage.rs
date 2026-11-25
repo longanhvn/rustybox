@@ -129,6 +129,30 @@ pub fn unlock_vault(meta: &VaultMeta, master: &str) -> Result<[u8; 32], String> 
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub enum AppLanguage {
+    #[default]
+    English,
+    Vietnamese,
+}
+
+impl AppLanguage {
+    pub fn short_code(self) -> &'static str {
+        match self {
+            Self::English => "EN",
+            Self::Vietnamese => "VI",
+        }
+    }
+}
+
+#[inline]
+pub fn tr(lang: AppLanguage, en: &'static str, vi: &'static str) -> &'static str {
+    match lang {
+        AppLanguage::English => en,
+        AppLanguage::Vietnamese => vi,
+    }
+}
+
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct Credential {
     pub name: String,
@@ -138,6 +162,8 @@ pub struct Credential {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct RustyBoxConfig {
+    #[serde(default)]
+    pub language: AppLanguage,
     #[serde(default)]
     pub vault: Option<VaultMeta>,
     /// 0 = Always, 1 = Never, 2 = Ask
@@ -191,6 +217,7 @@ fn default_log_directory() -> String {
 impl Default for RustyBoxConfig {
     fn default() -> Self {
         Self {
+            language: AppLanguage::English,
             vault: None,
             password_save_mode: 0,
             save_key_passphrases: false,

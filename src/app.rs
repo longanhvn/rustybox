@@ -1,6 +1,7 @@
 use crate::network_tools::NetworkTools;
 use crate::session::storage::{
-    create_vault, decrypt_str, is_encrypted, unlock_vault, Credential, StorageManager,
+    create_vault, decrypt_str, is_encrypted, tr, unlock_vault, AppLanguage, Credential,
+    StorageManager,
 };
 use crate::session::ui::{render_new_session_dialog, NewSessionDialog};
 use crate::session::{Session, SessionType};
@@ -255,6 +256,7 @@ pub struct RustyBoxApp {
     master_password_confirm: String,
     vault_status: Option<(String, bool)>,
     // Terminal Customization, Theme & Search
+    language: AppLanguage,
     theme: TerminalTheme,
     ui_scale: f32,
     font_size: f32,
@@ -500,6 +502,7 @@ impl RustyBoxApp {
             master_password: String::new(),
             master_password_confirm: String::new(),
             vault_status: None,
+            language: config.language,
             theme,
             ui_scale,
             font_size,
@@ -1822,6 +1825,7 @@ impl RustyBoxApp {
 
     pub fn build_full_export_config(&self) -> crate::session::storage::RustyBoxConfig {
         let mut cfg = self.storage.load_config();
+        cfg.language = self.language;
         cfg.sessions = self.sessions.clone();
         cfg.credentials = self.credentials.clone();
         cfg.password_save_mode = self.manage_passwords_save_mode as u8;
@@ -1852,6 +1856,7 @@ impl RustyBoxApp {
             }
             seen_ids.insert(s.id.clone());
         }
+        self.language = imported.language;
         self.sessions = imported.sessions.clone();
         if !imported.credentials.is_empty() {
             self.credentials = imported.credentials.clone();
@@ -2146,7 +2151,7 @@ impl eframe::App for RustyBoxApp {
                         .inner_margin(egui::Margin::symmetric(5.0, 1.5))
                         .show(ui, |ui| {
                             ui.label(
-                                RichText::new("v1.4.7")
+                                RichText::new("v1.4.8")
                                     .color(Color32::from_rgb(147, 197, 253))
                                     .size(10.5)
                                     .strong(),
@@ -2156,30 +2161,31 @@ impl eframe::App for RustyBoxApp {
                     ui.separator();
                     ui.add_space(4.0);
 
+                    let lang = self.language;
                     menu::bar(ui, |ui| {
                 // SESSIONS MENU
-                ui.menu_button("Sessions", |ui| {
-                    if ui.button("➕ New Session...").clicked() {
+                ui.menu_button(tr(lang, "Sessions", "Phiên"), |ui| {
+                    if ui.button(tr(lang, "➕ New Session...", "➕ Tạo phiên mới...")).clicked() {
                         self.new_session_dialog.open_for_new();
                         ui.close_menu();
                     }
-                    if ui.button("💾 Save Sessions").clicked() {
+                    if ui.button(tr(lang, "💾 Save Sessions", "💾 Lưu danh sách phiên")).clicked() {
                         let _ = self.storage.save_sessions(&self.sessions);
                         ui.close_menu();
                     }
                     ui.separator();
-                    if ui.button("📤 Export Sessions (JSON)...").clicked() {
+                    if ui.button(tr(lang, "📤 Export Sessions (JSON)...", "📤 Xuất phiên (JSON)...")).clicked() {
                         if let Some(path) = rfd::FileDialog::new().add_filter("JSON", &["json"]).save_file() {
                             let cfg = self.build_full_export_config();
                             let _ = self.storage.export_to_file(&path, &cfg);
                         }
                         ui.close_menu();
                     }
-                    if ui.button("📥 Import SSH Profiles / Sessions (~/.ssh/config, MobaXterm)...\tCtrl+I").clicked() {
+                    if ui.button(tr(lang, "📥 Import SSH Profiles / Sessions (~/.ssh/config, MobaXterm)...\tCtrl+I", "📥 Nhập SSH Profile / Phiên (~/.ssh/config, MobaXterm)...\tCtrl+I")).clicked() {
                         self.show_import_dialog = true;
                         ui.close_menu();
                     }
-                    if ui.button("📥 Import Sessions from File (JSON)...").clicked() {
+                    if ui.button(tr(lang, "📥 Import Sessions from File (JSON)...", "📥 Nhập phiên từ File (JSON)...")).clicked() {
                         if let Some(path) = rfd::FileDialog::new().add_filter("JSON", &["json"]).pick_file()
                             && let Ok(imported) = self.storage.import_from_file(&path) {
                                 self.apply_imported_config(ui.ctx(), imported);
@@ -2445,12 +2451,12 @@ impl eframe::App for RustyBoxApp {
                 });
 
                 // HELP MENU
-                ui.menu_button("Help", |ui| {
-                    if ui.button("⌨ Keyboard Shortcuts (Hotkeys)").clicked() {
+                ui.menu_button(tr(lang, "Help", "Trợ giúp"), |ui| {
+                    if ui.button(tr(lang, "⌨ Keyboard Shortcuts (Hotkeys)", "⌨ Phím tắt (Hotkeys)")).clicked() {
                         self.show_hotkeys_dialog = true;
                         ui.close_menu();
                     }
-                    if ui.button("ℹ About RustyBox").clicked() {
+                    if ui.button(tr(lang, "ℹ About RustyBox", "ℹ Giới thiệu RustyBox")).clicked() {
                         self.show_about = true;
                         ui.close_menu();
                     }
@@ -2472,7 +2478,24 @@ impl eframe::App for RustyBoxApp {
                     )
                 };
 
-                if util_btn(ui, "⚙ Settings").clicked() {
+                let next_lang = match lang {
+                    AppLanguage::English => AppLanguage::Vietnamese,
+                    AppLanguage::Vietnamese => AppLanguage::English,
+                };
+                if util_btn(ui, &format!("🌐 {}", lang.short_code()))
+                    .on_hover_text(tr(
+                        lang,
+                        "Switch language (English / Tiếng Việt)",
+                        "Đổi ngôn ngữ (Tiếng Việt / English)",
+                    ))
+                    .clicked()
+                {
+                    self.language = next_lang;
+                    let cfg = self.build_full_export_config();
+                    let _ = self.storage.save_config(&cfg);
+                }
+
+                if util_btn(ui, tr(lang, "⚙ Settings", "⚙ Cài đặt")).clicked() {
                     self.show_settings_dialog = true;
                 }
                 if util_btn(ui, "🔑 KeyGen").clicked() {
@@ -2481,7 +2504,7 @@ impl eframe::App for RustyBoxApp {
                 if util_btn(ui, "🗝 PwdGen").clicked() {
                     self.show_pwdgen = true;
                 }
-                if util_btn(ui, "📁 Files").clicked() {
+                if util_btn(ui, tr(lang, "📁 Files", "📁 Tệp SFTP")).clicked() {
                     if self.show_sftp_sidebar && self.sidebar_tab == 1 {
                         self.show_sftp_sidebar = false;
                     } else {
@@ -2489,13 +2512,13 @@ impl eframe::App for RustyBoxApp {
                         self.sidebar_tab = 1;
                     }
                 }
-                if util_btn(ui, "📋 Snippets").clicked() {
+                if util_btn(ui, tr(lang, "📋 Snippets", "📋 Lệnh mẫu")).clicked() {
                     self.show_snippets = true;
                 }
-                if util_btn(ui, "🎨 Highlight").clicked() {
+                if util_btn(ui, tr(lang, "🎨 Highlight", "🎨 Tô màu")).clicked() {
                     self.show_highlight_modal = true;
                 }
-                if util_btn(ui, "🔀 Tunnels").clicked() {
+                if util_btn(ui, tr(lang, "🔀 Tunnels", "🔀 Đường hầm")).clicked() {
                     self.show_tunnels = true;
                 }
                 if util_btn(ui, "🕊 Daemons").clicked() {
@@ -2601,16 +2624,17 @@ impl eframe::App for RustyBoxApp {
                                         .min_size(egui::vec2(0.0, toolbar_h - 4.0))
                                 )
                             };
-                            if seg_btn(ui, "🗖 Single", self.split_mode == SplitMode::Single).clicked() {
+                            let lang = self.language;
+                            if seg_btn(ui, tr(lang, "🗖 Single", "🗖 1 Khung"), self.split_mode == SplitMode::Single).clicked() {
                                 self.split_mode = SplitMode::Single;
                             }
-                            if seg_btn(ui, "◫ 2-Cols", self.split_mode == SplitMode::Horizontal).clicked() {
+                            if seg_btn(ui, tr(lang, "◫ 2-Cols", "◫ 2 Cột"), self.split_mode == SplitMode::Horizontal).clicked() {
                                 self.split_mode = SplitMode::Horizontal;
                             }
-                            if seg_btn(ui, "⬒ 2-Rows", self.split_mode == SplitMode::Vertical).clicked() {
+                            if seg_btn(ui, tr(lang, "⬒ 2-Rows", "⬒ 2 Hàng"), self.split_mode == SplitMode::Vertical).clicked() {
                                 self.split_mode = SplitMode::Vertical;
                             }
-                            if seg_btn(ui, "⊞ 2x2 Grid", self.split_mode == SplitMode::Grid2x2).clicked() {
+                            if seg_btn(ui, tr(lang, "⊞ 2x2 Grid", "⊞ Lưới 2x2"), self.split_mode == SplitMode::Grid2x2).clicked() {
                                 self.split_mode = SplitMode::Grid2x2;
                             }
                         });
@@ -2620,18 +2644,19 @@ impl eframe::App for RustyBoxApp {
                     ui.add_space(5.0);
 
                     // Multi-Exec toggle
+                    let lang = self.language;
                     let multi_btn = if self.multi_exec_enabled {
-                        egui::Button::new(RichText::new("⚡ Multi-Exec: ON").color(Color32::WHITE).size(12.0).strong())
+                        egui::Button::new(RichText::new(tr(lang, "⚡ Multi-Exec: ON", "⚡ Gõ đồng loạt: BẬT")).color(Color32::WHITE).size(12.0).strong())
                             .fill(Color32::from_rgb(217, 119, 6))
                             .stroke(egui::Stroke::new(1.0_f32, Color32::from_rgb(251, 191, 36)))
                     } else {
-                        egui::Button::new(RichText::new("⚡ Multi-Exec: OFF").color(Color32::from_rgb(148, 163, 184)).size(12.0))
+                        egui::Button::new(RichText::new(tr(lang, "⚡ Multi-Exec: OFF", "⚡ Gõ đồng loạt: TẮT")).color(Color32::from_rgb(148, 163, 184)).size(12.0))
                             .fill(Color32::from_rgb(22, 28, 40))
                             .stroke(egui::Stroke::new(1.0_f32, Color32::from_rgb(36, 46, 64)))
                     }
                     .rounding(6.0)
                     .min_size(egui::vec2(0.0, toolbar_h));
-                    if ui.add(multi_btn).on_hover_text("Broadcast input to all open split terminals simultaneously").clicked() {
+                    if ui.add(multi_btn).on_hover_text(tr(lang, "Broadcast input to all open split terminals simultaneously", "Gửi lệnh đồng thời tới tất cả các khung terminal đang mở")).clicked() {
                         self.multi_exec_enabled = !self.multi_exec_enabled;
                     }
 
@@ -2640,7 +2665,7 @@ impl eframe::App for RustyBoxApp {
                     ui.add_space(5.0);
 
                     // Find in terminal
-                    if tb_button(ui, "🔍 Find", self.search_open).clicked() {
+                    if tb_button(ui, tr(lang, "🔍 Find", "🔍 Tìm kiếm"), self.search_open).clicked() {
                         self.search_open = !self.search_open;
                     }
 
@@ -7039,39 +7064,56 @@ impl eframe::App for RustyBoxApp {
         if self.show_settings_dialog {
             let mut open = self.show_settings_dialog;
             let mut close_dialog = false;
-            egui::Window::new("⚙ RustyBox Configuration & Preferences")
+            let lang = self.language;
+            egui::Window::new(tr(lang, "⚙ RustyBox Configuration & Preferences", "⚙ Cấu hình & Tùy chọn RustyBox"))
                 .open(&mut open)
                 .default_size(Vec2::new(760.0, 540.0))
                 .show(ctx, |ui| {
                     ui.horizontal(|ui| {
-                        ui.selectable_value(&mut self.settings_tab, 0, "📁 General");
+                        ui.selectable_value(&mut self.settings_tab, 0, tr(lang, "📁 General", "📁 Chung"));
                         ui.selectable_value(&mut self.settings_tab, 1, "💻 Terminal");
                         ui.selectable_value(&mut self.settings_tab, 2, "🖥 X11");
                         ui.selectable_value(&mut self.settings_tab, 3, "🔑 SSH");
                         ui.selectable_value(&mut self.settings_tab, 4, "🖥 RDP");
-                        ui.selectable_value(&mut self.settings_tab, 5, "🎨 Display");
-                        ui.selectable_value(&mut self.settings_tab, 6, "⚙ Misc");
+                        ui.selectable_value(&mut self.settings_tab, 5, tr(lang, "🎨 Display", "🎨 Hiển thị"));
+                        ui.selectable_value(&mut self.settings_tab, 6, tr(lang, "⚙ Misc", "⚙ Khác"));
                     });
                     ui.separator();
 
                     match self.settings_tab {
                         0 => {
                             // General Tab
-                            ui.label(RichText::new("General Directories & Storage Settings").strong());
-                            ui.add_space(4.0);
-                            ui.label("Persistent Home directory: ./data/home (Relative workspace)");
-                            ui.label("Configuration file: data/RustyBox.json");
-                            ui.label("Automatic backup rule: data/RustyBox.json.<unixtime> (Keep 3 newest)");
+                            ui.label(RichText::new(tr(lang, "Language / Ngôn ngữ", "Ngôn ngữ / Language")).strong());
+                            ui.horizontal(|ui| {
+                                let mut lang_changed = false;
+                                lang_changed |= ui
+                                    .selectable_value(&mut self.language, AppLanguage::English, "🇬🇧 English")
+                                    .changed();
+                                lang_changed |= ui
+                                    .selectable_value(&mut self.language, AppLanguage::Vietnamese, "🇻🇳 Tiếng Việt")
+                                    .changed();
+                                if lang_changed {
+                                    let cfg = self.build_full_export_config();
+                                    let _ = self.storage.save_config(&cfg);
+                                }
+                            });
                             ui.add_space(6.0);
                             ui.separator();
-                            ui.label(RichText::new("Backup, Export, or Import RustyBox Sessions & Configuration").strong());
+                            ui.label(RichText::new(tr(lang, "General Directories & Storage Settings", "Thư mục lưu trữ & Cấu hình chung")).strong());
+                            ui.add_space(4.0);
+                            ui.label(tr(lang, "Persistent Home directory: ./data/home (Relative workspace)", "Thư mục Home cố định: ./data/home"));
+                            ui.label(tr(lang, "Configuration file: data/RustyBox.json", "Tệp cấu hình: data/RustyBox.json"));
+                            ui.label(tr(lang, "Automatic backup rule: data/RustyBox.json.<unixtime> (Keep 3 newest)", "Sao lưu tự động: data/RustyBox.json.<unixtime> (Giữ 3 bản mới nhất)"));
+                            ui.add_space(6.0);
+                            ui.separator();
+                            ui.label(RichText::new(tr(lang, "Backup, Export, or Import RustyBox Sessions & Configuration", "Sao lưu, Xuất hoặc Nhập phiên & cấu hình RustyBox")).strong());
                             ui.horizontal(|ui| {
-                                if ui.button("📤 Export Config (RustyBox.json)...").clicked()
+                                if ui.button(tr(lang, "📤 Export Config (RustyBox.json)...", "📤 Xuất cấu hình (RustyBox.json)...")).clicked()
                                     && let Some(path) = rfd::FileDialog::new().add_filter("JSON", &["json"]).save_file() {
                                         let cfg = self.build_full_export_config();
                                         let _ = self.storage.export_to_file(&path, &cfg);
                                     }
-                                if ui.button("📥 Import Config (RustyBox.json)...").clicked()
+                                if ui.button(tr(lang, "📥 Import Config (RustyBox.json)...", "📥 Nhập cấu hình (RustyBox.json)...")).clicked()
                                     && let Some(path) = rfd::FileDialog::new().add_filter("JSON", &["json"]).pick_file()
                                         && let Ok(imported) = self.storage.import_from_file(&path) {
                                             self.apply_imported_config(ui.ctx(), imported);
@@ -7329,18 +7371,19 @@ impl eframe::App for RustyBoxApp {
         // About Modal
         if self.show_about {
             let mut open = self.show_about;
-            egui::Window::new("ℹ About RustyBox")
+            let lang = self.language;
+            egui::Window::new(tr(lang, "ℹ About RustyBox", "ℹ Giới thiệu RustyBox"))
                 .open(&mut open)
                 .default_size(Vec2::new(480.0, 320.0))
                 .show(ctx, |ui| {
                     ui.vertical_centered(|ui| {
                         ui.heading("🚀 RustyBox");
-                        ui.label(RichText::new("Complete Remote Toolbox & Terminal Suite in Pure Rust").strong());
+                        ui.label(RichText::new(tr(lang, "Complete Remote Toolbox & Terminal Suite in Pure Rust", "Bộ công cụ Terminal & Quản trị từ xa toàn diện viết bằng Rust")).strong());
                         ui.add_space(4.0);
-                        ui.label(RichText::new("Version v1.4.7").color(Color32::from_rgb(147, 197, 253)).strong());
+                        ui.label(RichText::new("Version v1.4.8").color(Color32::from_rgb(147, 197, 253)).strong());
                         ui.add_space(8.0);
-                        ui.label("High-performance, zero-install, lightweight remote terminal toolbox.");
-                        ui.label("Runs natively on Windows, macOS, and Linux.");
+                        ui.label(tr(lang, "High-performance, zero-install, lightweight remote terminal toolbox.", "Gọn nhẹ, hiệu năng cao, không cần cài đặt."));
+                        ui.label(tr(lang, "Runs natively on Windows, macOS, and Linux.", "Chạy trực tiếp trên Windows, macOS và Linux."));
                         ui.add_space(8.0);
                         ui.horizontal(|ui| {
                             ui.label(RichText::new("Nickname:").strong());
