@@ -1,3 +1,4 @@
+use crate::session::storage::{tr, AppLanguage};
 use crate::terminal::widget::copy_text_to_clipboard;
 use super::{
     format_modified_time, format_size_kb, ExternalOpenMode, FileEntry, FileExplorer,
@@ -9,7 +10,7 @@ use egui::{
 };
 use std::path::PathBuf;
 
-pub fn render_sftp_sidebar(ui: &mut Ui, explorer: &mut FileExplorer) {
+pub fn render_sftp_sidebar(ui: &mut Ui, explorer: &mut FileExplorer, lang: AppLanguage) {
     explorer.poll();
 
     let sidebar_resp = ui.vertical(|ui| {
@@ -32,25 +33,25 @@ pub fn render_sftp_sidebar(ui: &mut Ui, explorer: &mut FileExplorer) {
                     ui.spinner();
                 }
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    if ui.small_button("💻 Local").on_hover_text("Switch to browsing local files").clicked() {
+                    if ui.small_button(tr(lang, "💻 Local", "💻 Máy cục bộ")).on_hover_text(tr(lang, "Switch to browsing local files", "Chuyển sang duyệt tệp trên máy")).clicked() {
                         explorer.disconnect_remote();
                     }
 
                     // Sudo SFTP Toggle Button
                     let is_sudo = explorer.is_active_sudo_mode();
                     let sudo_btn = if is_sudo {
-                        egui::Button::new(RichText::new("🛡️ Sudo Active").strong().size(11.0).color(Color32::WHITE))
+                        egui::Button::new(RichText::new(tr(lang, "🛡️ Sudo Active", "🛡️ Sudo Đang bật")).strong().size(11.0).color(Color32::WHITE))
                             .fill(Color32::from_rgb(234, 88, 12)) // Bright orange/red
                     } else {
                         egui::Button::new(RichText::new("🛡️ Sudo SFTP").size(11.0).color(Color32::from_rgb(209, 217, 224)))
                             .fill(Color32::from_rgb(33, 38, 45))
                     };
-                    if ui.add(sudo_btn).on_hover_text("Bật / Tắt chế độ Sudo SFTP (Root Mode để đọc, ghi, sửa file hệ thống)").clicked() {
+                    if ui.add(sudo_btn).on_hover_text(tr(lang, "Toggle Sudo SFTP (Root Mode for system files)", "Bật / Tắt chế độ Sudo SFTP (Quyền Root để đọc, ghi, sửa file hệ thống)")).clicked() {
                         explorer.toggle_sudo_mode();
                     }
                 });
             } else {
-                ui.label(RichText::new("💻 Local Files").strong().size(11.5).color(Color32::from_rgb(139, 148, 158)));
+                ui.label(RichText::new(tr(lang, "💻 Local Files", "💻 Tệp trên máy")).strong().size(11.5).color(Color32::from_rgb(139, 148, 158)));
             }
         });
 
@@ -64,16 +65,16 @@ pub fn render_sftp_sidebar(ui: &mut Ui, explorer: &mut FileExplorer) {
         let (strip_rect, _) = ui.allocate_exact_size(vec2(avail_w, btn_h), Sense::hover());
 
         let tooltips = [
-            "Parent directory (..)",
-            "Upload file(s) [Right-click: Upload folder]",
-            "Download selected file",
-            "Refresh folder",
-            "Create new folder",
-            "Create new file",
-            "Delete selected item",
-            "Open in Quick Editor",
-            "Show / Hide hidden dotfiles (.*)",
-            "Permissions (chmod)",
+            tr(lang, "Parent directory (..)", "Thư mục cha (..)"),
+            tr(lang, "Upload file(s) [Right-click: Upload folder]", "Tải tệp lên [Chuột phải: Tải thư mục]"),
+            tr(lang, "Download selected file", "Tải tệp đã chọn về"),
+            tr(lang, "Refresh folder", "Làm mới thư mục"),
+            tr(lang, "Create new folder", "Tạo thư mục mới"),
+            tr(lang, "Create new file", "Tạo tệp mới"),
+            tr(lang, "Delete selected item", "Xóa mục đã chọn"),
+            tr(lang, "Open in Quick Editor", "Mở bằng Trình soạn thảo nhanh"),
+            tr(lang, "Show / Hide hidden dotfiles (.*)", "Hiện / Ẩn tệp ẩn (.*)"),
+            tr(lang, "Permissions (chmod)", "Phân quyền (chmod)"),
         ];
 
         let mut clicked_tool: Option<usize> = None;
@@ -337,7 +338,7 @@ pub fn render_sftp_sidebar(ui: &mut Ui, explorer: &mut FileExplorer) {
                 star_color,
             );
         }
-        if star_resp.on_hover_text(if is_current_bookmarked { "Remove from SFTP Bookmarks" } else { "Bookmark this directory (⭐)" }).clicked() {
+        if star_resp.on_hover_text(if is_current_bookmarked { tr(lang, "Remove from SFTP Bookmarks", "Xóa khỏi Dấu trang SFTP") } else { tr(lang, "Bookmark this directory (⭐)", "Đánh dấu thư mục này (⭐)") }).clicked() {
             explorer.toggle_bookmark(&current_path_str);
         }
 
@@ -351,7 +352,7 @@ pub fn render_sftp_sidebar(ui: &mut Ui, explorer: &mut FileExplorer) {
         );
         let mut path_copy_requested = false;
         path_resp.context_menu(|ui| {
-            if ui.button("📋 Copy Path").clicked() {
+            if ui.button(tr(lang, "📋 Copy Path", "📋 Sao chép đường dẫn")).clicked() {
                 path_copy_requested = true;
                 ui.close_menu();
             }
@@ -388,7 +389,7 @@ pub fn render_sftp_sidebar(ui: &mut Ui, explorer: &mut FileExplorer) {
             p.line_segment([pos2(dc.x - 3.5, dc.y - 1.5), pos2(dc.x, dc.y + 2.0)], cs);
             p.line_segment([pos2(dc.x, dc.y + 2.0), pos2(dc.x + 3.5, dc.y - 1.5)], cs);
         }
-        let drop_resp = drop_resp.on_hover_text("Recent & Bookmarked Paths");
+        let drop_resp = drop_resp.on_hover_text(tr(lang, "Recent & Bookmarked Paths", "Thư mục đã đánh dấu & gần đây"));
         if drop_resp.clicked() {
             ui.memory_mut(|m| m.toggle_popup(drop_id));
         }
@@ -403,13 +404,13 @@ pub fn render_sftp_sidebar(ui: &mut Ui, explorer: &mut FileExplorer) {
             |ui| {
                 ui.set_min_width(230.0);
                 if !explorer.bookmarks.is_empty() {
-                    ui.label(RichText::new("⭐ Bookmarked Directories").size(11.0).color(Color32::from_rgb(250, 204, 21)).strong());
+                    ui.label(RichText::new(tr(lang, "⭐ Bookmarked Directories", "⭐ Thư mục đã đánh dấu")).size(11.0).color(Color32::from_rgb(250, 204, 21)).strong());
                     for bm in explorer.bookmarks.clone() {
                         ui.horizontal(|ui| {
                             if ui.button(RichText::new(&bm).monospace().size(11.0)).clicked() {
                                 jump_to = Some(PathBuf::from(&bm));
                             }
-                            if ui.small_button("🗑").on_hover_text("Remove bookmark").clicked() {
+                            if ui.small_button("🗑").on_hover_text(tr(lang, "Remove bookmark", "Xóa dấu trang")).clicked() {
                                 remove_bookmark = Some(bm);
                             }
                         });
@@ -417,7 +418,7 @@ pub fn render_sftp_sidebar(ui: &mut Ui, explorer: &mut FileExplorer) {
                     ui.separator();
                 }
 
-                ui.label(RichText::new("Quick Jump").size(11.0).weak());
+                ui.label(RichText::new(tr(lang, "Quick Jump", "Truy cập nhanh")).size(11.0).weak());
                 if explorer.is_remote {
                     let remote_home = explorer.remote_home_dir.clone().unwrap_or_else(|| {
                         if explorer.remote_os == crate::sftp::remote::RemoteOsKind::Windows {
@@ -491,7 +492,7 @@ pub fn render_sftp_sidebar(ui: &mut Ui, explorer: &mut FileExplorer) {
                 }
                 if !explorer.path_history.is_empty() {
                     ui.separator();
-                    ui.label(RichText::new("Recent Directories").size(11.0).weak());
+                    ui.label(RichText::new(tr(lang, "Recent Directories", "Thư mục gần đây")).size(11.0).weak());
                     for hist in explorer.path_history.clone() {
                         if ui.button(hist.to_string_lossy()).clicked() {
                             jump_to = Some(hist);
@@ -543,12 +544,12 @@ pub fn render_sftp_sidebar(ui: &mut Ui, explorer: &mut FileExplorer) {
             p.line_segment([pos2(mx + 2.0, cy), pos2(rx, cy)], s_pulse);
 
             let mon_text = if explorer.remote_monitoring_enabled {
-                RichText::new("Remote monitoring").size(11.5).color(Color32::from_rgb(52, 211, 153))
+                RichText::new(tr(lang, "Remote monitoring", "Giám sát máy chủ")).size(11.5).color(Color32::from_rgb(52, 211, 153))
             } else {
-                RichText::new("Remote monitoring").size(11.5).color(Color32::from_rgb(201, 209, 217))
+                RichText::new(tr(lang, "Remote monitoring", "Giám sát máy chủ")).size(11.5).color(Color32::from_rgb(201, 209, 217))
             };
             if ui.add(egui::Label::new(mon_text).sense(Sense::click()))
-                .on_hover_text("Toggle remote host hardware monitoring (CPU, RAM, Network, Disk)")
+                .on_hover_text(tr(lang, "Toggle remote host hardware monitoring (CPU, RAM, Network, Disk)", "Bật/tắt giám sát phần cứng máy chủ (CPU, RAM, Mạng, Ổ đĩa)"))
                 .clicked()
             {
                 explorer.remote_monitoring_enabled = !explorer.remote_monitoring_enabled;
@@ -558,11 +559,11 @@ pub fn render_sftp_sidebar(ui: &mut Ui, explorer: &mut FileExplorer) {
         ui.horizontal(|ui| {
             ui.checkbox(
                 &mut explorer.follow_terminal_folder,
-                RichText::new("Follow terminal folder")
+                RichText::new(tr(lang, "Follow terminal folder", "Theo thư mục Terminal"))
                     .size(11.5)
                     .color(Color32::from_rgb(201, 209, 217)),
             )
-            .on_hover_text("Automatically sync SFTP folder when changing directory (cd) in terminal");
+            .on_hover_text(tr(lang, "Automatically sync SFTP folder when changing directory (cd) in terminal", "Tự động đồng bộ thư mục SFTP khi đổi thư mục (cd) trong Terminal"));
         });
         ui.add_space(2.0);
 
@@ -606,10 +607,10 @@ pub fn render_sftp_sidebar(ui: &mut Ui, explorer: &mut FileExplorer) {
                 .show(ui, |ui| {
                     ui.vertical(|ui| {
                         ui.horizontal(|ui| {
-                            let icon = if prog.is_upload { "⬆ Uploading" } else { "⬇ Downloading" };
+                            let icon = if prog.is_upload { tr(lang, "⬆ Uploading", "⬆ Đang tải lên") } else { tr(lang, "⬇ Downloading", "⬇ Đang tải về") };
                             ui.label(RichText::new(format!("{}: {}", icon, prog.file_name)).strong().size(11.0).color(Color32::from_rgb(56, 189, 248)));
                             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                                if ui.small_button("✕ Cancel").on_hover_text("Abort file transfer and remove incomplete file").clicked() {
+                                if ui.small_button(tr(lang, "✕ Cancel", "✕ Hủy")).on_hover_text(tr(lang, "Abort file transfer and remove incomplete file", "Hủy truyền tệp và xóa phần chưa hoàn tất")).clicked() {
                                     explorer.cancel_current_transfer();
                                 }
                             });
@@ -653,11 +654,11 @@ pub fn render_sftp_sidebar(ui: &mut Ui, explorer: &mut FileExplorer) {
                 // Only show top error line if entries is not empty or error is not a disconnect
                 if !explorer.entries.is_empty() || !is_disconnect {
                     ui.horizontal(|ui| {
-                        let display_err = if is_disconnect { "⚠️ SFTP disconnected" } else { err.as_str() };
+                        let display_err = if is_disconnect { tr(lang, "⚠️ SFTP disconnected", "⚠️ Mất kết nối SFTP") } else { err.as_str() };
                         ui.colored_label(Color32::from_rgb(248, 81, 73), RichText::new(display_err).size(11.0))
                             .on_hover_text(err);
                         if is_disconnect
-                            && ui.add_sized([80.0, 19.0], egui::Button::new(RichText::new("🔄 Reconnect").size(10.5).color(Color32::from_rgb(88, 166, 255)))).clicked() {
+                            && ui.add_sized([80.0, 19.0], egui::Button::new(RichText::new(tr(lang, "🔄 Reconnect", "🔄 Kết nối lại")).size(10.5).color(Color32::from_rgb(88, 166, 255)))).clicked() {
                                 error_reconnect = true;
                             }
                     });
@@ -799,12 +800,12 @@ pub fn render_sftp_sidebar(ui: &mut Ui, explorer: &mut FileExplorer) {
                         }
 
                         // Column Header Interactions
-                        let resp_name = ui.interact(r_name, ui.id().with("hdr_name"), Sense::click()).on_hover_text("Sort by Name");
-                        let resp_size = ui.interact(r_size, ui.id().with("hdr_size"), Sense::click()).on_hover_text("Sort by Size (KB)");
-                        let resp_date = ui.interact(r_date, ui.id().with("hdr_date"), Sense::click()).on_hover_text("Sort by Last Modified");
-                        let resp_owner = ui.interact(r_owner, ui.id().with("hdr_owner"), Sense::click()).on_hover_text("Sort by Owner");
-                        let resp_group = ui.interact(r_group, ui.id().with("hdr_group"), Sense::click()).on_hover_text("Sort by Group");
-                        let resp_access = ui.interact(r_access, ui.id().with("hdr_access"), Sense::click()).on_hover_text("Sort by Access Permissions");
+                        let resp_name = ui.interact(r_name, ui.id().with("hdr_name"), Sense::click()).on_hover_text(tr(lang, "Sort by Name", "Sắp xếp theo Tên"));
+                        let resp_size = ui.interact(r_size, ui.id().with("hdr_size"), Sense::click()).on_hover_text(tr(lang, "Sort by Size (KB)", "Sắp xếp theo Kích thước"));
+                        let resp_date = ui.interact(r_date, ui.id().with("hdr_date"), Sense::click()).on_hover_text(tr(lang, "Sort by Last Modified", "Sắp xếp theo Ngày sửa"));
+                        let resp_owner = ui.interact(r_owner, ui.id().with("hdr_owner"), Sense::click()).on_hover_text(tr(lang, "Sort by Owner", "Sắp xếp theo Chủ sở hữu"));
+                        let resp_group = ui.interact(r_group, ui.id().with("hdr_group"), Sense::click()).on_hover_text(tr(lang, "Sort by Group", "Sắp xếp theo Nhóm"));
+                        let resp_access = ui.interact(r_access, ui.id().with("hdr_access"), Sense::click()).on_hover_text(tr(lang, "Sort by Access Permissions", "Sắp xếp theo Quyền truy cập"));
 
                         if resp_name.hovered() || resp_size.hovered() || resp_date.hovered() || resp_owner.hovered() || resp_group.hovered() || resp_access.hovered() {
                             ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
@@ -919,17 +920,17 @@ pub fn render_sftp_sidebar(ui: &mut Ui, explorer: &mut FileExplorer) {
                                     FontId::monospace(12.0),
                                     Color32::from_rgb(230, 237, 243),
                                 );
-                                let up_resp = up_resp.on_hover_text("Double-click to go to parent directory");
+                                let up_resp = up_resp.on_hover_text(tr(lang, "Double-click to go to parent directory", "Nhấn đúp để về thư mục cha"));
                                 if up_resp.double_clicked() {
                                     go_parent = true;
                                 }
                                 up_resp.context_menu(|ui| {
-                                    if ui.button("⬆  Parent directory").clicked() {
+                                    if ui.button(tr(lang, "⬆  Parent directory", "⬆  Thư mục cha")).clicked() {
                                         go_parent = true;
                                         ui.close_menu();
                                     }
                                     ui.separator();
-                                    if ui.button("🔄  Refresh current folder").clicked() {
+                                    if ui.button(tr(lang, "🔄  Refresh current folder", "🔄  Làm mới thư mục")).clicked() {
                                         context_refresh = true;
                                         ui.close_menu();
                                     }
@@ -954,9 +955,9 @@ pub fn render_sftp_sidebar(ui: &mut Ui, explorer: &mut FileExplorer) {
                                     ui.allocate_new_ui(egui::UiBuilder::new().max_rect(badge_rect), |ui| {
                                         ui.horizontal_centered(|ui| {
                                             ui.add_space(10.0);
-                                            ui.label(RichText::new("⚠️ Disconnected").size(11.0).color(Color32::from_rgb(248, 81, 73)));
+                                            ui.label(RichText::new(tr(lang, "⚠️ Disconnected", "⚠️ Mất kết nối")).size(11.0).color(Color32::from_rgb(248, 81, 73)));
                                             ui.label(RichText::new("·").size(10.0).color(Color32::from_rgb(100, 116, 139)));
-                                            if ui.add(egui::Button::new(RichText::new("🔄 Reconnect").size(10.5).color(Color32::from_rgb(88, 166, 255))).frame(false)).on_hover_text("Tái kết nối SFTP với máy chủ").clicked() {
+                                            if ui.add(egui::Button::new(RichText::new(tr(lang, "🔄 Reconnect", "🔄 Kết nối lại")).size(10.5).color(Color32::from_rgb(88, 166, 255))).frame(false)).on_hover_text(tr(lang, "Reconnect SFTP to server", "Tái kết nối SFTP với máy chủ")).clicked() {
                                                 context_refresh = true;
                                             }
                                         });
@@ -1141,21 +1142,33 @@ pub fn render_sftp_sidebar(ui: &mut Ui, explorer: &mut FileExplorer) {
 
                                         if multi_count > 1 {
                                             ui.label(
-                                                RichText::new(format!("📑 {} items selected", multi_count))
+                                                RichText::new(match lang {
+                                                    AppLanguage::English => format!("📑 {} items selected", multi_count),
+                                                    AppLanguage::Vietnamese => format!("📑 Đã chọn {} mục", multi_count),
+                                                })
                                                     .strong()
                                                     .color(Color32::from_rgb(56, 189, 248)),
                                             );
                                             ui.separator();
-                                            if ui.button(format!("📥  Download {} selected items...", multi_count)).clicked() {
+                                            if ui.button(match lang {
+                                                AppLanguage::English => format!("📥  Download {} selected items...", multi_count),
+                                                AppLanguage::Vietnamese => format!("📥  Tải về {} mục đã chọn...", multi_count),
+                                            }).clicked() {
                                                 context_download_many = sel_paths.clone();
                                                 ui.close_menu();
                                             }
-                                            if ui.button(format!("🗑  Delete {} selected items...", multi_count)).clicked() {
+                                            if ui.button(match lang {
+                                                AppLanguage::English => format!("🗑  Delete {} selected items...", multi_count),
+                                                AppLanguage::Vietnamese => format!("🗑  Xóa {} mục đã chọn...", multi_count),
+                                            }).clicked() {
                                                 context_del_many = sel_paths.clone();
                                                 ui.close_menu();
                                             }
                                             ui.separator();
-                                            if ui.button(format!("📋  Copy {} file paths", multi_count)).clicked() {
+                                            if ui.button(match lang {
+                                                AppLanguage::English => format!("📋  Copy {} file paths", multi_count),
+                                                AppLanguage::Vietnamese => format!("📋  Sao chép {} đường dẫn", multi_count),
+                                            }).clicked() {
                                                 let joined = sel_paths
                                                     .iter()
                                                     .map(|p| p.to_string_lossy().to_string())
@@ -1164,7 +1177,7 @@ pub fn render_sftp_sidebar(ui: &mut Ui, explorer: &mut FileExplorer) {
                                                 context_copy_text = Some(joined);
                                                 ui.close_menu();
                                             }
-                                            if ui.button("🖥  Paste selected paths to terminal").clicked() {
+                                            if ui.button(tr(lang, "🖥  Paste selected paths to terminal", "🖥  Dán các đường dẫn vào Terminal")).clicked() {
                                                 let joined = sel_paths
                                                     .iter()
                                                     .map(|p| format!("\"{}\"", p.to_string_lossy()))
@@ -1177,106 +1190,106 @@ pub fn render_sftp_sidebar(ui: &mut Ui, explorer: &mut FileExplorer) {
                                         }
 
                                 if is_dir_entry {
-                                    if ui.button("📂  Open").clicked() {
+                                    if ui.button(tr(lang, "📂  Open", "📂  Mở")).clicked() {
                                         clicked_dir = Some(path_clone.clone());
                                         ui.close_menu();
                                     }
-                                    if ui.button("📥  Download folder").clicked() {
+                                    if ui.button(tr(lang, "📥  Download folder", "📥  Tải về thư mục")).clicked() {
                                         context_download = Some(path_clone.clone());
                                         ui.close_menu();
                                     }
                                     ui.separator();
-                                    if ui.button("📤  Upload file(s) here...").clicked() {
+                                    if ui.button(tr(lang, "📤  Upload file(s) here...", "📤  Tải tệp lên đây...")).clicked() {
                                         context_upload = true;
                                         ui.close_menu();
                                     }
-                                    if ui.button("📁  Upload folder here...").clicked() {
+                                    if ui.button(tr(lang, "📁  Upload folder here...", "📁  Tải thư mục lên đây...")).clicked() {
                                         context_upload_folder = true;
                                         ui.close_menu();
                                     }
                                     ui.separator();
-                                    if ui.button("🗑  Delete").clicked() {
+                                    if ui.button(tr(lang, "🗑  Delete", "🗑  Xóa")).clicked() {
                                         context_del = Some(path_clone.clone());
                                         ui.close_menu();
                                     }
-                                    if ui.button("✏  Rename").clicked() {
+                                    if ui.button(tr(lang, "✏  Rename", "✏  Đổi tên")).clicked() {
                                         context_rename = Some(path_clone.clone());
                                         ui.close_menu();
                                     }
                                     ui.separator();
-                                    if ui.button("📋  Copy file path").clicked() {
+                                    if ui.button(tr(lang, "📋  Copy file path", "📋  Sao chép đường dẫn")).clicked() {
                                         context_copy_text = Some(path_clone.to_string_lossy().to_string());
                                         ui.close_menu();
                                     }
-                                    if ui.button("🖥  Copy file path to terminal (Middle mouse click)").clicked() {
+                                    if ui.button(tr(lang, "🖥  Copy file path to terminal (Middle mouse click)", "🖥  Dán đường dẫn vào Terminal (Chuột giữa)")).clicked() {
                                         context_terminal_paste_path = Some(path_clone.to_string_lossy().to_string());
                                         ui.close_menu();
                                     }
-                                    if ui.button("ℹ️  Properties").clicked() {
+                                    if ui.button(tr(lang, "ℹ️  Properties", "ℹ️  Thuộc tính")).clicked() {
                                         context_properties = Some(entry_clone);
                                         ui.close_menu();
                                     }
-                                    if ui.button("🔒  Permissions").clicked() {
+                                    if ui.button(tr(lang, "🔒  Permissions", "🔒  Phân quyền (chmod)")).clicked() {
                                         context_chmod = Some(path_clone.clone());
                                         ui.close_menu();
                                     }
                                 } else {
-                                    if ui.button("📂  Open").clicked() {
+                                    if ui.button(tr(lang, "📂  Open", "📂  Mở")).clicked() {
                                         double_clicked_file = Some(path_clone.clone());
                                         ui.close_menu();
                                     }
-                                    if ui.button("📄  Open with default text editor").clicked() {
+                                    if ui.button(tr(lang, "📄  Open with default text editor", "📄  Mở bằng trình soạn thảo mặc định")).clicked() {
                                         context_open_external = Some((path_clone.clone(), ExternalOpenMode::TextEditor));
                                         ui.close_menu();
                                     }
-                                    if ui.button("⚙️  Open with...").clicked() {
+                                    if ui.button(tr(lang, "⚙️  Open with...", "⚙️  Mở bằng ứng dụng khác...")).clicked() {
                                         context_open_external = Some((path_clone.clone(), ExternalOpenMode::OpenWithDialog));
                                         ui.close_menu();
                                     }
-                                    if ui.button("📎  Open with default program...").clicked() {
+                                    if ui.button(tr(lang, "📎  Open with default program...", "📎  Mở bằng chương trình mặc định...")).clicked() {
                                         context_open_external = Some((path_clone.clone(), ExternalOpenMode::DefaultProgram));
                                         ui.close_menu();
                                     }
-                                    if ui.button("🔍  Compare file with...").clicked() {
+                                    if ui.button(tr(lang, "🔍  Compare file with...", "🔍  So sánh tệp với...")).clicked() {
                                         context_compare = Some(path_clone.clone());
                                         ui.close_menu();
                                     }
-                                    if ui.button("📥  Download").clicked() {
+                                    if ui.button(tr(lang, "📥  Download", "📥  Tải về")).clicked() {
                                         context_download = Some(path_clone.clone());
                                         ui.close_menu();
                                     }
                                     ui.separator();
-                                    if ui.button("📤  Upload file(s)...").clicked() {
+                                    if ui.button(tr(lang, "📤  Upload file(s)...", "📤  Tải tệp lên...")).clicked() {
                                         context_upload = true;
                                         ui.close_menu();
                                     }
-                                    if ui.button("📁  Upload folder...").clicked() {
+                                    if ui.button(tr(lang, "📁  Upload folder...", "📁  Tải thư mục lên...")).clicked() {
                                         context_upload_folder = true;
                                         ui.close_menu();
                                     }
                                     ui.separator();
-                                    if ui.button("🗑  Delete").clicked() {
+                                    if ui.button(tr(lang, "🗑  Delete", "🗑  Xóa")).clicked() {
                                         context_del = Some(path_clone.clone());
                                         ui.close_menu();
                                     }
-                                    if ui.button("✏  Rename").clicked() {
+                                    if ui.button(tr(lang, "✏  Rename", "✏  Đổi tên")).clicked() {
                                         context_rename = Some(path_clone.clone());
                                         ui.close_menu();
                                     }
                                     ui.separator();
-                                    if ui.button("📋  Copy file path").clicked() {
+                                    if ui.button(tr(lang, "📋  Copy file path", "📋  Sao chép đường dẫn")).clicked() {
                                         context_copy_text = Some(path_clone.to_string_lossy().to_string());
                                         ui.close_menu();
                                     }
-                                    if ui.button("🖥  Copy file path to terminal (Middle mouse click)").clicked() {
+                                    if ui.button(tr(lang, "🖥  Copy file path to terminal (Middle mouse click)", "🖥  Dán đường dẫn vào Terminal (Chuột giữa)")).clicked() {
                                         context_terminal_paste_path = Some(path_clone.to_string_lossy().to_string());
                                         ui.close_menu();
                                     }
-                                    if ui.button("ℹ️  Properties").clicked() {
+                                    if ui.button(tr(lang, "ℹ️  Properties", "ℹ️  Thuộc tính")).clicked() {
                                         context_properties = Some(entry_clone);
                                         ui.close_menu();
                                     }
-                                    if ui.button("🔒  Permissions").clicked() {
+                                    if ui.button(tr(lang, "🔒  Permissions", "🔒  Phân quyền (chmod)")).clicked() {
                                         context_chmod = Some(path_clone.clone());
                                         ui.close_menu();
                                     }
@@ -1294,47 +1307,47 @@ pub fn render_sftp_sidebar(ui: &mut Ui, explorer: &mut FileExplorer) {
                             explorer.drag_select_start = pointer_pos.or(Some(bg_rect.min));
                         }
                         bg_resp.context_menu(|ui| {
-                            if ui.button("⬆  Parent directory").clicked() {
+                            if ui.button(tr(lang, "⬆  Parent directory", "⬆  Thư mục cha")).clicked() {
                                 go_parent = true;
                                 ui.close_menu();
                             }
                             ui.separator();
-                            if ui.button("📁  New directory...").clicked() {
+                            if ui.button(tr(lang, "📁  New directory...", "📁  Tạo thư mục mới...")).clicked() {
                                 context_new_folder = true;
                                 ui.close_menu();
                             }
-                            if ui.button("📄  New empty file...").clicked() {
+                            if ui.button(tr(lang, "📄  New empty file...", "📄  Tạo tệp mới...")).clicked() {
                                 context_new_file = true;
                                 ui.close_menu();
                             }
                             ui.separator();
-                            if ui.button("🔄  Refresh current folder").clicked() {
+                            if ui.button(tr(lang, "🔄  Refresh current folder", "🔄  Làm mới thư mục")).clicked() {
                                 context_refresh = true;
                                 ui.close_menu();
                             }
-                            if ui.button("📤  Upload file(s)...").clicked() {
+                            if ui.button(tr(lang, "📤  Upload file(s)...", "📤  Tải tệp lên...")).clicked() {
                                 context_upload = true;
                                 ui.close_menu();
                             }
-                            if ui.button("📁  Upload folder...").clicked() {
+                            if ui.button(tr(lang, "📁  Upload folder...", "📁  Tải thư mục lên...")).clicked() {
                                 context_upload_folder = true;
                                 ui.close_menu();
                             }
                             ui.separator();
-                            if ui.button("📋  Copy current folder path").clicked() {
+                            if ui.button(tr(lang, "📋  Copy current folder path", "📋  Sao chép đường dẫn thư mục")).clicked() {
                                 context_copy_text = Some(explorer.current_path.to_string_lossy().to_string());
                                 ui.close_menu();
                             }
                             let hidden_label = if explorer.show_hidden {
-                                "👁  Hide hidden files (.*)"
+                                tr(lang, "👁  Hide hidden files (.*)", "👁  Ẩn tệp ẩn (.*)")
                             } else {
-                                "👁  Show hidden files (.*)"
+                                tr(lang, "👁  Show hidden files (.*)", "👁  Hiện tệp ẩn (.*)")
                             };
                             if ui.button(hidden_label).clicked() {
                                 context_toggle_hidden = true;
                                 ui.close_menu();
                             }
-                            if ui.button("🖥  Open terminal here").clicked() {
+                            if ui.button(tr(lang, "🖥  Open terminal here", "🖥  Mở Terminal tại đây")).clicked() {
                                 context_terminal_here = Some(explorer.current_path.to_string_lossy().to_string());
                                 ui.close_menu();
                             }
@@ -1586,6 +1599,7 @@ pub fn render_sftp_sidebar(ui: &mut Ui, explorer: &mut FileExplorer) {
 
     // Built-in Quick Editor (Modular Kibi-style code/text editor)
     if explorer.editor.open {
+        explorer.editor.language = lang;
         let action = explorer.editor.show(ui.ctx());
         match action {
             crate::editor::EditorAction::Save { path, content, remote_label } => {
@@ -1604,9 +1618,13 @@ pub fn render_sftp_sidebar(ui: &mut Ui, explorer: &mut FileExplorer) {
             .as_ref()
             .and_then(|p| p.file_name())
             .map(|n| n.to_string_lossy().to_string())
-            .unwrap_or_else(|| "Selected item".to_string());
+            .unwrap_or_else(|| tr(lang, "Selected item", "Mục đã chọn").to_string());
 
-        egui::Window::new(format!("Changing permissions for \"{}\"", target_name))
+        let chmod_title = match lang {
+            AppLanguage::English => format!("Changing permissions for \"{}\"", target_name),
+            AppLanguage::Vietnamese => format!("Phân quyền cho \"{}\"", target_name),
+        };
+        egui::Window::new(chmod_title)
             .open(&mut open)
             .collapsible(false)
             .default_size(Vec2::new(380.0, 250.0))
@@ -1615,28 +1633,28 @@ pub fn render_sftp_sidebar(ui: &mut Ui, explorer: &mut FileExplorer) {
             .show(ui.ctx(), |ui| {
                 ui.group(|ui| {
                     ui.set_width(ui.available_width());
-                    ui.label(RichText::new("Permissions").strong());
+                    ui.label(RichText::new(tr(lang, "Permissions", "Quyền truy cập")).strong());
                     ui.add_space(4.0);
                     ui.columns(3, |cols| {
                         cols[0].vertical(|ui| {
-                            ui.label(RichText::new("User (owner)").strong());
-                            crate::session::ui::rusty_checkbox(ui, &mut explorer.chmod_u_r, "Read (r)");
-                            crate::session::ui::rusty_checkbox(ui, &mut explorer.chmod_u_w, "Write (w)");
-                            crate::session::ui::rusty_checkbox(ui, &mut explorer.chmod_u_x, "Execute (x)");
+                            ui.label(RichText::new(tr(lang, "User (owner)", "Chủ sở hữu")).strong());
+                            crate::session::ui::rusty_checkbox(ui, &mut explorer.chmod_u_r, tr(lang, "Read (r)", "Đọc (r)"));
+                            crate::session::ui::rusty_checkbox(ui, &mut explorer.chmod_u_w, tr(lang, "Write (w)", "Ghi (w)"));
+                            crate::session::ui::rusty_checkbox(ui, &mut explorer.chmod_u_x, tr(lang, "Execute (x)", "Thực thi (x)"));
                         });
 
                         cols[1].vertical(|ui| {
-                            ui.label(RichText::new("Group").strong());
-                            crate::session::ui::rusty_checkbox(ui, &mut explorer.chmod_g_r, "Read (r)");
-                            crate::session::ui::rusty_checkbox(ui, &mut explorer.chmod_g_w, "Write (w)");
-                            crate::session::ui::rusty_checkbox(ui, &mut explorer.chmod_g_x, "Execute (x)");
+                            ui.label(RichText::new(tr(lang, "Group", "Nhóm")).strong());
+                            crate::session::ui::rusty_checkbox(ui, &mut explorer.chmod_g_r, tr(lang, "Read (r)", "Đọc (r)"));
+                            crate::session::ui::rusty_checkbox(ui, &mut explorer.chmod_g_w, tr(lang, "Write (w)", "Ghi (w)"));
+                            crate::session::ui::rusty_checkbox(ui, &mut explorer.chmod_g_x, tr(lang, "Execute (x)", "Thực thi (x)"));
                         });
 
                         cols[2].vertical(|ui| {
-                            ui.label(RichText::new("Others").strong());
-                            crate::session::ui::rusty_checkbox(ui, &mut explorer.chmod_o_r, "Read (r)");
-                            crate::session::ui::rusty_checkbox(ui, &mut explorer.chmod_o_w, "Write (w)");
-                            crate::session::ui::rusty_checkbox(ui, &mut explorer.chmod_o_x, "Execute (x)");
+                            ui.label(RichText::new(tr(lang, "Others", "Người khác")).strong());
+                            crate::session::ui::rusty_checkbox(ui, &mut explorer.chmod_o_r, tr(lang, "Read (r)", "Đọc (r)"));
+                            crate::session::ui::rusty_checkbox(ui, &mut explorer.chmod_o_w, tr(lang, "Write (w)", "Ghi (w)"));
+                            crate::session::ui::rusty_checkbox(ui, &mut explorer.chmod_o_x, tr(lang, "Execute (x)", "Thực thi (x)"));
                         });
                     });
                 });
@@ -1652,7 +1670,10 @@ pub fn render_sftp_sidebar(ui: &mut Ui, explorer: &mut FileExplorer) {
                     + (if explorer.chmod_o_x { 1 } else { 0 });
                 ui.add_space(4.0);
                 ui.label(
-                    RichText::new(format!("Octal mode: 0{:01}{:01}{:01}", u, g, o))
+                    RichText::new(match lang {
+                        AppLanguage::English => format!("Octal mode: 0{:01}{:01}{:01}", u, g, o),
+                        AppLanguage::Vietnamese => format!("Mã Octal: 0{:01}{:01}{:01}", u, g, o),
+                    })
                         .monospace()
                         .strong(),
                 );
@@ -1660,7 +1681,7 @@ pub fn render_sftp_sidebar(ui: &mut Ui, explorer: &mut FileExplorer) {
                 ui.separator();
                 ui.add_space(4.0);
                 let (ok_clicked, cancel_clicked) =
-                    crate::session::ui::rusty_ok_cancel_buttons(ui, "✔ OK", "✖ Cancel");
+                    crate::session::ui::rusty_ok_cancel_buttons(ui, tr(lang, "✔ OK", "✔ Áp dụng"), tr(lang, "✖ Cancel", "✖ Hủy"));
                 if ok_clicked {
                     explorer.apply_chmod();
                     close_chmod = true;
@@ -1677,14 +1698,14 @@ pub fn render_sftp_sidebar(ui: &mut Ui, explorer: &mut FileExplorer) {
         let mut open = explorer.show_rename;
         let mut close_rename = false;
         let mut do_rename = false;
-        egui::Window::new("🏷 Rename Item")
+        egui::Window::new(tr(lang, "🏷 Rename Item", "🏷 Đổi tên"))
             .open(&mut open)
             .collapsible(false)
             .default_size(Vec2::new(320.0, 130.0))
             .resizable(false)
             .anchor(egui::Align2::CENTER_CENTER, Vec2::ZERO)
             .show(ui.ctx(), |ui| {
-                ui.label(RichText::new("Enter new name:").strong());
+                ui.label(RichText::new(tr(lang, "Enter new name:", "Nhập tên mới:")).strong());
                 let resp = ui.add(TextEdit::singleline(&mut explorer.rename_new_name).desired_width(f32::INFINITY));
                 if resp.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
                     do_rename = true;
@@ -1692,7 +1713,7 @@ pub fn render_sftp_sidebar(ui: &mut Ui, explorer: &mut FileExplorer) {
                 ui.add_space(6.0);
                 ui.separator();
                 ui.add_space(4.0);
-                let (ok, cancel) = crate::session::ui::rusty_ok_cancel_buttons(ui, "✔ Rename", "✖ Cancel");
+                let (ok, cancel) = crate::session::ui::rusty_ok_cancel_buttons(ui, tr(lang, "✔ Rename", "✔ Đổi tên"), tr(lang, "✖ Cancel", "✖ Hủy"));
                 if ok || do_rename {
                     if let Some(target) = explorer.rename_target.clone() {
                         let name = explorer.rename_new_name.clone();
@@ -1712,7 +1733,11 @@ pub fn render_sftp_sidebar(ui: &mut Ui, explorer: &mut FileExplorer) {
         let mut open = explorer.properties_open;
         let mut close_prop = false;
         if let Some(entry) = explorer.properties_target.clone() {
-            egui::Window::new(format!("ℹ Properties - {}", entry.name))
+            let prop_title = match lang {
+                AppLanguage::English => format!("ℹ Properties - {}", entry.name),
+                AppLanguage::Vietnamese => format!("ℹ Thuộc tính - {}", entry.name),
+            };
+            egui::Window::new(prop_title)
                 .open(&mut open)
                 .collapsible(false)
                 .default_size(Vec2::new(380.0, 220.0))
@@ -1722,38 +1747,42 @@ pub fn render_sftp_sidebar(ui: &mut Ui, explorer: &mut FileExplorer) {
                     ui.group(|ui| {
                         ui.set_width(ui.available_width());
                         ui.horizontal(|ui| {
-                            ui.label(RichText::new("Name:").strong().color(Color32::from_rgb(139, 148, 158)));
+                            ui.label(RichText::new(tr(lang, "Name:", "Tên:")).strong().color(Color32::from_rgb(139, 148, 158)));
                             ui.label(RichText::new(&entry.name).color(Color32::WHITE));
                         });
                         ui.horizontal(|ui| {
-                            ui.label(RichText::new("Path:").strong().color(Color32::from_rgb(139, 148, 158)));
+                            ui.label(RichText::new(tr(lang, "Path:", "Đường dẫn:")).strong().color(Color32::from_rgb(139, 148, 158)));
                             ui.label(RichText::new(entry.path.to_string_lossy().to_string()).monospace());
                         });
                         ui.horizontal(|ui| {
-                            ui.label(RichText::new("Type:").strong().color(Color32::from_rgb(139, 148, 158)));
-                            ui.label(if entry.is_dir { "Directory / Folder" } else { "Regular File" });
+                            ui.label(RichText::new(tr(lang, "Type:", "Loại:")).strong().color(Color32::from_rgb(139, 148, 158)));
+                            ui.label(if entry.is_dir {
+                                tr(lang, "Directory / Folder", "Thư mục")
+                            } else {
+                                tr(lang, "Regular File", "Tệp tin")
+                            });
                         });
                         if !entry.is_dir {
                             ui.horizontal(|ui| {
-                                ui.label(RichText::new("Size:").strong().color(Color32::from_rgb(139, 148, 158)));
+                                ui.label(RichText::new(tr(lang, "Size:", "Kích thước:")).strong().color(Color32::from_rgb(139, 148, 158)));
                                 ui.label(format!("{} bytes ({})", entry.size, format_file_size(entry.size)));
                             });
                         }
                         ui.horizontal(|ui| {
-                            ui.label(RichText::new("Permissions:").strong().color(Color32::from_rgb(139, 148, 158)));
+                            ui.label(RichText::new(tr(lang, "Permissions:", "Quyền:")).strong().color(Color32::from_rgb(139, 148, 158)));
                             ui.label(RichText::new(&entry.permissions).monospace());
                         });
                         if let Some(mod_time) = entry.modified
                             && let Ok(dur) = mod_time.duration_since(std::time::UNIX_EPOCH)
                                 && let Some(dt) = chrono::DateTime::from_timestamp(dur.as_secs() as i64, 0) {
                                     ui.horizontal(|ui| {
-                                        ui.label(RichText::new("Modified:").strong().color(Color32::from_rgb(139, 148, 158)));
+                                        ui.label(RichText::new(tr(lang, "Modified:", "Ngày sửa:")).strong().color(Color32::from_rgb(139, 148, 158)));
                                         ui.label(dt.format("%Y-%m-%d %H:%M:%S UTC").to_string());
                                     });
                                 }
                     });
                     ui.add_space(8.0);
-                    if ui.button("✖ Close").clicked() {
+                    if ui.button(tr(lang, "✖ Close", "✖ Đóng")).clicked() {
                         close_prop = true;
                     }
                 });
@@ -1765,7 +1794,11 @@ pub fn render_sftp_sidebar(ui: &mut Ui, explorer: &mut FileExplorer) {
     if explorer.diff_open {
         let mut open = explorer.diff_open;
         let mut close_diff = false;
-        egui::Window::new(format!("🔍 Compare Files: {} vs {}", explorer.diff_file_a, explorer.diff_file_b))
+        let diff_title = match lang {
+            AppLanguage::English => format!("🔍 Compare Files: {} vs {}", explorer.diff_file_a, explorer.diff_file_b),
+            AppLanguage::Vietnamese => format!("🔍 So sánh tệp: {} vs {}", explorer.diff_file_a, explorer.diff_file_b),
+        };
+        egui::Window::new(diff_title)
             .open(&mut open)
             .collapsible(false)
             .default_size(Vec2::new(760.0, 500.0))
@@ -1773,9 +1806,15 @@ pub fn render_sftp_sidebar(ui: &mut Ui, explorer: &mut FileExplorer) {
             .anchor(egui::Align2::CENTER_CENTER, Vec2::ZERO)
             .show(ui.ctx(), |ui| {
                 ui.horizontal(|ui| {
-                    ui.label(RichText::new(format!("File A: {}", explorer.diff_file_a)).strong().color(Color32::from_rgb(56, 189, 248)));
+                    ui.label(RichText::new(match lang {
+                        AppLanguage::English => format!("File A: {}", explorer.diff_file_a),
+                        AppLanguage::Vietnamese => format!("Tệp A: {}", explorer.diff_file_a),
+                    }).strong().color(Color32::from_rgb(56, 189, 248)));
                     ui.separator();
-                    ui.label(RichText::new(format!("File B: {}", explorer.diff_file_b)).strong().color(Color32::from_rgb(163, 230, 53)));
+                    ui.label(RichText::new(match lang {
+                        AppLanguage::English => format!("File B: {}", explorer.diff_file_b),
+                        AppLanguage::Vietnamese => format!("Tệp B: {}", explorer.diff_file_b),
+                    }).strong().color(Color32::from_rgb(163, 230, 53)));
                 });
                 ui.separator();
 
@@ -1816,7 +1855,7 @@ pub fn render_sftp_sidebar(ui: &mut Ui, explorer: &mut FileExplorer) {
 
                 ui.separator();
                 ui.horizontal(|ui| {
-                    if ui.button("✖ Close").clicked() {
+                    if ui.button(tr(lang, "✖ Close", "✖ Đóng")).clicked() {
                         close_diff = true;
                     }
                 });
@@ -1832,7 +1871,7 @@ pub fn render_sftp_sidebar(ui: &mut Ui, explorer: &mut FileExplorer) {
         let mut confirmed = false;
         let mut cancelled = false;
 
-        egui::Window::new("⚠️ Xác nhận xóa (Confirm Delete)")
+        egui::Window::new(tr(lang, "⚠️ Confirm Delete", "⚠️ Xác nhận xóa"))
             .open(&mut open)
             .collapsible(false)
             .resizable(false)
@@ -1843,7 +1882,10 @@ pub fn render_sftp_sidebar(ui: &mut Ui, explorer: &mut FileExplorer) {
                 if has_many_del {
                     let count = explorer.pending_delete_many.len();
                     ui.label(
-                        RichText::new(format!("Bạn có chắc chắn muốn xóa {} mục đã chọn?", count))
+                        RichText::new(match lang {
+                            AppLanguage::English => format!("Are you sure you want to delete {} selected items?", count),
+                            AppLanguage::Vietnamese => format!("Bạn có chắc chắn muốn xóa {} mục đã chọn?", count),
+                        })
                             .strong()
                             .size(13.0)
                             .color(Color32::from_rgb(248, 113, 113)),
@@ -1872,7 +1914,10 @@ pub fn render_sftp_sidebar(ui: &mut Ui, explorer: &mut FileExplorer) {
                         .map(|n| n.to_string_lossy().to_string())
                         .unwrap_or_else(|| del_target.display().to_string());
                     ui.label(
-                        RichText::new(format!("Bạn có chắc chắn muốn xóa '{}'?", del_name))
+                        RichText::new(match lang {
+                            AppLanguage::English => format!("Are you sure you want to delete '{}'?", del_name),
+                            AppLanguage::Vietnamese => format!("Bạn có chắc chắn muốn xóa '{}'?", del_name),
+                        })
                             .strong()
                             .size(13.0)
                             .color(Color32::from_rgb(248, 113, 113)),
@@ -1888,7 +1933,7 @@ pub fn render_sftp_sidebar(ui: &mut Ui, explorer: &mut FileExplorer) {
 
                 ui.add_space(6.0);
                 ui.label(
-                    RichText::new("Hành động này không thể hoàn tác (This action cannot be undone).")
+                    RichText::new(tr(lang, "This action cannot be undone.", "Hành động này không thể hoàn tác."))
                         .size(11.0)
                         .weak(),
                 );
@@ -1903,7 +1948,7 @@ pub fn render_sftp_sidebar(ui: &mut Ui, explorer: &mut FileExplorer) {
                     cancelled = true;
                 }
 
-                let (ok, cancel) = crate::session::ui::rusty_ok_cancel_buttons(ui, "🗑 Xóa (Delete)", "✖ Hủy (Cancel)");
+                let (ok, cancel) = crate::session::ui::rusty_ok_cancel_buttons(ui, tr(lang, "🗑 Delete", "🗑 Xóa"), tr(lang, "✖ Cancel", "✖ Hủy"));
                 if ok {
                     confirmed = true;
                 }
@@ -1932,7 +1977,7 @@ pub fn render_sftp_sidebar(ui: &mut Ui, explorer: &mut FileExplorer) {
         let mut do_rename = false;
         let mut do_skip = false;
 
-        egui::Window::new("⚠️ Trùng tên tệp (File Already Exists)")
+        egui::Window::new(tr(lang, "⚠️ File Already Exists", "⚠️ Trùng tên tệp"))
             .open(&mut open)
             .collapsible(false)
             .resizable(false)
@@ -1940,13 +1985,16 @@ pub fn render_sftp_sidebar(ui: &mut Ui, explorer: &mut FileExplorer) {
             .anchor(egui::Align2::CENTER_CENTER, Vec2::ZERO)
             .show(ui.ctx(), |ui| {
                 let action = if conflict.is_upload {
-                    "thư mục đích trên Server (Upload destination)"
+                    tr(lang, "the server destination folder", "thư mục đích trên máy chủ")
                 } else {
-                    "thư mục tải về trên máy (Download location)"
+                    tr(lang, "the local download folder", "thư mục tải về trên máy")
                 };
                 ui.add_space(4.0);
                 ui.label(
-                    RichText::new(format!("Tệp '{}' đã tồn tại trong {}!", conflict.file_name, action))
+                    RichText::new(match lang {
+                        AppLanguage::English => format!("File '{}' already exists in {}!", conflict.file_name, action),
+                        AppLanguage::Vietnamese => format!("Tệp '{}' đã tồn tại trong {}!", conflict.file_name, action),
+                    })
                         .strong()
                         .size(12.5)
                         .color(Color32::from_rgb(251, 191, 36)),
@@ -1961,7 +2009,10 @@ pub fn render_sftp_sidebar(ui: &mut Ui, explorer: &mut FileExplorer) {
                 if !explorer.pending_conflicts.is_empty() {
                     ui.add_space(2.0);
                     ui.label(
-                        RichText::new(format!("(+{} tệp trùng tên khác đang chờ xử lý)", explorer.pending_conflicts.len()))
+                        RichText::new(match lang {
+                            AppLanguage::English => format!("(+{} more conflicts queued)", explorer.pending_conflicts.len()),
+                            AppLanguage::Vietnamese => format!("(+{} tệp trùng tên khác đang chờ xử lý)", explorer.pending_conflicts.len()),
+                        })
                             .size(10.5)
                             .weak(),
                     );
@@ -1970,13 +2021,13 @@ pub fn render_sftp_sidebar(ui: &mut Ui, explorer: &mut FileExplorer) {
                 ui.separator();
                 ui.add_space(6.0);
                 ui.horizontal(|ui| {
-                    if ui.button(RichText::new("🔄 Ghi đè (Overwrite)").strong().color(Color32::from_rgb(248, 113, 113))).clicked() {
+                    if ui.button(RichText::new(tr(lang, "🔄 Overwrite", "🔄 Ghi đè")).strong().color(Color32::from_rgb(248, 113, 113))).clicked() {
                         do_overwrite = true;
                     }
-                    if ui.button(RichText::new("📝 Đổi tên (Keep both)").strong().color(Color32::from_rgb(56, 189, 248))).clicked() {
+                    if ui.button(RichText::new(tr(lang, "📝 Keep both", "📝 Giữ cả hai")).strong().color(Color32::from_rgb(56, 189, 248))).clicked() {
                         do_rename = true;
                     }
-                    if ui.button("⏭ Bỏ qua (Skip)").clicked() {
+                    if ui.button(tr(lang, "⏭ Skip", "⏭ Bỏ qua")).clicked() {
                         do_skip = true;
                     }
                 });
@@ -1996,14 +2047,14 @@ pub fn render_sftp_sidebar(ui: &mut Ui, explorer: &mut FileExplorer) {
         let mut open = explorer.show_new_folder;
         let mut close_dlg = false;
         let mut do_create = false;
-        egui::Window::new("📁 Tạo thư mục mới (New Directory)")
+        egui::Window::new(tr(lang, "📁 New Directory", "📁 Tạo thư mục mới"))
             .open(&mut open)
             .collapsible(false)
             .resizable(false)
             .default_size(Vec2::new(340.0, 135.0))
             .anchor(egui::Align2::CENTER_CENTER, Vec2::ZERO)
             .show(ui.ctx(), |ui| {
-                ui.label(RichText::new("Nhập tên thư mục mới:").strong());
+                ui.label(RichText::new(tr(lang, "Enter new directory name:", "Nhập tên thư mục mới:")).strong());
                 let resp = ui.add(
                     TextEdit::singleline(&mut explorer.new_folder_name)
                         .desired_width(f32::INFINITY)
@@ -2015,7 +2066,7 @@ pub fn render_sftp_sidebar(ui: &mut Ui, explorer: &mut FileExplorer) {
                 ui.add_space(6.0);
                 ui.separator();
                 ui.add_space(4.0);
-                let (ok, cancel) = crate::session::ui::rusty_ok_cancel_buttons(ui, "✔ Tạo (Create)", "✖ Hủy");
+                let (ok, cancel) = crate::session::ui::rusty_ok_cancel_buttons(ui, tr(lang, "✔ Create", "✔ Tạo"), tr(lang, "✖ Cancel", "✖ Hủy"));
                 if ok || do_create {
                     let name = explorer.new_folder_name.clone();
                     explorer.create_folder(&name);
@@ -2033,14 +2084,14 @@ pub fn render_sftp_sidebar(ui: &mut Ui, explorer: &mut FileExplorer) {
         let mut open = explorer.show_new_file;
         let mut close_dlg = false;
         let mut do_create = false;
-        egui::Window::new("📄 Tạo tệp mới (New Empty File)")
+        egui::Window::new(tr(lang, "📄 New Empty File", "📄 Tạo tệp mới"))
             .open(&mut open)
             .collapsible(false)
             .resizable(false)
             .default_size(Vec2::new(340.0, 135.0))
             .anchor(egui::Align2::CENTER_CENTER, Vec2::ZERO)
             .show(ui.ctx(), |ui| {
-                ui.label(RichText::new("Nhập tên tệp mới:").strong());
+                ui.label(RichText::new(tr(lang, "Enter new file name:", "Nhập tên tệp mới:")).strong());
                 let resp = ui.add(
                     TextEdit::singleline(&mut explorer.new_file_name)
                         .desired_width(f32::INFINITY)
@@ -2052,7 +2103,7 @@ pub fn render_sftp_sidebar(ui: &mut Ui, explorer: &mut FileExplorer) {
                 ui.add_space(6.0);
                 ui.separator();
                 ui.add_space(4.0);
-                let (ok, cancel) = crate::session::ui::rusty_ok_cancel_buttons(ui, "✔ Tạo (Create)", "✖ Hủy");
+                let (ok, cancel) = crate::session::ui::rusty_ok_cancel_buttons(ui, tr(lang, "✔ Create", "✔ Tạo"), tr(lang, "✖ Cancel", "✖ Hủy"));
                 if ok || do_create {
                     let name = explorer.new_file_name.clone();
                     explorer.create_file(&name);
@@ -2069,19 +2120,19 @@ pub fn render_sftp_sidebar(ui: &mut Ui, explorer: &mut FileExplorer) {
         let open = explorer.show_sudo_password_dialog;
         let mut close_dlg = false;
         let mut do_confirm = false;
-        egui::Window::new(RichText::new("🛡️ Xác thực Sudo (Root Mode)").strong().color(Color32::from_rgb(251, 146, 60)))
+        egui::Window::new(RichText::new(tr(lang, "🛡️ Sudo Authentication (Root Mode)", "🛡️ Xác thực Sudo (Quyền Root)")).strong().color(Color32::from_rgb(251, 146, 60)))
             .collapsible(false)
             .resizable(false)
             .default_size(Vec2::new(360.0, 160.0))
             .anchor(egui::Align2::CENTER_CENTER, Vec2::ZERO)
             .show(ui.ctx(), |ui| {
-                ui.label(RichText::new("SFTP đang kích hoạt quyền Root (sudo -S).").size(12.0).color(Color32::from_rgb(209, 217, 224)));
-                ui.label(RichText::new("Vui lòng nhập mật khẩu sudo trên máy chủ:").strong().size(12.5));
+                ui.label(RichText::new(tr(lang, "SFTP is enabling Root mode (sudo -S).", "SFTP đang kích hoạt quyền Root (sudo -S).")).size(12.0).color(Color32::from_rgb(209, 217, 224)));
+                ui.label(RichText::new(tr(lang, "Please enter your sudo password on the server:", "Vui lòng nhập mật khẩu sudo trên máy chủ:")).strong().size(12.5));
                 let resp = ui.add(
                     TextEdit::singleline(&mut explorer.sudo_password_input)
                         .password(true)
                         .desired_width(f32::INFINITY)
-                        .hint_text("Mật khẩu sudo..."),
+                        .hint_text(tr(lang, "Sudo password...", "Mật khẩu sudo...")),
                 );
                 if !resp.has_focus() {
                     resp.request_focus();
@@ -2090,11 +2141,11 @@ pub fn render_sftp_sidebar(ui: &mut Ui, explorer: &mut FileExplorer) {
                     do_confirm = true;
                 }
                 ui.add_space(4.0);
-                ui.checkbox(&mut explorer.sudo_password_remember, "Ghi nhớ mật khẩu sudo cho phiên làm việc này");
+                ui.checkbox(&mut explorer.sudo_password_remember, tr(lang, "Remember sudo password for this session", "Ghi nhớ mật khẩu sudo cho phiên làm việc này"));
                 ui.add_space(6.0);
                 ui.separator();
                 ui.add_space(4.0);
-                let (ok, cancel) = crate::session::ui::rusty_ok_cancel_buttons(ui, "🛡️ Kích hoạt Sudo", "✖ Hủy");
+                let (ok, cancel) = crate::session::ui::rusty_ok_cancel_buttons(ui, tr(lang, "🛡️ Enable Sudo", "🛡️ Kích hoạt Sudo"), tr(lang, "✖ Cancel", "✖ Hủy"));
                 if ok || do_confirm {
                     explorer.confirm_sudo_password();
                     close_dlg = true;

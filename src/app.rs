@@ -1627,6 +1627,7 @@ impl RustyBoxApp {
         if !self.show_import_dialog {
             return;
         }
+        let lang = self.language;
 
         // Auto-preload file on initial open if path exists, text is empty, and user hasn't cleared/interacted yet
         if self.import_raw_text.is_empty()
@@ -1636,7 +1637,11 @@ impl RustyBoxApp {
             && let Ok(content) = std::fs::read_to_string(&self.import_file_path) {
                 let len = content.len();
                 self.import_raw_text = content;
-                self.import_status_msg = Some((format!("Loaded {} bytes from '{}'.", len, self.import_file_path), false));
+                let msg = match lang {
+                    AppLanguage::English => format!("Loaded {} bytes from '{}'.", len, self.import_file_path),
+                    AppLanguage::Vietnamese => format!("Đã nạp {} byte từ '{}'.", len, self.import_file_path),
+                };
+                self.import_status_msg = Some((msg, false));
             }
 
         let mut open_dialog_open = self.show_import_dialog;
@@ -1645,7 +1650,7 @@ impl RustyBoxApp {
         let dialog_w = (screen_rect.width() - 48.0).clamp(380.0, 620.0);
         let dialog_h = (screen_rect.height() - 60.0).clamp(360.0, 520.0);
 
-        egui::Window::new("📥 Import SSH Profiles & Sessions")
+        egui::Window::new(tr(lang, "📥 Import SSH Profiles & Sessions", "📥 Nhập hồ sơ SSH & Phiên kết nối"))
             .open(&mut open_dialog_open)
             .default_size(egui::vec2(dialog_w, dialog_h))
             .max_width(dialog_w)
@@ -1657,26 +1662,26 @@ impl RustyBoxApp {
                 let inner_w = (dialog_w - 24.0).max(320.0);
                 ui.set_max_width(inner_w);
 
-                ui.heading(RichText::new("Import SSH Profiles & Sessions into RustyBox").size(15.0).color(Color32::from_rgb(56, 189, 248)));
-                ui.label(RichText::new("Supports OpenSSH (~/.ssh/config), MobaXterm (.txt/.ini/.mxtpro), server lists, or JSON.").size(11.5));
+                ui.heading(RichText::new(tr(lang, "Import SSH Profiles & Sessions into RustyBox", "Nhập hồ sơ SSH & Phiên kết nối vào RustyBox")).size(15.0).color(Color32::from_rgb(56, 189, 248)));
+                ui.label(RichText::new(tr(lang, "Supports OpenSSH (~/.ssh/config), MobaXterm (.txt/.ini/.mxtpro), server lists, or JSON.", "Hỗ trợ OpenSSH (~/.ssh/config), MobaXterm (.txt/.ini/.mxtpro), danh sách máy chủ hoặc JSON.")).size(11.5));
                 ui.add_space(6.0);
 
                 ui.horizontal_wrapped(|ui| {
-                    ui.label(RichText::new("Target Folder:").strong());
+                    ui.label(RichText::new(tr(lang, "Target Folder:", "Thư mục đích:")).strong());
                     ui.add(TextEdit::singleline(&mut self.import_default_folder).desired_width(180.0));
-                    ui.label(RichText::new("(e.g. SSH Profiles, OpenSSH, MobaXterm)").size(11.0).color(Color32::GRAY));
+                    ui.label(RichText::new(tr(lang, "(e.g. SSH Profiles, OpenSSH, MobaXterm)", "(vd: SSH Profiles, OpenSSH, MobaXterm)")).size(11.0).color(Color32::GRAY));
                 });
                 ui.add_space(6.0);
 
                 ui.group(|ui| {
                     ui.set_max_width(inner_w - 12.0);
                     ui.horizontal_wrapped(|ui| {
-                        ui.label(RichText::new("Option A: Load from File on Disk").strong());
-                        ui.label(RichText::new("Quick actions:").size(11.0).color(Color32::GRAY));
+                        ui.label(RichText::new(tr(lang, "Option A: Load from File on Disk", "Cách A: Nạp từ tệp trên máy")).strong());
+                        ui.label(RichText::new(tr(lang, "Quick actions:", "Thao tác nhanh:")).size(11.0).color(Color32::GRAY));
 
-                        if ui.button(RichText::new("📁 Browse MobaXterm File...").color(Color32::from_rgb(251, 146, 60))).clicked()
+                        if ui.button(RichText::new(tr(lang, "📁 Browse MobaXterm File...", "📁 Chọn tệp MobaXterm...")).color(Color32::from_rgb(251, 146, 60))).clicked()
                             && let Some(path) = rfd::FileDialog::new()
-                                .set_title("Select MobaXterm Export File")
+                                .set_title(tr(lang, "Select MobaXterm Export File", "Chọn tệp xuất MobaXterm"))
                                 .add_filter("MobaXterm Sessions", &["txt", "ini", "mxtpro", "mxtsessions", "csv"])
                                 .add_filter("All Files", &["*"])
                                 .pick_file()
@@ -1688,16 +1693,24 @@ impl RustyBoxApp {
                                     Ok(content) => {
                                         let len = content.len();
                                         self.import_raw_text = content;
-                                        self.import_status_msg = Some((format!("Loaded {} bytes from '{}'.", len, p_str), false));
+                                        let msg = match lang {
+                                            AppLanguage::English => format!("Loaded {} bytes from '{}'.", len, p_str),
+                                            AppLanguage::Vietnamese => format!("Đã nạp {} byte từ '{}'.", len, p_str),
+                                        };
+                                        self.import_status_msg = Some((msg, false));
                                     }
                                     Err(e) => {
-                                        self.import_status_msg = Some((format!("Cannot read '{}': {}", p_str, e), true));
+                                        let msg = match lang {
+                                            AppLanguage::English => format!("Cannot read '{}': {}", p_str, e),
+                                            AppLanguage::Vietnamese => format!("Không thể đọc '{}': {}", p_str, e),
+                                        };
+                                        self.import_status_msg = Some((msg, true));
                                     }
                                 }
                             }
 
                         if let Some(ssh_cfg_path) = crate::session::import_export::default_ssh_config_path()
-                            && ui.button(RichText::new("🔑 Load ~/.ssh/config").color(Color32::from_rgb(56, 189, 248))).clicked() {
+                            && ui.button(RichText::new(tr(lang, "🔑 Load ~/.ssh/config", "🔑 Nạp ~/.ssh/config")).color(Color32::from_rgb(56, 189, 248))).clicked() {
                                 let p_str = ssh_cfg_path.to_string_lossy().to_string();
                                 self.import_file_path = p_str.clone();
                                 self.import_default_folder = "SSH Profiles".into();
@@ -1705,10 +1718,18 @@ impl RustyBoxApp {
                                     Ok(content) => {
                                         let len = content.len();
                                         self.import_raw_text = content;
-                                        self.import_status_msg = Some((format!("Loaded {} bytes from '{}'.", len, p_str), false));
+                                        let msg = match lang {
+                                            AppLanguage::English => format!("Loaded {} bytes from '{}'.", len, p_str),
+                                            AppLanguage::Vietnamese => format!("Đã nạp {} byte từ '{}'.", len, p_str),
+                                        };
+                                        self.import_status_msg = Some((msg, false));
                                     }
                                     Err(e) => {
-                                        self.import_status_msg = Some((format!("Cannot read '{}': {}", p_str, e), true));
+                                        let msg = match lang {
+                                            AppLanguage::English => format!("Cannot read '{}': {}", p_str, e),
+                                            AppLanguage::Vietnamese => format!("Không thể đọc '{}': {}", p_str, e),
+                                        };
+                                        self.import_status_msg = Some((msg, true));
                                     }
                                 }
                             }
@@ -1716,9 +1737,9 @@ impl RustyBoxApp {
                     ui.add_space(4.0);
                     ui.horizontal(|ui| {
                         let path_w = (ui.available_width() - 175.0).max(140.0);
-                        let hint = egui::WidgetText::from("Select a file or enter path on disk...").color(Color32::from_rgb(120, 130, 150));
+                        let hint = egui::WidgetText::from(tr(lang, "Select a file or enter path on disk...", "Chọn tệp hoặc nhập đường dẫn trên máy...")).color(Color32::from_rgb(120, 130, 150));
                         ui.add(TextEdit::singleline(&mut self.import_file_path).hint_text(hint).desired_width(path_w));
-                        if ui.button("📂 Browse...").clicked()
+                        if ui.button(tr(lang, "📂 Browse...", "📂 Duyệt...")).clicked()
                             && let Some(path) = rfd::FileDialog::new()
                                 .add_filter("SSH & Session Files", &["config", "txt", "ini", "mxtpro", "mxtsessions", "csv", "json"])
                                 .add_filter("All Files", &["*"])
@@ -1730,25 +1751,41 @@ impl RustyBoxApp {
                                     Ok(content) => {
                                         let len = content.len();
                                         self.import_raw_text = content;
-                                        self.import_status_msg = Some((format!("Loaded {} bytes from '{}'.", len, p_str), false));
+                                        let msg = match lang {
+                                            AppLanguage::English => format!("Loaded {} bytes from '{}'.", len, p_str),
+                                            AppLanguage::Vietnamese => format!("Đã nạp {} byte từ '{}'.", len, p_str),
+                                        };
+                                        self.import_status_msg = Some((msg, false));
                                     }
                                     Err(e) => {
-                                        self.import_status_msg = Some((format!("Failed to read file '{}': {}", p_str, e), true));
+                                        let msg = match lang {
+                                            AppLanguage::English => format!("Failed to read file '{}': {}", p_str, e),
+                                            AppLanguage::Vietnamese => format!("Lỗi đọc tệp '{}': {}", p_str, e),
+                                        };
+                                        self.import_status_msg = Some((msg, true));
                                     }
                                 }
                             }
-                        if ui.button(RichText::new("📥 Read File").strong()).clicked() {
+                        if ui.button(RichText::new(tr(lang, "📥 Read File", "📥 Đọc tệp")).strong()).clicked() {
                             if self.import_file_path.trim().is_empty() {
-                                self.import_status_msg = Some(("Please enter or browse for a file path first.".into(), true));
+                                self.import_status_msg = Some((tr(lang, "Please enter or browse for a file path first.", "Vui lòng nhập hoặc chọn đường dẫn tệp trước.").into(), true));
                             } else {
                                 match std::fs::read_to_string(&self.import_file_path) {
                                     Ok(content) => {
                                         let len = content.len();
                                         self.import_raw_text = content;
-                                        self.import_status_msg = Some((format!("Read {} bytes from file.", len), false));
+                                        let msg = match lang {
+                                            AppLanguage::English => format!("Read {} bytes from file.", len),
+                                            AppLanguage::Vietnamese => format!("Đã đọc {} byte từ tệp.", len),
+                                        };
+                                        self.import_status_msg = Some((msg, false));
                                     }
                                     Err(e) => {
-                                        self.import_status_msg = Some((format!("Failed to read file: {}", e), true));
+                                        let msg = match lang {
+                                            AppLanguage::English => format!("Failed to read file: {}", e),
+                                            AppLanguage::Vietnamese => format!("Lỗi đọc tệp: {}", e),
+                                        };
+                                        self.import_status_msg = Some((msg, true));
                                     }
                                 }
                             }
@@ -1760,15 +1797,15 @@ impl RustyBoxApp {
 
                 ui.group(|ui| {
                     ui.set_max_width(inner_w - 12.0);
-                    ui.label(RichText::new("Option B: Paste OpenSSH Config / MobaXterm / Session Text directly").strong());
-                    ui.label(RichText::new("Supports OpenSSH (Host/HostName/User/Port/IdentityFile), MobaXterm (#109#...), user@host=pass, or JSON").size(10.5).color(Color32::GRAY));
+                    ui.label(RichText::new(tr(lang, "Option B: Paste OpenSSH Config / MobaXterm / Session Text directly", "Cách B: Dán trực tiếp OpenSSH Config / MobaXterm / văn bản phiên")).strong());
+                    ui.label(RichText::new(tr(lang, "Supports OpenSSH (Host/HostName/User/Port/IdentityFile), MobaXterm (#109#...), user@host=pass, or JSON", "Hỗ trợ OpenSSH (Host/HostName/User/Port/IdentityFile), MobaXterm (#109#...), user@host=pass hoặc JSON")).size(10.5).color(Color32::GRAY));
                     ScrollArea::both().max_height(165.0).show(ui, |ui| {
                         ui.add(
                             TextEdit::multiline(&mut self.import_raw_text)
                                 .font(egui::TextStyle::Monospace)
                                 .desired_width(inner_w - 28.0)
                                 .desired_rows(8)
-                                .hint_text("Paste ~/.ssh/config, MobaXterm export, user@host:port, or JSON here...")
+                                .hint_text(tr(lang, "Paste ~/.ssh/config, MobaXterm export, user@host:port, or JSON here...", "Dán ~/.ssh/config, tệp xuất MobaXterm, user@host:port hoặc JSON vào đây..."))
                         );
                     });
                 });
@@ -1777,7 +1814,10 @@ impl RustyBoxApp {
 
                 // Preview count
                 let preview_parsed = crate::session::import_export::parse_sessions_from_text(&self.import_raw_text, &self.import_default_folder);
-                ui.label(RichText::new(format!("📊 Detected: {} valid sessions in input", preview_parsed.len()))
+                ui.label(RichText::new(match lang {
+                    AppLanguage::English => format!("📊 Detected: {} valid sessions in input", preview_parsed.len()),
+                    AppLanguage::Vietnamese => format!("📊 Phát hiện: {} phiên hợp lệ trong dữ liệu", preview_parsed.len()),
+                })
                     .strong()
                     .color(if preview_parsed.is_empty() { Color32::GRAY } else { Color32::from_rgb(100, 220, 100) }));
 
@@ -1793,26 +1833,28 @@ impl RustyBoxApp {
 
                 ui.horizontal(|ui| {
                     let can_import = !preview_parsed.is_empty();
-                    if ui.add_enabled(can_import, egui::Button::new(RichText::new("📥 Import & Merge Sessions").strong().color(Color32::WHITE))
+                    if ui.add_enabled(can_import, egui::Button::new(RichText::new(tr(lang, "📥 Import & Merge Sessions", "📥 Nhập & Gộp phiên")).strong().color(Color32::WHITE))
                         .fill(Color32::from_rgb(34, 197, 94))
                         .min_size(egui::vec2(180.0, 28.0))).clicked()
                     {
                         let parsed = crate::session::import_export::parse_sessions_from_text(&self.import_raw_text, &self.import_default_folder);
                         let summary = crate::session::import_export::merge_imported_sessions(&mut self.sessions, parsed);
                         let _ = self.storage.save_sessions(&self.sessions);
-                        self.import_status_msg = Some((
-                            format!("✅ Imported {} new sessions! ({} skipped as duplicate, total {} parsed)",
+                        let msg = match lang {
+                            AppLanguage::English => format!("✅ Imported {} new sessions! ({} skipped as duplicate, total {} parsed)",
                                 summary.new_imported, summary.duplicates_skipped, summary.total_parsed),
-                            false
-                        ));
+                            AppLanguage::Vietnamese => format!("✅ Đã nhập {} phiên mới! (bỏ qua {} bản trùng, tổng {} phiên)",
+                                summary.new_imported, summary.duplicates_skipped, summary.total_parsed),
+                        };
+                        self.import_status_msg = Some((msg, false));
                     }
 
-                    if ui.button(RichText::new("Clear Text").color(Color32::LIGHT_GRAY)).clicked() {
+                    if ui.button(RichText::new(tr(lang, "Clear Text", "Xóa nội dung")).color(Color32::LIGHT_GRAY)).clicked() {
                         self.import_raw_text.clear();
-                        self.import_status_msg = Some(("Cleared text input. Paste config or load a file above.".into(), false));
+                        self.import_status_msg = Some((tr(lang, "Cleared text input. Paste config or load a file above.", "Đã xóa nội dung. Hãy dán cấu hình hoặc nạp tệp ở trên.").into(), false));
                     }
 
-                    if ui.button("✖ Close").clicked() {
+                    if ui.button(tr(lang, "✖ Close", "✖ Đóng")).clicked() {
                         close = true;
                     }
                 });
@@ -1934,6 +1976,7 @@ impl eframe::App for RustyBoxApp {
     }
 
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        let lang = self.language;
         // Enforce dark theme mode across all frames regardless of OS appearance events
         if ctx.theme() != egui::Theme::Dark {
             ctx.set_theme(egui::ThemePreference::Dark);
@@ -2151,7 +2194,7 @@ impl eframe::App for RustyBoxApp {
                         .inner_margin(egui::Margin::symmetric(5.0, 1.5))
                         .show(ui, |ui| {
                             ui.label(
-                                RichText::new("v1.4.8")
+                                RichText::new("v1.4.9")
                                     .color(Color32::from_rgb(147, 197, 253))
                                     .size(10.5)
                                     .strong(),
@@ -2193,7 +2236,7 @@ impl eframe::App for RustyBoxApp {
                         ui.close_menu();
                     }
                     ui.separator();
-                    if ui.button("🚪 Exit").clicked() {
+                    if ui.button(tr(lang, "🚪 Exit", "🚪 Thoát")).clicked() {
                         self.shutdown_cleanup();
                         ui.ctx().send_viewport_cmd(egui::ViewportCommand::Close);
                         ui.close_menu();
@@ -2201,12 +2244,12 @@ impl eframe::App for RustyBoxApp {
                 });
 
                 // TERMINAL MENU
-                ui.menu_button("Terminal", |ui| {
-                    if ui.button("💻 New Local Terminal\tCtrl+T").clicked() {
+                ui.menu_button(tr(lang, "Terminal", "Terminal"), |ui| {
+                    if ui.button(tr(lang, "💻 New Local Terminal\tCtrl+T", "💻 Mở Terminal cục bộ mới\tCtrl+T")).clicked() {
                         self.spawn_local_terminal("Local Terminal", None, None);
                         ui.close_menu();
                     }
-                    if ui.button("📑 Duplicate Current Tab").clicked() {
+                    if ui.button(tr(lang, "📑 Duplicate Current Tab", "📑 Nhân bản Tab hiện tại")).clicked() {
                         let dup_info = self.open_tabs.get(self.active_tab_idx).map(|tab| {
                             (
                                 tab.title.clone(),
@@ -2225,7 +2268,7 @@ impl eframe::App for RustyBoxApp {
                         }
                         ui.close_menu();
                     }
-                    if ui.button("✖ Close Active Tab\tCtrl+Shift+W").clicked() {
+                    if ui.button(tr(lang, "✖ Close Active Tab\tCtrl+Shift+W", "✖ Đóng Tab đang mở\tCtrl+Shift+W")).clicked() {
                         if !self.open_tabs.is_empty() && !self.is_home_active {
                             let active = self.active_tab_idx;
                             if active < self.open_tabs.len() {
@@ -2244,22 +2287,22 @@ impl eframe::App for RustyBoxApp {
                         ui.close_menu();
                     }
                     ui.separator();
-                    if ui.button("🧹 Clear Terminal Screen\tCtrl+L").clicked() {
+                    if ui.button(tr(lang, "🧹 Clear Terminal Screen\tCtrl+L", "🧹 Xóa màn hình Terminal\tCtrl+L")).clicked() {
                         if let Some(tab) = self.open_tabs.get_mut(self.active_tab_idx) {
                             let _ = tab.session.write_bytes(b"clear\n");
                         }
                         ui.close_menu();
                     }
-                    if ui.button("🔍 Find in Terminal...\tCtrl+F").clicked() {
+                    if ui.button(tr(lang, "🔍 Find in Terminal...\tCtrl+F", "🔍 Tìm trong Terminal...\tCtrl+F")).clicked() {
                         self.search_open = true;
                         ui.close_menu();
                     }
-                    if ui.button("💾 Save Terminal Buffer to File...").clicked() {
+                    if ui.button(tr(lang, "💾 Save Terminal Buffer to File...", "💾 Lưu nội dung Terminal ra tệp...")).clicked() {
                         self.save_active_terminal_buffer();
                         ui.close_menu();
                     }
                     ui.separator();
-                    ui.menu_button("🔤 Terminal Font", |ui| {
+                    ui.menu_button(tr(lang, "🔤 Terminal Font", "🔤 Phông chữ Terminal"), |ui| {
                         for opt in crate::terminal::fonts::AVAILABLE_TERMINAL_FONTS {
                             let is_selected = self.terminal_font_family == opt.id;
                             if ui.selectable_label(is_selected, opt.name).clicked() {
@@ -2270,12 +2313,12 @@ impl eframe::App for RustyBoxApp {
                             }
                         }
                     });
-                    if ui.button("➕ Increase Font Size\tCtrl++").clicked() {
+                    if ui.button(tr(lang, "➕ Increase Font Size\tCtrl++", "➕ Tăng cỡ chữ\tCtrl++")).clicked() {
                         self.font_size = (self.font_size + 1.0).min(32.0);
                         let _ = self.persist_preferences();
                         ui.close_menu();
                     }
-                    if ui.button("➖ Decrease Font Size\tCtrl+-").clicked() {
+                    if ui.button(tr(lang, "➖ Decrease Font Size\tCtrl+-", "➖ Giảm cỡ chữ\tCtrl+-")).clicked() {
                         self.font_size = (self.font_size - 1.0).max(8.0);
                         let _ = self.persist_preferences();
                         ui.close_menu();
@@ -2283,40 +2326,40 @@ impl eframe::App for RustyBoxApp {
                 });
 
                 // VIEW MENU
-                ui.menu_button("View", |ui| {
-                    ui.checkbox(&mut self.show_sftp_sidebar, "Show Sidebar (Sessions & SFTP)");
+                ui.menu_button(tr(lang, "View", "Hiển thị"), |ui| {
+                    ui.checkbox(&mut self.show_sftp_sidebar, tr(lang, "Show Sidebar (Sessions & SFTP)", "Hiện thanh bên (Phiên & SFTP)"));
                     ui.separator();
-                    if ui.selectable_label(self.split_mode == SplitMode::Single, "🗖 Single Terminal").clicked() {
+                    if ui.selectable_label(self.split_mode == SplitMode::Single, tr(lang, "🗖 Single Terminal", "🗖 1 Khung Terminal")).clicked() {
                         self.split_mode = SplitMode::Single;
                         ui.close_menu();
                     }
-                    if ui.selectable_label(self.split_mode == SplitMode::Horizontal, "◫ Split 2 Columns").clicked() {
+                    if ui.selectable_label(self.split_mode == SplitMode::Horizontal, tr(lang, "◫ Split 2 Columns", "◫ Chia 2 cột")).clicked() {
                         self.split_mode = SplitMode::Horizontal;
                         ui.close_menu();
                     }
-                    if ui.selectable_label(self.split_mode == SplitMode::Vertical, "⬒ Split 2 Rows").clicked() {
+                    if ui.selectable_label(self.split_mode == SplitMode::Vertical, tr(lang, "⬒ Split 2 Rows", "⬒ Chia 2 hàng")).clicked() {
                         self.split_mode = SplitMode::Vertical;
                         ui.close_menu();
                     }
-                    if ui.selectable_label(self.split_mode == SplitMode::Grid2x2, "⊞ Split 2x2 Grid").clicked() {
+                    if ui.selectable_label(self.split_mode == SplitMode::Grid2x2, tr(lang, "⊞ Split 2x2 Grid", "⊞ Chia lưới 2x2")).clicked() {
                         self.split_mode = SplitMode::Grid2x2;
                         ui.close_menu();
                     }
                     ui.separator();
-                    ui.checkbox(&mut self.multi_exec_enabled, "⚡ Multi-Execution (Broadcast to all tabs)");
+                    ui.checkbox(&mut self.multi_exec_enabled, tr(lang, "⚡ Multi-Execution (Broadcast to all tabs)", "⚡ Thực thi đồng loạt (Gửi tới mọi tab)"));
                     ui.separator();
-                    ui.menu_button("🔍 UI Font & Zoom Scale", |ui| {
-                        if ui.button("➕ Zoom In UI (+10%)\tCtrl+Shift++").clicked() {
+                    ui.menu_button(tr(lang, "🔍 UI Font & Zoom Scale", "🔍 Thu phóng giao diện"), |ui| {
+                        if ui.button(tr(lang, "➕ Zoom In UI (+10%)\tCtrl+Shift++", "➕ Phóng to giao diện (+10%)\tCtrl+Shift++")).clicked() {
                             self.ui_scale = (self.ui_scale + 0.1).min(2.0);
                             let _ = self.persist_preferences();
                             ui.close_menu();
                         }
-                        if ui.button("➖ Zoom Out UI (-10%)\tCtrl+Shift+-").clicked() {
+                        if ui.button(tr(lang, "➖ Zoom Out UI (-10%)\tCtrl+Shift+-", "➖ Thu nhỏ giao diện (-10%)\tCtrl+Shift+-")).clicked() {
                             self.ui_scale = (self.ui_scale - 0.1).max(0.7);
                             let _ = self.persist_preferences();
                             ui.close_menu();
                         }
-                        if ui.button("↺ Reset Zoom (100%)\tCtrl+0").clicked() {
+                        if ui.button(tr(lang, "↺ Reset Zoom (100%)\tCtrl+0", "↺ Đặt lại thu phóng (100%)\tCtrl+0")).clicked() {
                             self.ui_scale = 1.0;
                             let _ = self.persist_preferences();
                             ui.close_menu();
@@ -2332,7 +2375,7 @@ impl eframe::App for RustyBoxApp {
                         }
                     });
                     ui.separator();
-                    ui.menu_button("🎨 Terminal Theme", |ui| {
+                    ui.menu_button(tr(lang, "🎨 Terminal Theme", "🎨 Giao diện Terminal"), |ui| {
                         for t in TerminalTheme::all() {
                             if ui.selectable_label(self.theme == *t, t.name()).clicked() {
                                 self.theme = *t;
@@ -2349,101 +2392,101 @@ impl eframe::App for RustyBoxApp {
                 });
 
                 // TOOLS MENU
-                ui.menu_button("Tools", |ui| {
-                    if ui.button("🔍 Port Scanner").clicked() {
+                ui.menu_button(tr(lang, "Tools", "Công cụ"), |ui| {
+                    if ui.button(tr(lang, "🔍 Port Scanner", "🔍 Quét cổng mạng")).clicked() {
                         self.show_network_tools = true;
                         self.net_tools_tab = 0;
                         ui.close_menu();
                     }
-                    if ui.button("📡 Subnet NetScan (LAN IP Scanner)").clicked() {
+                    if ui.button(tr(lang, "📡 Subnet NetScan (LAN IP Scanner)", "📡 Quét dải IP nội bộ (NetScan)")).clicked() {
                         self.show_network_tools = true;
                         self.net_tools_tab = 1;
                         ui.close_menu();
                     }
-                    if ui.button("⏱ TCP Ping Utility").clicked() {
+                    if ui.button(tr(lang, "⏱ TCP Ping Utility", "⏱ Kiểm tra Ping TCP")).clicked() {
                         self.show_network_tools = true;
                         self.net_tools_tab = 2;
                         ui.close_menu();
                     }
-                    if ui.button("📊 Active Connections (Netstat)").clicked() {
+                    if ui.button(tr(lang, "📊 Active Connections (Netstat)", "📊 Kết nối đang hoạt động (Netstat)")).clicked() {
                         self.show_network_tools = true;
                         self.net_tools_tab = 3;
                         ui.close_menu();
                     }
-                    if ui.button("⚡ Wake-on-LAN (WOL)").clicked() {
+                    if ui.button(tr(lang, "⚡ Wake-on-LAN (WOL)", "⚡ Đánh thức qua mạng (Wake-on-LAN)")).clicked() {
                         self.show_network_tools = true;
                         self.net_tools_tab = 5;
                         ui.close_menu();
                     }
-                    if ui.button("🌐 DNS Lookup").clicked() {
+                    if ui.button(tr(lang, "🌐 DNS Lookup", "🌐 Tra cứu tên miền (DNS)")).clicked() {
                         self.show_network_tools = true;
                         self.net_tools_tab = 4;
                         ui.close_menu();
                     }
                     ui.separator();
-                    if ui.button("🚀 Embedded Daemons (HTTP, Syslog, TFTP)").clicked() {
+                    if ui.button(tr(lang, "🚀 Embedded Daemons (HTTP, Syslog, TFTP)", "🚀 Dịch vụ mạng tích hợp (HTTP, Syslog, TFTP)")).clicked() {
                         self.show_services_modal = true;
                         ui.close_menu();
                     }
-                    if ui.button("📋 Command Snippets (DevOps Library)").clicked() {
+                    if ui.button(tr(lang, "📋 Command Snippets (DevOps Library)", "📋 Kho lệnh mẫu (Snippets)")).clicked() {
                         self.show_snippets = true;
                         ui.close_menu();
                     }
-                    if ui.button("🎨 Auto-Highlight Keywords (ZOC Style)").clicked() {
+                    if ui.button(tr(lang, "🎨 Auto-Highlight Keywords (ZOC Style)", "🎨 Tự động tô màu từ khóa (kiểu ZOC)")).clicked() {
                         self.show_highlight_modal = true;
                         ui.close_menu();
                     }
-                    if ui.button("🔀 SSH Tunnels / Port Forwarding").clicked() {
+                    if ui.button(tr(lang, "🔀 SSH Tunnels / Port Forwarding", "🔀 Đường hầm SSH / Chuyển tiếp cổng")).clicked() {
                         self.show_tunnels = true;
                         ui.close_menu();
                     }
-                    if ui.button("🔑 SSH Key Generator (RustyBox KeyGen)").clicked() {
+                    if ui.button(tr(lang, "🔑 SSH Key Generator (RustyBox KeyGen)", "🔑 Trình tạo khóa SSH (RustyBox KeyGen)")).clicked() {
                         self.show_keygen = true;
                         ui.close_menu();
                     }
-                    if ui.button("🗝 Random Password Generator").clicked() {
+                    if ui.button(tr(lang, "🗝 Random Password Generator", "🗝 Trình tạo mật khẩu ngẫu nhiên")).clicked() {
                         self.show_pwdgen = true;
                         ui.close_menu();
                     }
-                    if ui.button("📄 File Comparison (RustyBox Diff)").clicked() {
+                    if ui.button(tr(lang, "📄 File Comparison (RustyBox Diff)", "📄 So sánh tệp (RustyBox Diff)")).clicked() {
                         self.show_diff = true;
                         ui.close_menu();
                     }
-                    if ui.button("⚡ Manage Sysadmin Macros...").clicked() {
+                    if ui.button(tr(lang, "⚡ Manage Sysadmin Macros...", "⚡ Quản lý Macro thao tác nhanh...")).clicked() {
                         self.show_macro_manager = true;
                         ui.close_menu();
                     }
-                    if ui.button("📦 RustyBox Apt Package Manager...").clicked() {
+                    if ui.button(tr(lang, "📦 RustyBox Apt Package Manager...", "📦 Trình quản lý gói RustyBox Apt...")).clicked() {
                         self.show_mobapt = true;
                         ui.close_menu();
                     }
-                    if ui.button("🔒 Master Password & Vault").clicked() {
+                    if ui.button(tr(lang, "🔒 Master Password & Vault", "🔒 Mật khẩu chính & Két bảo mật")).clicked() {
                         self.show_vault = true;
                         ui.close_menu();
                     }
                 });
 
                 // SETTINGS MENU (MobaXterm TFORMPARAMS & TFormManagePasswords)
-                ui.menu_button("Settings", |ui| {
-                    if ui.button("⚙ Configuration / Preferences...").clicked() {
+                ui.menu_button(tr(lang, "Settings", "Cài đặt"), |ui| {
+                    if ui.button(tr(lang, "⚙ Configuration / Preferences...", "⚙ Cấu hình / Tùy chọn...")).clicked() {
                         self.show_settings_dialog = true;
                         ui.close_menu();
                     }
-                    if ui.button("🔑 Manage Passwords...").clicked() {
+                    if ui.button(tr(lang, "🔑 Manage Passwords...", "🔑 Quản lý mật khẩu...")).clicked() {
                         self.show_manage_passwords = true;
                         ui.close_menu();
                     }
-                    if ui.button("🔒 Master Password Settings...").clicked() {
+                    if ui.button(tr(lang, "🔒 Master Password Settings...", "🔒 Cài đặt mật khẩu chính...")).clicked() {
                         self.show_vault = true;
                         ui.close_menu();
                     }
                     ui.separator();
-                    if ui.button("📋 Paste Warning Settings...").clicked() {
+                    if ui.button(tr(lang, "📋 Paste Warning Settings...", "📋 Cài đặt cảnh báo dán...")).clicked() {
                         self.show_settings_dialog = true;
                         self.settings_tab = 1;
                         ui.close_menu();
                     }
-                    if ui.button("🖱 Windows Right-Click Menu Integration...").clicked() {
+                    if ui.button(tr(lang, "🖱 Windows Right-Click Menu Integration...", "🖱 Tích hợp menu chuột phải Windows...")).clicked() {
                         self.show_settings_dialog = true;
                         self.settings_tab = 6;
                         ui.close_menu();
@@ -2568,8 +2611,9 @@ impl eframe::App for RustyBoxApp {
                     };
 
                     // Prominent Modern New Session Button
+                    let lang = self.language;
                     let new_sess_btn = egui::Button::new(
-                        RichText::new("➕ New Session").color(Color32::WHITE).size(12.0).strong()
+                        RichText::new(tr(lang, "➕ New Session", "➕ Phiên mới")).color(Color32::WHITE).size(12.0).strong()
                     )
                     .fill(Color32::from_rgb(37, 99, 235))
                     .stroke(egui::Stroke::new(1.0_f32, Color32::from_rgb(96, 165, 250)))
@@ -2580,13 +2624,13 @@ impl eframe::App for RustyBoxApp {
                     }
 
                     let import_tb_btn = egui::Button::new(
-                        RichText::new("📥 Import").color(Color32::from_rgb(205, 215, 228)).size(12.0).strong()
+                        RichText::new(tr(lang, "📥 Import", "📥 Nhập")).color(Color32::from_rgb(205, 215, 228)).size(12.0).strong()
                     )
                     .fill(Color32::from_rgb(22, 28, 40))
                     .stroke(egui::Stroke::new(1.0_f32, Color32::from_rgb(56, 189, 248)))
                     .rounding(6.0)
                     .min_size(egui::vec2(0.0, toolbar_h));
-                    if ui.add(import_tb_btn).on_hover_text("Import SSH Profiles (~/.ssh/config, MobaXterm, JSON) [Ctrl+I]").clicked() {
+                    if ui.add(import_tb_btn).on_hover_text(tr(lang, "Import SSH Profiles (~/.ssh/config, MobaXterm, JSON) [Ctrl+I]", "Nhập cấu hình SSH (~/.ssh/config, MobaXterm, JSON) [Ctrl+I]")).clicked() {
                         self.show_import_dialog = true;
                     }
 
@@ -2679,19 +2723,19 @@ impl eframe::App for RustyBoxApp {
                             ui.set_height(toolbar_h);
                             ui.horizontal(|ui| {
                                 // UI Font / Scale Zoom
-                                ui.label(RichText::new("UI:").color(Color32::from_rgb(148, 163, 184)).size(11.0));
-                                if ui.small_button("➖").on_hover_text("Zoom out UI font (Ctrl+Shift+-)").clicked() && self.ui_scale > 0.75 {
+                                ui.label(RichText::new(tr(lang, "UI:", "Giao diện:")).color(Color32::from_rgb(148, 163, 184)).size(11.0));
+                                if ui.small_button("➖").on_hover_text(tr(lang, "Zoom out UI font (Ctrl+Shift+-)", "Thu nhỏ giao diện (Ctrl+Shift+-)")).clicked() && self.ui_scale > 0.75 {
                                     self.ui_scale = (self.ui_scale - 0.1).max(0.7);
                                     let _ = self.persist_preferences();
                                 }
                                 let pct = (self.ui_scale * 100.0).round() as i32;
                                 if ui.button(RichText::new(format!("{}%", pct)).size(11.0).strong())
-                                    .on_hover_text("Click to reset UI Zoom to 100%")
+                                    .on_hover_text(tr(lang, "Click to reset UI Zoom to 100%", "Nhấn để đặt lại tỉ lệ giao diện 100%"))
                                     .clicked() {
                                     self.ui_scale = 1.0;
                                     let _ = self.persist_preferences();
                                 }
-                                if ui.small_button("➕").on_hover_text("Zoom in UI font (Ctrl+Shift++)").clicked() && self.ui_scale < 2.0 {
+                                if ui.small_button("➕").on_hover_text(tr(lang, "Zoom in UI font (Ctrl+Shift++)", "Phóng to giao diện (Ctrl+Shift++)")).clicked() && self.ui_scale < 2.0 {
                                     self.ui_scale = (self.ui_scale + 0.1).min(2.0);
                                     let _ = self.persist_preferences();
                                 }
@@ -2699,13 +2743,13 @@ impl eframe::App for RustyBoxApp {
                                 ui.separator();
 
                                 // Terminal Font Size
-                                ui.label(RichText::new("Term:").color(Color32::from_rgb(148, 163, 184)).size(11.0));
-                                if ui.small_button("➖").on_hover_text("Decrease terminal font size (Ctrl+-)").clicked() && self.font_size > 8.0 {
+                                ui.label(RichText::new(tr(lang, "Term:", "Chữ:")).color(Color32::from_rgb(148, 163, 184)).size(11.0));
+                                if ui.small_button("➖").on_hover_text(tr(lang, "Decrease terminal font size (Ctrl+-)", "Giảm cỡ chữ Terminal (Ctrl+-)")).clicked() && self.font_size > 8.0 {
                                     self.font_size -= 1.0;
                                     let _ = self.persist_preferences();
                                 }
                                 ui.label(RichText::new(format!("{:.0}px", self.font_size)).size(11.0).strong());
-                                if ui.small_button("➕").on_hover_text("Increase terminal font size (Ctrl++)").clicked() && self.font_size < 32.0 {
+                                if ui.small_button("➕").on_hover_text(tr(lang, "Increase terminal font size (Ctrl++)", "Tăng cỡ chữ Terminal (Ctrl++)")).clicked() && self.font_size < 32.0 {
                                     self.font_size += 1.0;
                                     let _ = self.persist_preferences();
                                 }
@@ -2746,11 +2790,11 @@ impl eframe::App for RustyBoxApp {
                     let is_vault_configured = self.storage.is_vault_configured();
                     let is_unlocked = self.storage.is_vault_unlocked();
                     let (v_icon, v_txt, v_col) = if !is_vault_configured {
-                        ("🔑", "Master Key: Off", Color32::from_rgb(148, 163, 184))
+                        ("🔑", tr(lang, "Master Key: Off", "Khóa chính: Tắt"), Color32::from_rgb(148, 163, 184))
                     } else if is_unlocked {
-                        ("🔓", "Vault: Unlocked", Color32::from_rgb(34, 197, 94))
+                        ("🔓", tr(lang, "Vault: Unlocked", "Két: Đã mở"), Color32::from_rgb(34, 197, 94))
                     } else {
-                        ("🔒", "Vault: Locked", Color32::from_rgb(251, 191, 36))
+                        ("🔒", tr(lang, "Vault: Locked", "Két: Đang khóa"), Color32::from_rgb(251, 191, 36))
                     };
                     if ui.add(
                         egui::Button::new(RichText::new(format!("{} {}", v_icon, v_txt)).size(11.0).color(v_col).strong())
@@ -2758,7 +2802,7 @@ impl eframe::App for RustyBoxApp {
                             .stroke(egui::Stroke::new(1.0_f32, Color32::from_rgb(36, 46, 64)))
                             .rounding(6.0)
                             .min_size(egui::vec2(0.0, toolbar_h))
-                    ).on_hover_text("Manage Master Password & AES-256-GCM Vault").clicked() {
+                    ).on_hover_text(tr(lang, "Manage Master Password & AES-256-GCM Vault", "Quản lý Mật khẩu chính & Két bảo mật AES-256-GCM")).clicked() {
                         self.show_vault = true;
                     }
                 });
@@ -2789,7 +2833,8 @@ impl eframe::App for RustyBoxApp {
                     .auto_shrink([false, false])
                     .scroll_bar_visibility(egui::scroll_area::ScrollBarVisibility::AlwaysHidden)
                     .show(&mut macros_ui, |ui| {
-                        ui.label(RichText::new("⚡ Quick:").weak().size(11.0).color(Color32::from_rgb(148, 163, 184)));
+                        let lang = self.language;
+                        ui.label(RichText::new(tr(lang, "⚡ Quick:", "⚡ Nhanh:")).weak().size(11.0).color(Color32::from_rgb(148, 163, 184)));
                         let mut macro_to_run: Option<String> = None;
                         for (name, cmd) in &self.quick_macros {
                             let pill = egui::Button::new(
@@ -2803,7 +2848,7 @@ impl eframe::App for RustyBoxApp {
                             }
                         }
                         if ui.add(
-                            egui::Button::new(RichText::new("⚙ Manage").size(11.0).color(Color32::from_rgb(148, 163, 184)))
+                            egui::Button::new(RichText::new(tr(lang, "⚙ Manage", "⚙ Quản lý")).size(11.0).color(Color32::from_rgb(148, 163, 184)))
                                 .fill(Color32::from_rgb(18, 23, 33))
                                 .stroke(egui::Stroke::new(1.0_f32, Color32::from_rgb(32, 40, 56)))
                                 .rounding(5.0)
@@ -2961,17 +3006,18 @@ impl eframe::App for RustyBoxApp {
                         }
 
                         // 9. Multi-Exec Warning
+                        let lang = self.language;
                         if self.multi_exec_enabled {
-                            stat_chip(ui, RichText::new("⚠ MULTI-EXEC").color(Color32::from_rgb(251, 191, 36)).size(10.5).strong());
+                            stat_chip(ui, RichText::new(tr(lang, "⚠ MULTI-EXEC", "⚠ ĐỒNG LOẠT")).color(Color32::from_rgb(251, 191, 36)).size(10.5).strong());
                         }
 
                         // 10. Connection status
                         if self.open_tabs.is_empty() || self.is_home_active {
-                            stat_chip(ui, RichText::new("○ Ready").weak().size(10.5));
+                            stat_chip(ui, RichText::new(tr(lang, "○ Ready", "○ Sẵn sàng")).weak().size(10.5));
                         } else if telem.is_connected {
-                            stat_chip(ui, RichText::new("● Connected").color(Color32::from_rgb(34, 197, 94)).size(10.5).strong());
+                            stat_chip(ui, RichText::new(tr(lang, "● Connected", "● Đã kết nối")).color(Color32::from_rgb(34, 197, 94)).size(10.5).strong());
                         } else {
-                            stat_chip(ui, RichText::new("✕ Disconnected").color(Color32::from_rgb(239, 68, 68)).size(10.5).strong());
+                            stat_chip(ui, RichText::new(tr(lang, "✕ Disconnected", "✕ Mất kết nối")).color(Color32::from_rgb(239, 68, 68)).size(10.5).strong());
                         }
                     }
             });
@@ -3026,10 +3072,10 @@ impl eframe::App for RustyBoxApp {
                                     (Color32::TRANSPARENT, egui::Stroke::NONE, Color32::from_rgb(148, 163, 184))
                                 };
 
-                                if ui.add_sized([btn_w, 24.0], egui::Button::new(RichText::new("📂 Sessions").size(11.0).strong().color(s_text)).fill(s_fill).stroke(s_stroke).rounding(5.0)).clicked() {
+                                if ui.add_sized([btn_w, 24.0], egui::Button::new(RichText::new(tr(lang, "📂 Sessions", "📂 Phiên")).size(11.0).strong().color(s_text)).fill(s_fill).stroke(s_stroke).rounding(5.0)).clicked() {
                                     self.sidebar_tab = 0;
                                 }
-                                if ui.add_sized([btn_w, 24.0], egui::Button::new(RichText::new("📁 SFTP Browser").size(11.0).strong().color(sftp_text)).fill(sftp_fill).stroke(sftp_stroke).rounding(5.0)).clicked() {
+                                if ui.add_sized([btn_w, 24.0], egui::Button::new(RichText::new(tr(lang, "📁 SFTP Browser", "📁 Trình duyệt SFTP")).size(11.0).strong().color(sftp_text)).fill(sftp_fill).stroke(sftp_stroke).rounding(5.0)).clicked() {
                                     self.sidebar_tab = 1;
                                 }
                             });
@@ -3042,7 +3088,10 @@ impl eframe::App for RustyBoxApp {
                         // SESSIONS TREE
                         // Modern Search bar with inline clear button
                         ui.horizontal(|ui| {
-                            let filter_hint = format!("🔍 Filter {} sessions...", self.sessions.len());
+                            let filter_hint = match lang {
+                                AppLanguage::English => format!("🔍 Filter {} sessions...", self.sessions.len()),
+                                AppLanguage::Vietnamese => format!("🔍 Lọc {} phiên...", self.sessions.len()),
+                            };
                             let has_search = !self.session_search.is_empty();
                             let avail_w = ui.available_width() - if has_search { 28.0 } else { 0.0 };
                             ui.add(
@@ -3058,7 +3107,7 @@ impl eframe::App for RustyBoxApp {
                                             .rounding(4.0)
                                             .min_size(egui::vec2(22.0, 20.0)),
                                     )
-                                    .on_hover_text("Clear filter")
+                                    .on_hover_text(tr(lang, "Clear filter", "Xóa bộ lọc"))
                                     .clicked()
                             {
                                 self.session_search.clear();
@@ -3099,7 +3148,10 @@ impl eframe::App for RustyBoxApp {
                             ui.visuals_mut().widgets.noninteractive.bg_stroke = egui::Stroke::new(1.0, Color32::from_rgb(51, 65, 85));
 
                             let root_header = egui::CollapsingHeader::new(
-                                RichText::new(format!("★ User sessions ({})", total_filtered_sessions))
+                                RichText::new(match lang {
+                                    AppLanguage::English => format!("★ User sessions ({})", total_filtered_sessions),
+                                    AppLanguage::Vietnamese => format!("★ Phiên người dùng ({})", total_filtered_sessions),
+                                })
                                     .color(Color32::from_rgb(234, 179, 8))
                                     .strong()
                                     .size(13.0),
@@ -3308,11 +3360,11 @@ impl eframe::App for RustyBoxApp {
                                         }
                                         resp.context_menu(|ui| {
                                             ui.set_min_width(210.0);
-                                            if ui.button(RichText::new("★ Execute").strong().color(Color32::from_rgb(234, 179, 8))).clicked() {
+                                            if ui.button(RichText::new(tr(lang, "★ Execute", "★ Kết nối ngay")).strong().color(Color32::from_rgb(234, 179, 8))).clicked() {
                                                 to_launch = Some(s.clone());
                                                 ui.close_menu();
                                             }
-                                            if ui.button("👤 Connect as...").clicked() {
+                                            if ui.button(tr(lang, "👤 Connect as...", "👤 Kết nối bằng tài khoản khác...")).clicked() {
                                                 let cur_user = match &s.session_type {
                                                     SessionType::Ssh { user, .. } => user.clone(),
                                                     _ => "root".to_string(),
@@ -3321,41 +3373,41 @@ impl eframe::App for RustyBoxApp {
                                                 ui.close_menu();
                                             }
                                             if let Some(h) = s.host_str()
-                                                && ui.button("🌐 Ping host").clicked() {
+                                                && ui.button(tr(lang, "🌐 Ping host", "🌐 Ping máy chủ")).clicked() {
                                                     to_ping_host = Some(h);
                                                     ui.close_menu();
                                                 }
                                             ui.separator();
-                                            if ui.button("📝 Rename session").clicked() {
+                                            if ui.button(tr(lang, "📝 Rename session", "📝 Đổi tên phiên")).clicked() {
                                                 to_rename = Some((s.id.clone(), s.name.clone()));
                                                 ui.close_menu();
                                             }
-                                            if ui.button("⚙ Edit session").clicked() {
+                                            if ui.button(tr(lang, "⚙ Edit session", "⚙ Sửa phiên")).clicked() {
                                                 to_edit = Some(s.clone());
                                                 ui.close_menu();
                                             }
-                                            if ui.button(RichText::new("× Delete session").strong().color(Color32::from_rgb(239, 68, 68))).clicked() {
+                                            if ui.button(RichText::new(tr(lang, "× Delete session", "× Xóa phiên")).strong().color(Color32::from_rgb(239, 68, 68))).clicked() {
                                                 to_delete_id = Some(s.id.clone());
                                                 ui.close_menu();
                                             }
-                                            if ui.button("🔑 Duplicate session").clicked() {
+                                            if ui.button(tr(lang, "🔑 Duplicate session", "🔑 Nhân bản phiên")).clicked() {
                                                 to_duplicate = Some(s.clone());
                                                 ui.close_menu();
                                             }
-                                            if ui.button("💾 Save session to file").clicked() {
+                                            if ui.button(tr(lang, "💾 Save session to file", "💾 Lưu phiên ra tệp")).clicked() {
                                                 to_save_file = Some(s.clone());
                                                 ui.close_menu();
                                             }
-                                            if ui.button("☆ Create a desktop shortcut").clicked() {
+                                            if ui.button(tr(lang, "☆ Create a desktop shortcut", "☆ Tạo lối tắt Desktop")).clicked() {
                                                 to_create_shortcut = Some(s.clone());
                                                 ui.close_menu();
                                             }
                                             ui.separator();
-                                            if ui.button("📥 Save session settings as default presets").clicked() {
+                                            if ui.button(tr(lang, "📥 Save session settings as default presets", "📥 Lưu làm cấu hình mặc định")).clicked() {
                                                 to_save_preset = Some(s.clone());
                                                 ui.close_menu();
                                             }
-                                            if ui.button("📋 Copy session settings").clicked() {
+                                            if ui.button(tr(lang, "📋 Copy session settings", "📋 Sao chép cấu hình phiên")).clicked() {
                                                 to_copy_settings = Some(s.clone());
                                                 ui.close_menu();
                                             }
@@ -3364,15 +3416,15 @@ impl eframe::App for RustyBoxApp {
                                 });
 
                                 header_res.context_menu(|ui| {
-                                    if ui.button("➕ New session in this folder...").clicked() {
+                                    if ui.button(tr(lang, "➕ New session in this folder...", "➕ Tạo phiên trong thư mục này...")).clicked() {
                                         to_new_in_folder = Some(folder_name.clone());
                                         ui.close_menu();
                                     }
-                                    if ui.button("📁 Rename folder...").clicked() {
+                                    if ui.button(tr(lang, "📁 Rename folder...", "📁 Đổi tên thư mục...")).clicked() {
                                         to_rename_folder = Some((folder_name.clone(), folder_name.clone()));
                                         ui.close_menu();
                                     }
-                                    if ui.button(RichText::new("✕ Delete folder").color(Color32::from_rgb(239, 68, 68))).clicked() {
+                                    if ui.button(RichText::new(tr(lang, "✕ Delete folder", "✕ Xóa thư mục")).color(Color32::from_rgb(239, 68, 68))).clicked() {
                                         to_delete_folder = Some(folder_name.clone());
                                         ui.close_menu();
                                     }
@@ -3381,7 +3433,7 @@ impl eframe::App for RustyBoxApp {
                             });
 
                             root_res.header_response.context_menu(|ui| {
-                                if ui.button("➕ New Session...").clicked() {
+                                if ui.button(tr(lang, "➕ New Session...", "➕ Phiên mới...")).clicked() {
                                     self.new_session_dialog.open_for_new();
                                     ui.close_menu();
                                 }
@@ -3391,8 +3443,8 @@ impl eframe::App for RustyBoxApp {
                             ui.separator();
                             ui.add_space(2.0);
                             ui.horizontal(|ui| {
-                                ui.label(RichText::new("💡 Tip:").color(Color32::from_rgb(234, 179, 8)).size(10.5).strong());
-                                ui.label(RichText::new("Double-click to connect · Right-click for menu").color(Color32::from_rgb(148, 163, 184)).size(10.5));
+                                ui.label(RichText::new(tr(lang, "💡 Tip:", "💡 Mẹo:")).color(Color32::from_rgb(234, 179, 8)).size(10.5).strong());
+                                ui.label(RichText::new(tr(lang, "Double-click to connect · Right-click for menu", "Nhấn đúp để kết nối · Chuột phải để mở menu")).color(Color32::from_rgb(148, 163, 184)).size(10.5));
                             });
                         });
 
@@ -3480,7 +3532,7 @@ impl eframe::App for RustyBoxApp {
                         if !self.is_home_active && self.explorer.follow_terminal_folder {
                             self.sync_terminal_cwd_if_enabled();
                         }
-                        render_sftp_sidebar(ui, &mut self.explorer);
+                        render_sftp_sidebar(ui, &mut self.explorer, self.language);
                         if self.explorer.remote_monitoring_enabled != prev_mon
                             || self.explorer.follow_terminal_folder != prev_follow
                         {
@@ -3598,7 +3650,7 @@ impl eframe::App for RustyBoxApp {
                         ui.painter().text(
                             home_rect.center(),
                             egui::Align2::CENTER_CENTER,
-                            "🏠 Home",
+                            tr(lang, "🏠 Home", "🏠 Trang chủ"),
                             egui::FontId::proportional(11.5),
                             h_text,
                         );
@@ -3739,7 +3791,10 @@ impl eframe::App for RustyBoxApp {
                                     self.tab_context_menu = Some((idx, p));
                                 }
 
-                                let tip = format!("{}\nStatus: {}\nClick to switch • Middle-click or ✕ to close • Right-click for menu", full_title, if is_alive { "Connected" } else { "Disconnected / Stopped" });
+                                let tip = match lang {
+                                    AppLanguage::English => format!("{}\nStatus: {}\nClick to switch • Middle-click or ✕ to close • Right-click for menu", full_title, if is_alive { "Connected" } else { "Disconnected / Stopped" }),
+                                    AppLanguage::Vietnamese => format!("{}\nTrạng thái: {}\nNhấp để chuyển • Chuột giữa hoặc ✕ để đóng • Chuột phải để mở menu", full_title, if is_alive { "Đang kết nối" } else { "Đã ngắt kết nối / Dừng" }),
+                                };
                                 title_resp.on_hover_text(tip);
                             }
 
@@ -3751,7 +3806,7 @@ impl eframe::App for RustyBoxApp {
                             .stroke(egui::Stroke::new(1.0_f32, Color32::from_rgb(48, 54, 61)))
                             .rounding(4.0)
                             .min_size(egui::vec2(24.0, 24.0));
-                            if ui.add(add_btn).on_hover_text("Open new local terminal").clicked() {
+                            if ui.add(add_btn).on_hover_text(tr(lang, "Open new local terminal", "Mở Terminal cục bộ mới")).clicked() {
                                 self.spawn_local_terminal("Local Terminal", None, None);
                                 self.is_home_active = false;
                             }
@@ -3787,10 +3842,13 @@ impl eframe::App for RustyBoxApp {
                         .strong(),
                     |ui| {
                         ui.set_min_width(260.0);
-                        ui.label(RichText::new(format!("📑 Open Tabs ({})", tab_count)).strong().size(12.0));
+                        ui.label(RichText::new(match lang {
+                            AppLanguage::English => format!("📑 Open Tabs ({})", tab_count),
+                            AppLanguage::Vietnamese => format!("📑 Các Tab đang mở ({})", tab_count),
+                        }).strong().size(12.0));
                         ui.separator();
 
-                        if ui.selectable_label(self.is_home_active, "🏠 Home Dashboard").clicked() {
+                        if ui.selectable_label(self.is_home_active, tr(lang, "🏠 Home Dashboard", "🏠 Bảng điều khiển chính")).clicked() {
                             self.is_home_active = true;
                             ui.close_menu();
                         }
@@ -3819,7 +3877,7 @@ impl eframe::App for RustyBoxApp {
                                     ui.close_menu();
                                 }
                                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                                    if ui.small_button("✕").on_hover_text("Close Tab").clicked() {
+                                    if ui.small_button("✕").on_hover_text(tr(lang, "Close Tab", "Đóng Tab")).clicked() {
                                         close_tab_idx = Some(idx);
                                         ui.close_menu();
                                     }
@@ -3828,13 +3886,13 @@ impl eframe::App for RustyBoxApp {
                         }
 
                         ui.separator();
-                        if ui.button("➕ Open Local Terminal (Ctrl+T)").clicked() {
+                        if ui.button(tr(lang, "➕ Open Local Terminal (Ctrl+T)", "➕ Mở Terminal cục bộ (Ctrl+T)")).clicked() {
                             self.spawn_local_terminal("Local Terminal", None, None);
                             self.is_home_active = false;
                             self.sidebar_tab = 0;
                             ui.close_menu();
                         }
-                        if ui.button("✕ Close Inactive Tabs").clicked() {
+                        if ui.button(tr(lang, "✕ Close Inactive Tabs", "✕ Đóng các Tab khác")).clicked() {
                             tab_menu_action = Some((self.active_tab_idx, TabMenuAction::CloseOthers));
                             ui.close_menu();
                         }
@@ -3847,7 +3905,7 @@ impl eframe::App for RustyBoxApp {
                             cur_x < tabs_max_scroll_x - 1.0,
                             egui::Button::new(RichText::new("▶").size(10.0)).min_size(vec2(18.0, 20.0)),
                         )
-                        .on_hover_text("Scroll tabs right")
+                        .on_hover_text(tr(self.language, "Scroll tabs right", "Cuộn tab sang phải"))
                         .clicked()
                     {
                         let mut st = tab_scroll_out.state;
@@ -3859,7 +3917,7 @@ impl eframe::App for RustyBoxApp {
                             cur_x > 1.0,
                             egui::Button::new(RichText::new("◀").size(10.0)).min_size(vec2(18.0, 20.0)),
                         )
-                        .on_hover_text("Scroll tabs left")
+                        .on_hover_text(tr(self.language, "Scroll tabs left", "Cuộn tab sang trái"))
                         .clicked()
                     {
                         let mut st = tab_scroll_out.state;
@@ -3889,28 +3947,28 @@ impl eframe::App for RustyBoxApp {
                             .inner_margin(egui::Margin::symmetric(6.0, 6.0))
                             .show(ui, |ui| {
                                 ui.set_min_width(190.0);
-                                if ui.button(RichText::new("🔑 Duplicate Tab").size(12.0).color(Color32::WHITE)).clicked() {
+                                if ui.button(RichText::new(tr(lang, "🔑 Duplicate Tab", "🔑 Nhân bản Tab")).size(12.0).color(Color32::WHITE)).clicked() {
                                     tab_menu_action = Some((menu_idx, TabMenuAction::Duplicate));
                                     close_menu = true;
                                 }
-                                if ui.button(RichText::new("🔄 Restart / Reconnect").size(12.0).color(Color32::WHITE)).clicked() {
+                                if ui.button(RichText::new(tr(lang, "🔄 Restart / Reconnect", "🔄 Khởi động lại / Kết nối lại")).size(12.0).color(Color32::WHITE)).clicked() {
                                     tab_menu_action = Some((menu_idx, TabMenuAction::Restart));
                                     close_menu = true;
                                 }
-                                if ui.button(RichText::new("✏ Rename Tab").size(12.0).color(Color32::WHITE)).clicked() {
+                                if ui.button(RichText::new(tr(lang, "✏ Rename Tab", "✏ Đổi tên Tab")).size(12.0).color(Color32::WHITE)).clicked() {
                                     tab_menu_action = Some((menu_idx, TabMenuAction::Rename));
                                     close_menu = true;
                                 }
-                                if ui.button(RichText::new("× Close Tab").size(12.0).color(Color32::from_rgb(248, 113, 113))).clicked() {
+                                if ui.button(RichText::new(tr(lang, "× Close Tab", "× Đóng Tab")).size(12.0).color(Color32::from_rgb(248, 113, 113))).clicked() {
                                     tab_menu_action = Some((menu_idx, TabMenuAction::Close));
                                     close_menu = true;
                                 }
                                 ui.separator();
-                                if ui.button(RichText::new("Close Other Tabs").size(12.0).color(Color32::from_rgb(210, 220, 230))).clicked() {
+                                if ui.button(RichText::new(tr(lang, "Close Other Tabs", "Đóng các Tab khác")).size(12.0).color(Color32::from_rgb(210, 220, 230))).clicked() {
                                     tab_menu_action = Some((menu_idx, TabMenuAction::CloseOthers));
                                     close_menu = true;
                                 }
-                                if ui.button(RichText::new("Close Tabs to the Right").size(12.0).color(Color32::from_rgb(210, 220, 230))).clicked() {
+                                if ui.button(RichText::new(tr(lang, "Close Tabs to the Right", "Đóng các Tab bên phải")).size(12.0).color(Color32::from_rgb(210, 220, 230))).clicked() {
                                     tab_menu_action = Some((menu_idx, TabMenuAction::CloseRight));
                                     close_menu = true;
                                 }
@@ -4005,7 +4063,7 @@ impl eframe::App for RustyBoxApp {
                 ui.add_space(20.0);
                 ui.vertical_centered(|ui| {
                     ui.label(RichText::new("⚡ RustyBox").size(30.0).strong().color(Color32::from_rgb(56, 189, 248)));
-                    ui.label(RichText::new("High-Performance Remote Toolbox & Multi-Terminal Workstation").size(13.0).color(Color32::from_rgb(148, 163, 184)));
+                    ui.label(RichText::new(tr(lang, "High-Performance Remote Toolbox & Multi-Terminal Workstation", "Bộ công cụ quản trị từ xa & đa Terminal hiệu năng cao")).size(13.0).color(Color32::from_rgb(148, 163, 184)));
                 });
                 ui.add_space(18.0);
 
@@ -4039,14 +4097,14 @@ impl eframe::App for RustyBoxApp {
                             .show(ui, |ui| {
                                 ui.set_width(content_w - 36.0);
                             ui.horizontal(|ui| {
-                                ui.label(RichText::new("⚡ Quick Connect:").strong().color(Color32::from_rgb(56, 189, 248)).size(13.0));
+                                ui.label(RichText::new(tr(lang, "⚡ Quick Connect:", "⚡ Kết nối nhanh:")).strong().color(Color32::from_rgb(56, 189, 248)).size(13.0));
                                 let q_edit = ui.add(
                                     TextEdit::singleline(&mut self.quick_connect_input)
                                         .hint_text("user@host:port, cmd, wsl...")
                                         .desired_width(340.0),
                                 );
                                 let conn_btn = egui::Button::new(
-                                    RichText::new("▶ Connect").strong().color(Color32::WHITE),
+                                    RichText::new(tr(lang, "▶ Connect", "▶ Kết nối")).strong().color(Color32::WHITE),
                                 )
                                 .fill(Color32::from_rgb(37, 99, 235))
                                 .stroke(egui::Stroke::new(1.0_f32, Color32::from_rgb(96, 165, 250)))
@@ -4069,7 +4127,7 @@ impl eframe::App for RustyBoxApp {
                                         .rounding(6.0),
                                     )
                                 };
-                                if chip(ui, "💻 Local Shell").clicked() {
+                                if chip(ui, tr(lang, "💻 Local Shell", "💻 Terminal cục bộ")).clicked() {
                                     self.spawn_local_terminal("Local Terminal", None, None);
                                     self.is_home_active = false;
                                 }
@@ -4080,16 +4138,16 @@ impl eframe::App for RustyBoxApp {
                                     self.spawn_local_terminal("Local Shell", None, None);
                                     self.is_home_active = false;
                                 }
-                                if chip(ui, "🌐 New Session").clicked() {
+                                if chip(ui, tr(lang, "🌐 New Session", "🌐 Phiên mới")).clicked() {
                                     self.new_session_dialog.open_for_new();
                                 }
-                                if chip(ui, "📥 Import SSH").clicked() {
+                                if chip(ui, tr(lang, "📥 Import SSH", "📥 Nhập SSH")).clicked() {
                                     self.show_import_dialog = true;
                                 }
-                                if chip(ui, "📁 Import MobaXterm").clicked() {
+                                if chip(ui, tr(lang, "📁 Import MobaXterm", "📁 Nhập MobaXterm")).clicked() {
                                     self.show_import_dialog = true;
                                     if let Some(path) = rfd::FileDialog::new()
-                                        .set_title("Select MobaXterm Export File")
+                                        .set_title(tr(lang, "Select MobaXterm Export File", "Chọn tệp xuất MobaXterm"))
                                         .add_filter("MobaXterm Sessions", &["txt", "ini", "mxtpro", "mxtsessions", "csv"])
                                         .add_filter("All Files", &["*"])
                                         .pick_file()
@@ -4101,22 +4159,30 @@ impl eframe::App for RustyBoxApp {
                                             Ok(content) => {
                                                 let len = content.len();
                                                 self.import_raw_text = content;
-                                                self.import_status_msg = Some((format!("Loaded {} bytes from '{}'.", len, p_str), false));
+                                                let msg = match lang {
+                                                    AppLanguage::English => format!("Loaded {} bytes from '{}'.", len, p_str),
+                                                    AppLanguage::Vietnamese => format!("Đã nạp {} byte từ '{}'.", len, p_str),
+                                                };
+                                                self.import_status_msg = Some((msg, false));
                                             }
                                             Err(e) => {
-                                                self.import_status_msg = Some((format!("Cannot read '{}': {}", p_str, e), true));
+                                                let msg = match lang {
+                                                    AppLanguage::English => format!("Cannot read '{}': {}", p_str, e),
+                                                    AppLanguage::Vietnamese => format!("Không thể đọc '{}': {}", p_str, e),
+                                                };
+                                                self.import_status_msg = Some((msg, true));
                                             }
                                         }
                                     }
                                 }
-                                if chip(ui, "📡 NetScan").clicked() {
+                                if chip(ui, tr(lang, "📡 NetScan", "📡 Quét mạng")).clicked() {
                                     self.show_network_tools = true;
                                     self.net_tools_tab = 1;
                                 }
-                                if chip(ui, "📋 Snippets").clicked() {
+                                if chip(ui, tr(lang, "📋 Snippets", "📋 Đoạn lệnh")).clicked() {
                                     self.show_snippets = true;
                                 }
-                                if chip(ui, "🔀 Tunnels").clicked() {
+                                if chip(ui, tr(lang, "🔀 Tunnels", "🔀 Đường hầm SSH")).clicked() {
                                     self.show_tunnels = true;
                                 }
                             });
@@ -4175,14 +4241,14 @@ impl eframe::App for RustyBoxApp {
                     // Row 1: Local Terminal, SSH Client, SFTP Browser
                     ui.horizontal(|ui| {
                         ui.spacing_mut().item_spacing.x = card_spacing;
-                        if modern_card(ui, "💻", "Local Terminal", "Interactive shell with ConPTY", Color32::from_rgb(56, 189, 248), card_w, action_card_h).clicked() {
+                        if modern_card(ui, "💻", tr(lang, "Local Terminal", "Terminal cục bộ"), tr(lang, "Interactive shell with ConPTY", "Terminal tương tác với ConPTY"), Color32::from_rgb(56, 189, 248), card_w, action_card_h).clicked() {
                             self.spawn_local_terminal("Local Terminal", None, None);
                             self.is_home_active = false;
                         }
-                        if modern_card(ui, "🌐", "SSH Client", "Key auth & auto-SFTP stream", Color32::from_rgb(96, 165, 250), card_w, action_card_h).clicked() {
+                        if modern_card(ui, "🌐", tr(lang, "SSH Client", "Kết nối SSH"), tr(lang, "Key auth & auto-SFTP stream", "Xác thực khóa & đồng bộ SFTP"), Color32::from_rgb(96, 165, 250), card_w, action_card_h).clicked() {
                             self.new_session_dialog.open_for_new();
                         }
-                        if modern_card(ui, "📁", "SFTP Browser", "Dual-pane remote file manager", Color32::from_rgb(52, 211, 153), card_w, action_card_h).clicked() {
+                        if modern_card(ui, "📁", tr(lang, "SFTP Browser", "Trình duyệt SFTP"), tr(lang, "Dual-pane remote file manager", "Quản lý tệp từ xa trực quan"), Color32::from_rgb(52, 211, 153), card_w, action_card_h).clicked() {
                             self.show_sftp_sidebar = true;
                             self.sidebar_tab = 1;
                         }
@@ -4193,14 +4259,14 @@ impl eframe::App for RustyBoxApp {
                     // Row 2: Network Scanner, SSH Tunnels, Network Daemons
                     ui.horizontal(|ui| {
                         ui.spacing_mut().item_spacing.x = card_spacing;
-                        if modern_card(ui, "📡", "Network Scanner", "Subnet IP discovery & Port Scan", Color32::from_rgb(251, 191, 36), card_w, action_card_h).clicked() {
+                        if modern_card(ui, "📡", tr(lang, "Network Scanner", "Quét mạng & Cổng"), tr(lang, "Subnet IP discovery & Port Scan", "Tìm IP mạng nội bộ & Quét cổng"), Color32::from_rgb(251, 191, 36), card_w, action_card_h).clicked() {
                             self.show_network_tools = true;
                             self.net_tools_tab = 1;
                         }
-                        if modern_card(ui, "🔀", "SSH Tunnels", "Local, remote & SOCKS5 proxy", Color32::from_rgb(192, 132, 252), card_w, action_card_h).clicked() {
+                        if modern_card(ui, "🔀", tr(lang, "SSH Tunnels", "Đường hầm SSH"), tr(lang, "Local, remote & SOCKS5 proxy", "Chuyển tiếp cổng & Proxy SOCKS5"), Color32::from_rgb(192, 132, 252), card_w, action_card_h).clicked() {
                             self.show_tunnels = true;
                         }
-                        if modern_card(ui, "🕊", "Network Daemons", "Micro HTTP, TFTP & Syslog", Color32::from_rgb(244, 114, 182), card_w, action_card_h).clicked() {
+                        if modern_card(ui, "🕊", tr(lang, "Network Daemons", "Dịch vụ mạng"), tr(lang, "Micro HTTP, TFTP & Syslog", "Máy chủ HTTP, TFTP & Syslog"), Color32::from_rgb(244, 114, 182), card_w, action_card_h).clicked() {
                             self.show_services_modal = true;
                         }
                     });
@@ -4209,13 +4275,13 @@ impl eframe::App for RustyBoxApp {
 
                     // Search / Filter bar for Recent & Saved connections
                     ui.horizontal(|ui| {
-                        ui.label(RichText::new("🔍 Filter Connections:").strong().size(12.0).color(Color32::from_rgb(148, 163, 184)));
+                        ui.label(RichText::new(tr(lang, "🔍 Filter Connections:", "🔍 Lọc kết nối:")).strong().size(12.0).color(Color32::from_rgb(148, 163, 184)));
                         ui.add(
                             TextEdit::singleline(&mut self.home_session_filter)
-                                .hint_text("Search by name, host, user, or folder...")
+                                .hint_text(tr(lang, "Search by name, host, user, or folder...", "Tìm theo tên, máy chủ, người dùng hoặc thư mục..."))
                                 .desired_width(280.0),
                         );
-                        if !self.home_session_filter.is_empty() && ui.small_button("✖ Clear").clicked() {
+                        if !self.home_session_filter.is_empty() && ui.small_button(tr(lang, "✖ Clear", "✖ Xóa")).clicked() {
                             self.home_session_filter.clear();
                         }
                     });
@@ -4301,7 +4367,10 @@ impl eframe::App for RustyBoxApp {
                         .collect();
 
                     ui.label(
-                        RichText::new(format!("🕒 Recent Connections ({})", recent_sessions.len()))
+                        RichText::new(match lang {
+                            AppLanguage::English => format!("🕒 Recent Connections ({})", recent_sessions.len()),
+                            AppLanguage::Vietnamese => format!("🕒 Kết nối gần đây ({})", recent_sessions.len()),
+                        })
                             .strong()
                             .size(13.0)
                             .color(Color32::from_rgb(52, 211, 153)),
@@ -4310,7 +4379,7 @@ impl eframe::App for RustyBoxApp {
 
                     if recent_sessions.is_empty() {
                         ui.label(
-                            RichText::new("No recent connections yet. Connect to any session or use Quick Connect above.")
+                            RichText::new(tr(lang, "No recent connections yet. Connect to any session or use Quick Connect above.", "Chưa có kết nối gần đây. Hãy mở một phiên hoặc dùng Kết nối nhanh ở trên."))
                                 .size(11.5)
                                 .color(Color32::from_rgb(100, 116, 139)),
                         );
@@ -4324,19 +4393,19 @@ impl eframe::App for RustyBoxApp {
                                         to_launch_quick = Some((*s).clone());
                                     }
                                     q_resp.context_menu(|menu_ui| {
-                                        if menu_ui.button("▶ Connect").clicked() {
+                                        if menu_ui.button(tr(lang, "▶ Connect", "▶ Kết nối")).clicked() {
                                             to_launch_quick = Some((*s).clone());
                                             menu_ui.close_menu();
                                         }
-                                        if menu_ui.button("✏ Edit Session").clicked() {
+                                        if menu_ui.button(tr(lang, "✏ Edit Session", "✏ Sửa phiên")).clicked() {
                                             to_edit_session = Some((*s).clone());
                                             menu_ui.close_menu();
                                         }
-                                        if menu_ui.button("🧹 Clear from Recent").clicked() {
+                                        if menu_ui.button(tr(lang, "🧹 Clear from Recent", "🧹 Xóa khỏi Gần đây")).clicked() {
                                             to_clear_recent_id = Some(s.id.clone());
                                             menu_ui.close_menu();
                                         }
-                                        if menu_ui.button(RichText::new("🗑 Delete Session").color(Color32::from_rgb(248, 113, 113))).clicked() {
+                                        if menu_ui.button(RichText::new(tr(lang, "🗑 Delete Session", "🗑 Xóa phiên")).color(Color32::from_rgb(248, 113, 113))).clicked() {
                                             to_delete_id = Some(s.id.clone());
                                             menu_ui.close_menu();
                                         }
@@ -4374,9 +4443,9 @@ impl eframe::App for RustyBoxApp {
             // INLINE TERMINAL SEARCH BAR (Ctrl+F)
             if self.search_open {
                 ui.horizontal(|ui| {
-                    ui.label(RichText::new("🔍 Find:").strong().color(Color32::from_rgb(255, 200, 80)));
+                    ui.label(RichText::new(tr(lang, "🔍 Find:", "🔍 Tìm:")).strong().color(Color32::from_rgb(255, 200, 80)));
                     let text_resp = ui.add(TextEdit::singleline(&mut self.search_query)
-                        .hint_text("Search across scrollback & screen...")
+                        .hint_text(tr(lang, "Search across scrollback & screen...", "Tìm trong bộ đệm & màn hình..."))
                         .desired_width(240.0));
                     if self.focus_search {
                         text_resp.request_focus();
@@ -4419,7 +4488,7 @@ impl eframe::App for RustyBoxApp {
                             let shift_held = ctx.input(|i| i.modifiers.shift);
                             let mut jump_to: Option<usize> = None;
 
-                            if ui.small_button("▲ Prev").clicked() || (enter_pressed && shift_held) {
+                            if ui.small_button(tr(lang, "▲ Prev", "▲ Trước")).clicked() || (enter_pressed && shift_held) {
                                 cur_match_idx = if cur_match_idx == 0 {
                                     match_count - 1
                                 } else {
@@ -4427,7 +4496,7 @@ impl eframe::App for RustyBoxApp {
                                 };
                                 jump_to = Some(cur_match_idx);
                             }
-                            if ui.small_button("▼ Next").clicked() || (enter_pressed && !shift_held) {
+                            if ui.small_button(tr(lang, "▼ Next", "▼ Sau")).clicked() || (enter_pressed && !shift_held) {
                                 cur_match_idx = (cur_match_idx + 1) % match_count;
                                 jump_to = Some(cur_match_idx);
                             }
@@ -4444,15 +4513,15 @@ impl eframe::App for RustyBoxApp {
                                     }
                             }
                         } else {
-                            ui.label(RichText::new("0 matches").color(Color32::from_rgb(200, 100, 100)));
+                            ui.label(RichText::new(tr(lang, "0 matches", "0 kết quả")).color(Color32::from_rgb(200, 100, 100)));
                         }
 
-                        if ui.small_button("Clear").clicked() {
+                        if ui.small_button(tr(lang, "Clear", "Xóa")).clicked() {
                             self.search_query.clear();
                         }
                     }
 
-                    if ui.small_button("✖ Close (Esc)").clicked() || ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
+                    if ui.small_button(tr(lang, "✖ Close (Esc)", "✖ Đóng (Esc)")).clicked() || ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
                         self.search_open = false;
                         self.search_query.clear();
                     }
@@ -4465,7 +4534,7 @@ impl eframe::App for RustyBoxApp {
             let num_tabs = self.open_tabs.len();
             if num_tabs == 0 {
                 ui.centered_and_justified(|ui| {
-                    ui.label("No active sessions. Press '+' or select a session to connect.");
+                    ui.label(tr(lang, "No active sessions. Press '+' or select a session to connect.", "Chưa có phiên nào đang mở. Nhấn '+' hoặc chọn một phiên để kết nối."));
                 });
                 return;
             }
@@ -4544,7 +4613,8 @@ impl eframe::App for RustyBoxApp {
                     .with_right_click_paste(rc_paste)
                     .with_copy_on_select(copy_on_select)
                     .with_highlight_rules(Some(highlight_rules), highlight_rules_enabled)
-                    .with_suppress_escape(modal_open);
+                    .with_suppress_escape(modal_open)
+                    .with_language(self.language);
                 let _ = pane_idx;
                 widget.ui(ui, broadcast_tx)
             };
@@ -4592,7 +4662,7 @@ impl eframe::App for RustyBoxApp {
                             }
                         } else {
                             columns[1].centered_and_justified(|ui| {
-                                ui.label("Open another session to view side-by-side");
+                                ui.label(tr(self.language, "Open another session to view side-by-side", "Mở thêm một phiên khác để xem song song 2 cột"));
                             });
                         }
                     });
@@ -4644,7 +4714,7 @@ impl eframe::App for RustyBoxApp {
                                     }
                                 } else {
                                     ui.centered_and_justified(|ui| {
-                                        ui.label("Open another session to view stacked");
+                                        ui.label(tr(self.language, "Open another session to view stacked", "Mở thêm một phiên khác để xem xếp dọc 2 hàng"));
                                     });
                                 }
                             },
@@ -4820,26 +4890,29 @@ impl eframe::App for RustyBoxApp {
             let mut copy_pending = false;
             let text_to_copy = self.pending_paste_text.clone();
 
-            egui::Window::new("⚠ Multi-line Paste Warning")
+            egui::Window::new(tr(lang, "⚠ Multi-line Paste Warning", "⚠ Cảnh báo dán nhiều dòng"))
                 .default_size(Vec2::new(540.0, 340.0))
                 .pivot(egui::Align2::CENTER_CENTER)
                 .default_pos(ctx.screen_rect().center())
                 .collapsible(false)
                 .resizable(true)
                 .show(ctx, |ui| {
-                    ui.label(RichText::new("Warning: The clipboard text contains newlines!").color(Color32::from_rgb(255, 180, 50)).strong());
-                    ui.label("Review or modify commands before executing in the terminal:");
+                    ui.label(RichText::new(tr(lang, "Warning: The clipboard text contains newlines!", "Cảnh báo: Nội dung dán có chứa nhiều dòng lệnh!")).color(Color32::from_rgb(255, 180, 50)).strong());
+                    ui.label(tr(lang, "Review or modify commands before executing in the terminal:", "Kiểm tra hoặc chỉnh sửa lệnh trước khi thực thi trong Terminal:"));
                     ui.add_space(6.0);
 
                     if let Some(ref mut text) = self.pending_paste_text {
                         let lines_count = text.lines().count();
-                        ui.label(RichText::new(format!("Total lines: {} | Characters: {}", lines_count, text.len())).weak().size(11.0));
+                        ui.label(RichText::new(match lang {
+                            AppLanguage::English => format!("Total lines: {} | Characters: {}", lines_count, text.len()),
+                            AppLanguage::Vietnamese => format!("Tổng số dòng: {} | Ký tự: {}", lines_count, text.len()),
+                        }).weak().size(11.0));
 
                         let available_h = (ui.available_height() - 50.0).clamp(140.0, 400.0);
                         ScrollArea::vertical().max_height(available_h).show(ui, |ui| {
                             let text_resp = ui.add(TextEdit::multiline(text).font(egui::TextStyle::Monospace).desired_width(f32::INFINITY));
                             text_resp.context_menu(|ui| {
-                                if ui.button("📋 Copy").clicked() {
+                                if ui.button(tr(lang, "📋 Copy", "📋 Sao chép")).clicked() {
                                     copy_pending = true;
                                     ui.close_menu();
                                 }
@@ -4849,13 +4922,13 @@ impl eframe::App for RustyBoxApp {
 
                     ui.add_space(8.0);
                     ui.horizontal(|ui| {
-                        if ui.add_sized([160.0, 26.0], egui::Button::new(RichText::new("✔ Execute in Terminal").strong().color(Color32::from_rgb(80, 240, 120)))).clicked() {
+                        if ui.add_sized([160.0, 26.0], egui::Button::new(RichText::new(tr(lang, "✔ Execute in Terminal", "✔ Thực thi trong Terminal")).strong().color(Color32::from_rgb(80, 240, 120)))).clicked() {
                             run_paste = true;
                         }
-                        if ui.add_sized([110.0, 26.0], egui::Button::new("📋 Copy Text")).on_hover_text("Sao chép toàn bộ nội dung lệnh vào clipboard").clicked() {
+                        if ui.add_sized([110.0, 26.0], egui::Button::new(tr(lang, "📋 Copy Text", "📋 Sao chép"))).on_hover_text(tr(lang, "Copy all command text to clipboard", "Sao chép toàn bộ nội dung lệnh vào clipboard")).clicked() {
                             copy_pending = true;
                         }
-                        if ui.add_sized([80.0, 26.0], egui::Button::new("Cancel")).clicked() {
+                        if ui.add_sized([80.0, 26.0], egui::Button::new(tr(lang, "Cancel", "Hủy"))).clicked() {
                             close = true;
                         }
                     });
@@ -4881,6 +4954,7 @@ impl eframe::App for RustyBoxApp {
         }
 
         // New Session Dialog
+        self.new_session_dialog.language = self.language;
         self.new_session_dialog.available_credentials = self.credentials.clone();
         self.new_session_dialog.available_macros = self.quick_macros.clone();
         if let Some(mut new_session) = render_new_session_dialog(ctx, &mut self.new_session_dialog) {
@@ -4914,16 +4988,16 @@ impl eframe::App for RustyBoxApp {
             let mut open = self.show_network_tools;
             let rt_handle = self.tokio_runtime.handle().clone();
 
-            egui::Window::new("🌐 Network Tools Suite (NetScan, Ping, Ports, Netstat)")
+            egui::Window::new(tr(lang, "🌐 Network Tools Suite (NetScan, Ping, Ports, Netstat)", "🌐 Bộ công cụ mạng (Quét mạng, Ping, Cổng, Netstat)"))
                 .open(&mut open)
                 .default_size(Vec2::new(620.0, 480.0))
                 .show(ctx, |ui| {
                     ui.horizontal(|ui| {
-                        ui.selectable_value(&mut self.net_tools_tab, 0, "🔍 Port Scanner");
-                        ui.selectable_value(&mut self.net_tools_tab, 1, "📡 Subnet NetScan");
+                        ui.selectable_value(&mut self.net_tools_tab, 0, tr(lang, "🔍 Port Scanner", "🔍 Quét cổng"));
+                        ui.selectable_value(&mut self.net_tools_tab, 1, tr(lang, "📡 Subnet NetScan", "📡 Quét mạng nội bộ"));
                         ui.selectable_value(&mut self.net_tools_tab, 2, "⏱ TCP Ping");
                         ui.selectable_value(&mut self.net_tools_tab, 3, "📊 Netstat");
-                        ui.selectable_value(&mut self.net_tools_tab, 4, "🌐 DNS Lookup");
+                        ui.selectable_value(&mut self.net_tools_tab, 4, tr(lang, "🌐 DNS Lookup", "🌐 Tra cứu DNS"));
                         ui.selectable_value(&mut self.net_tools_tab, 5, "⚡ Wake-on-LAN");
                     });
                     ui.separator();
@@ -4932,9 +5006,9 @@ impl eframe::App for RustyBoxApp {
                         0 => {
                             // Port Scanner
                             ui.horizontal(|ui| {
-                                ui.label("Target Host / IP:");
+                                ui.label(tr(lang, "Target Host / IP:", "Máy chủ / IP đích:"));
                                 ui.text_edit_singleline(&mut self.network_tools.target_host);
-                                if ui.button("🔍 Scan Common Ports").clicked() {
+                                if ui.button(tr(lang, "🔍 Scan Common Ports", "🔍 Quét các cổng phổ biến")).clicked() {
                                     self.network_tools.start_port_scan(&rt_handle);
                                 }
                             });
@@ -4943,20 +5017,26 @@ impl eframe::App for RustyBoxApp {
                             ui.add(egui::ProgressBar::new(progress).show_percentage());
 
                             ui.separator();
-                            ui.label(RichText::new("Port Scan Results:").strong());
+                            ui.label(RichText::new(tr(lang, "Port Scan Results:", "Kết quả quét cổng:")).strong());
 
                             ScrollArea::vertical().max_height(280.0).show(ui, |ui| {
                                 let results = self.network_tools.scan_results.lock().clone();
                                 for item in results {
                                     let status_text = if item.is_open {
-                                        RichText::new(format!("OPEN ({}ms)", item.latency_ms.unwrap_or(0)))
+                                        RichText::new(match lang {
+                                            AppLanguage::English => format!("OPEN ({}ms)", item.latency_ms.unwrap_or(0)),
+                                            AppLanguage::Vietnamese => format!("MỞ ({}ms)", item.latency_ms.unwrap_or(0)),
+                                        })
                                             .color(Color32::from_rgb(50, 220, 50))
                                     } else {
-                                        RichText::new("Closed").color(Color32::from_rgb(180, 70, 70))
+                                        RichText::new(tr(lang, "Closed", "Đóng")).color(Color32::from_rgb(180, 70, 70))
                                     };
 
                                     ui.horizontal(|ui| {
-                                        ui.label(format!("Port {:5} ({:12}):", item.port, item.service));
+                                        ui.label(match lang {
+                                            AppLanguage::English => format!("Port {:5} ({:12}):", item.port, item.service),
+                                            AppLanguage::Vietnamese => format!("Cổng {:5} ({:12}):", item.port, item.service),
+                                        });
                                         ui.label(status_text);
                                     });
                                 }
@@ -4964,11 +5044,11 @@ impl eframe::App for RustyBoxApp {
                         }
                         1 => {
                             // Subnet NetScan
-                            ui.label("Scan live IP addresses across your local network subnet:");
+                            ui.label(tr(lang, "Scan live IP addresses across your local network subnet:", "Quét các địa chỉ IP đang hoạt động trong mạng nội bộ:"));
                             ui.horizontal(|ui| {
-                                ui.label("Subnet Prefix:");
+                                ui.label(tr(lang, "Subnet Prefix:", "Tiền tố mạng con:"));
                                 ui.add(TextEdit::singleline(&mut self.network_tools.subnet_prefix).desired_width(120.0).hint_text("192.168.1"));
-                                if ui.button("📡 Scan Subnet (.1 - .50)").clicked() {
+                                if ui.button(tr(lang, "📡 Scan Subnet (.1 - .50)", "📡 Quét mạng con (.1 - .50)")).clicked() {
                                     self.network_tools.start_subnet_scan(&rt_handle);
                                 }
                             });
@@ -4977,19 +5057,25 @@ impl eframe::App for RustyBoxApp {
                             ui.add(egui::ProgressBar::new(progress).show_percentage());
 
                             ui.separator();
-                            ui.label(RichText::new("Discovered Live Hosts:").strong());
+                            ui.label(RichText::new(tr(lang, "Discovered Live Hosts:", "Các máy đang hoạt động:")).strong());
 
                             ScrollArea::vertical().max_height(280.0).show(ui, |ui| {
                                 let results = self.network_tools.subnet_results.lock().clone();
                                 if results.is_empty() {
-                                    ui.label("No active hosts found yet. Click 'Scan Subnet' to start.");
+                                    ui.label(tr(lang, "No active hosts found yet. Click 'Scan Subnet' to start.", "Chưa tìm thấy máy nào. Nhấn 'Quét mạng con' để bắt đầu."));
                                 }
                                 for item in results {
                                     ui.horizontal(|ui| {
                                         ui.label(RichText::new(format!("🟢 {}", item.ip)).strong().color(Color32::from_rgb(80, 230, 120)));
-                                        ui.label(format!("Latency: {}ms", item.latency_ms.unwrap_or(0)));
+                                        ui.label(match lang {
+                                            AppLanguage::English => format!("Latency: {}ms", item.latency_ms.unwrap_or(0)),
+                                            AppLanguage::Vietnamese => format!("Độ trễ: {}ms", item.latency_ms.unwrap_or(0)),
+                                        });
                                         if let Some(srv) = item.open_service {
-                                            ui.label(RichText::new(format!("Service: {}", srv)).color(Color32::from_rgb(100, 200, 255)));
+                                            ui.label(RichText::new(match lang {
+                                                AppLanguage::English => format!("Service: {}", srv),
+                                                AppLanguage::Vietnamese => format!("Dịch vụ: {}", srv),
+                                            }).color(Color32::from_rgb(100, 200, 255)));
                                         }
                                     });
                                 }
@@ -4998,9 +5084,9 @@ impl eframe::App for RustyBoxApp {
                         2 => {
                             // TCP Ping
                             ui.horizontal(|ui| {
-                                ui.label("Ping Target:");
+                                ui.label(tr(lang, "Ping Target:", "Máy chủ đích:"));
                                 ui.text_edit_singleline(&mut self.network_tools.ping_host);
-                                if ui.button("📡 Start Ping").clicked() {
+                                if ui.button(tr(lang, "📡 Start Ping", "📡 Bắt đầu Ping")).clicked() {
                                     self.network_tools.start_ping(&rt_handle);
                                 }
                             });
@@ -5015,7 +5101,7 @@ impl eframe::App for RustyBoxApp {
                         3 => {
                             // Netstat Viewer
                             ui.horizontal(|ui| {
-                                if ui.button("🔄 Refresh Active Connections").clicked() {
+                                if ui.button(tr(lang, "🔄 Refresh Active Connections", "🔄 Làm mới kết nối đang mở")).clicked() {
                                     self.network_tools.refresh_netstat(&rt_handle);
                                 }
                             });
@@ -5024,7 +5110,7 @@ impl eframe::App for RustyBoxApp {
                             ScrollArea::vertical().max_height(300.0).show(ui, |ui| {
                                 let entries = self.network_tools.netstat_entries.lock().clone();
                                 if entries.is_empty() {
-                                    ui.label("Click 'Refresh Active Connections' to view open ports and sockets.");
+                                    ui.label(tr(lang, "Click 'Refresh Active Connections' to view open ports and sockets.", "Nhấn 'Làm mới kết nối đang mở' để xem các cổng và socket."));
                                 } else {
                                     for entry in entries {
                                         ui.horizontal(|ui| {
@@ -5038,20 +5124,20 @@ impl eframe::App for RustyBoxApp {
                         }
                         4 => {
                             // DNS Lookup
-                            ui.label("Domain Name System (DNS) & Hostname Resolution:");
+                            ui.label(tr(lang, "Domain Name System (DNS) & Hostname Resolution:", "Phân giải tên miền (DNS) & Hostname:"));
                             ui.separator();
                             ui.horizontal(|ui| {
-                                ui.label("Hostname / Domain:");
-                                ui.add(TextEdit::singleline(&mut self.network_tools.dns_query).desired_width(220.0).hint_text("e.g. google.com"));
-                                if ui.button("🔍 Resolve IP").clicked() {
+                                ui.label(tr(lang, "Hostname / Domain:", "Tên miền / Hostname:"));
+                                ui.add(TextEdit::singleline(&mut self.network_tools.dns_query).desired_width(220.0).hint_text(tr(lang, "e.g. google.com", "VD: google.com")));
+                                if ui.button(tr(lang, "🔍 Resolve IP", "🔍 Phân giải IP")).clicked() {
                                     self.network_tools.lookup_dns();
                                 }
                             });
                             ui.separator();
-                            ui.label(RichText::new("Resolution Results:").strong());
+                            ui.label(RichText::new(tr(lang, "Resolution Results:", "Kết quả phân giải:")).strong());
                             ScrollArea::vertical().max_height(240.0).show(ui, |ui| {
                                 if self.network_tools.dns_results.is_empty() {
-                                    ui.label("Enter a hostname and click Resolve IP.");
+                                    ui.label(tr(lang, "Enter a hostname and click Resolve IP.", "Nhập tên miền và nhấn Phân giải IP."));
                                 } else {
                                     for res in &self.network_tools.dns_results {
                                         ui.label(RichText::new(res).monospace().color(Color32::from_rgb(56, 189, 248)));
@@ -5061,16 +5147,16 @@ impl eframe::App for RustyBoxApp {
                         }
                         5 => {
                             // Wake-on-LAN
-                            ui.label("Send Wake-on-LAN (WOL) Magic Packets to power on remote computers:");
+                            ui.label(tr(lang, "Send Wake-on-LAN (WOL) Magic Packets to power on remote computers:", "Gửi gói tin Wake-on-LAN (WOL) để bật máy tính từ xa:"));
                             ui.separator();
                             ui.horizontal(|ui| {
-                                ui.label("MAC Address:");
+                                ui.label(tr(lang, "MAC Address:", "Địa chỉ MAC:"));
                                 ui.add(TextEdit::singleline(&mut self.network_tools.wol_mac).desired_width(180.0).hint_text("00:11:22:33:44:55"));
-                                ui.label("UDP Port:");
+                                ui.label(tr(lang, "UDP Port:", "Cổng UDP:"));
                                 ui.add(egui::DragValue::new(&mut self.network_tools.wol_port).range(1..=65535));
                             });
                             ui.add_space(4.0);
-                            if ui.button(RichText::new("⚡ Send Magic Packet").strong().color(Color32::from_rgb(56, 189, 248))).clicked() {
+                            if ui.button(RichText::new(tr(lang, "⚡ Send Magic Packet", "⚡ Gửi gói Magic Packet")).strong().color(Color32::from_rgb(56, 189, 248))).clicked() {
                                 self.network_tools.send_wol();
                             }
                             if let Some(ref st) = self.network_tools.wol_status {
@@ -5089,51 +5175,54 @@ impl eframe::App for RustyBoxApp {
             let mut open = self.show_services_modal;
             let rt_handle = self.tokio_runtime.handle().clone();
 
-            egui::Window::new("🚀 Embedded Network Daemons")
+            egui::Window::new(tr(lang, "🚀 Embedded Network Daemons", "🚀 Dịch vụ mạng tích hợp"))
                 .open(&mut open)
                 .default_size(Vec2::new(600.0, 420.0))
                 .show(ctx, |ui| {
                     ui.horizontal(|ui| {
-                        ui.selectable_value(&mut self.services_tab, 0, "🌐 HTTP Server");
-                        ui.selectable_value(&mut self.services_tab, 1, "📡 Syslog Server");
-                        ui.selectable_value(&mut self.services_tab, 2, "📁 TFTP Server");
+                        ui.selectable_value(&mut self.services_tab, 0, tr(lang, "🌐 HTTP Server", "🌐 Máy chủ HTTP"));
+                        ui.selectable_value(&mut self.services_tab, 1, tr(lang, "📡 Syslog Server", "📡 Máy chủ Syslog"));
+                        ui.selectable_value(&mut self.services_tab, 2, tr(lang, "📁 TFTP Server", "📁 Máy chủ TFTP"));
                     });
                     ui.separator();
 
                     if self.services_tab == 0 {
-                        ui.label("Share local files across your local network instantly via HTTP:");
+                        ui.label(tr(lang, "Share local files across your local network instantly via HTTP:", "Chia sẻ tệp cục bộ qua mạng nội bộ tức thì bằng HTTP:"));
                         ui.separator();
 
                         ui.horizontal(|ui| {
-                            ui.label("Serving Folder:");
+                            ui.label(tr(lang, "Serving Folder:", "Thư mục chia sẻ:"));
                             let path_str = self.network_tools.http_root.to_string_lossy().to_string();
                             ui.label(RichText::new(path_str).monospace().color(Color32::from_rgb(100, 200, 255)));
-                            if ui.button("Browse...").clicked()
+                            if ui.button(tr(lang, "Browse...", "Chọn thư mục...")).clicked()
                                 && let Some(folder) = rfd::FileDialog::new().pick_folder() {
                                     self.network_tools.http_root = folder;
                                 }
                         });
 
                         ui.horizontal(|ui| {
-                            ui.label("HTTP Port:");
+                            ui.label(tr(lang, "HTTP Port:", "Cổng HTTP:"));
                             ui.add(egui::DragValue::new(&mut self.network_tools.http_port).range(1024..=65535));
 
                             let is_running = self.network_tools.http_running.load(std::sync::atomic::Ordering::Relaxed);
                             if is_running {
-                                if ui.button(RichText::new("⏹ Stop Server").color(Color32::from_rgb(255, 100, 100))).clicked() {
+                                if ui.button(RichText::new(tr(lang, "⏹ Stop Server", "⏹ Dừng máy chủ")).color(Color32::from_rgb(255, 100, 100))).clicked() {
                                     self.network_tools.stop_http_server();
                                 }
-                                ui.label(RichText::new(format!("🟢 Online: http://127.0.0.1:{}", self.network_tools.http_port)).color(Color32::from_rgb(80, 240, 120)));
+                                ui.label(RichText::new(match lang {
+                                    AppLanguage::English => format!("🟢 Online: http://127.0.0.1:{}", self.network_tools.http_port),
+                                    AppLanguage::Vietnamese => format!("🟢 Đang chạy: http://127.0.0.1:{}", self.network_tools.http_port),
+                                }).color(Color32::from_rgb(80, 240, 120)));
                             } else {
-                                if ui.button(RichText::new("▶ Start Server").color(Color32::from_rgb(80, 240, 120))).clicked() {
+                                if ui.button(RichText::new(tr(lang, "▶ Start Server", "▶ Khởi chạy")).color(Color32::from_rgb(80, 240, 120))).clicked() {
                                     self.network_tools.start_http_server(&rt_handle);
                                 }
-                                ui.label(RichText::new("⚪ Offline").weak());
+                                ui.label(RichText::new(tr(lang, "⚪ Offline", "⚪ Đang tắt")).weak());
                             }
                         });
 
                         ui.separator();
-                        ui.label(RichText::new("HTTP Access Log:").strong());
+                        ui.label(RichText::new(tr(lang, "HTTP Access Log:", "Nhật ký truy cập HTTP:")).strong());
                         ScrollArea::vertical().max_height(200.0).show(ui, |ui| {
                             let logs = self.network_tools.http_logs.lock().clone();
                             for log_line in logs {
@@ -5142,29 +5231,29 @@ impl eframe::App for RustyBoxApp {
                         });
                     } else if self.services_tab == 1 {
                         // Syslog
-                        ui.label("Receive and analyze syslog stream from routers, switches, and remote servers:");
+                        ui.label(tr(lang, "Receive and analyze syslog stream from routers, switches, and remote servers:", "Thu nhận và phân tích luồng Syslog từ router, switch và máy chủ từ xa:"));
                         ui.separator();
 
                         ui.horizontal(|ui| {
-                            ui.label("Syslog UDP Port:");
+                            ui.label(tr(lang, "Syslog UDP Port:", "Cổng UDP Syslog:"));
                             ui.add(egui::DragValue::new(&mut self.network_tools.syslog_port).range(1..=65535));
 
                             let is_running = self.network_tools.syslog_running.load(std::sync::atomic::Ordering::Relaxed);
                             if is_running {
-                                if ui.button(RichText::new("⏹ Stop Syslog").color(Color32::from_rgb(255, 100, 100))).clicked() {
+                                if ui.button(RichText::new(tr(lang, "⏹ Stop Syslog", "⏹ Dừng Syslog")).color(Color32::from_rgb(255, 100, 100))).clicked() {
                                     self.network_tools.stop_syslog_server();
                                 }
-                                ui.label(RichText::new("🟢 Listening for UDP packets").color(Color32::from_rgb(80, 240, 120)));
+                                ui.label(RichText::new(tr(lang, "🟢 Listening for UDP packets", "🟢 Đang lắng nghe gói tin UDP")).color(Color32::from_rgb(80, 240, 120)));
                             } else {
-                                if ui.button(RichText::new("▶ Start Syslog").color(Color32::from_rgb(80, 240, 120))).clicked() {
+                                if ui.button(RichText::new(tr(lang, "▶ Start Syslog", "▶ Chạy Syslog")).color(Color32::from_rgb(80, 240, 120))).clicked() {
                                     self.network_tools.start_syslog_server(&rt_handle);
                                 }
-                                ui.label(RichText::new("⚪ Offline").weak());
+                                ui.label(RichText::new(tr(lang, "⚪ Offline", "⚪ Đang tắt")).weak());
                             }
                         });
 
                         ui.separator();
-                        ui.label(RichText::new("Live Syslog Stream:").strong());
+                        ui.label(RichText::new(tr(lang, "Live Syslog Stream:", "Luồng Syslog trực tiếp:")).strong());
                         ScrollArea::vertical().max_height(200.0).show(ui, |ui| {
                             let logs = self.network_tools.syslog_logs.lock().clone();
                             for log_line in logs {
@@ -5173,39 +5262,42 @@ impl eframe::App for RustyBoxApp {
                         });
                     } else {
                         // TFTP Server
-                        ui.label("Embedded Micro TFTP Server (RFC 1350) for router/firmware backups:");
+                        ui.label(tr(lang, "Embedded Micro TFTP Server (RFC 1350) for router/firmware backups:", "Máy chủ Micro TFTP tích hợp (RFC 1350) để sao lưu router/firmware:"));
                         ui.separator();
 
                         ui.horizontal(|ui| {
-                            ui.label("TFTP Root Folder:");
+                            ui.label(tr(lang, "TFTP Root Folder:", "Thư mục gốc TFTP:"));
                             let path_str = self.network_tools.tftp_root.to_string_lossy().to_string();
                             ui.label(RichText::new(path_str).monospace().color(Color32::from_rgb(100, 200, 255)));
-                            if ui.button("Browse...").clicked()
+                            if ui.button(tr(lang, "Browse...", "Chọn thư mục...")).clicked()
                                 && let Some(folder) = rfd::FileDialog::new().pick_folder() {
                                     self.network_tools.tftp_root = folder;
                                 }
                         });
 
                         ui.horizontal(|ui| {
-                            ui.label("TFTP UDP Port:");
+                            ui.label(tr(lang, "TFTP UDP Port:", "Cổng UDP TFTP:"));
                             ui.add(egui::DragValue::new(&mut self.network_tools.tftp_port).range(1..=65535));
 
                             let is_running = self.network_tools.tftp_running.load(std::sync::atomic::Ordering::Relaxed);
                             if is_running {
-                                if ui.button(RichText::new("⏹ Stop TFTP").color(Color32::from_rgb(255, 100, 100))).clicked() {
+                                if ui.button(RichText::new(tr(lang, "⏹ Stop TFTP", "⏹ Dừng TFTP")).color(Color32::from_rgb(255, 100, 100))).clicked() {
                                     self.network_tools.stop_tftp_server();
                                 }
-                                ui.label(RichText::new(format!("🟢 Listening on UDP port {}", self.network_tools.tftp_port)).color(Color32::from_rgb(80, 240, 120)));
+                                ui.label(RichText::new(match lang {
+                                    AppLanguage::English => format!("🟢 Listening on UDP port {}", self.network_tools.tftp_port),
+                                    AppLanguage::Vietnamese => format!("🟢 Đang lắng nghe cổng UDP {}", self.network_tools.tftp_port),
+                                }).color(Color32::from_rgb(80, 240, 120)));
                             } else {
-                                if ui.button(RichText::new("▶ Start TFTP").color(Color32::from_rgb(80, 240, 120))).clicked() {
+                                if ui.button(RichText::new(tr(lang, "▶ Start TFTP", "▶ Chạy TFTP")).color(Color32::from_rgb(80, 240, 120))).clicked() {
                                     self.network_tools.start_tftp_server(&rt_handle);
                                 }
-                                ui.label(RichText::new("⚪ Offline").weak());
+                                ui.label(RichText::new(tr(lang, "⚪ Offline", "⚪ Đang tắt")).weak());
                             }
                         });
 
                         ui.separator();
-                        ui.label(RichText::new("TFTP Request & Transfer Log:").strong());
+                        ui.label(RichText::new(tr(lang, "TFTP Request & Transfer Log:", "Nhật ký yêu cầu & truyền tải TFTP:")).strong());
                         ScrollArea::vertical().max_height(180.0).show(ui, |ui| {
                             let logs = self.network_tools.tftp_logs.lock().clone();
                             for log_line in logs {
@@ -5229,16 +5321,16 @@ impl eframe::App for RustyBoxApp {
             let mut tunnel_to_stop: Option<usize> = None;
             let mut tunnel_to_edit: Option<usize> = None;
 
-            egui::Window::new("🔀 SSH Tunnels & Port Forwarding Dashboard")
+            egui::Window::new(tr(lang, "🔀 SSH Tunnels & Port Forwarding Dashboard", "🔀 Bảng điều khiển Đường hầm SSH & Chuyển tiếp cổng"))
                 .open(&mut open)
                 .default_size(Vec2::new(840.0, 560.0))
                 .resizable(true)
                 .anchor(egui::Align2::CENTER_CENTER, Vec2::ZERO)
                 .show(ctx, |ui| {
                     ui.horizontal(|ui| {
-                        ui.label(RichText::new("Visual SSH Port Forwarding (Local, Remote & Dynamic SOCKS5)").size(13.0).color(Color32::from_rgb(148, 163, 184)));
+                        ui.label(RichText::new(tr(lang, "Visual SSH Port Forwarding (Local, Remote & Dynamic SOCKS5)", "Chuyển tiếp cổng SSH trực quan (Cục bộ, Từ xa & SOCKS5 động)")).size(13.0).color(Color32::from_rgb(148, 163, 184)));
                         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                            if ui.button(RichText::new("➕ New SSH Tunnel").strong().color(Color32::from_rgb(56, 189, 248))).clicked() {
+                            if ui.button(RichText::new(tr(lang, "➕ New SSH Tunnel", "➕ Tạo đường hầm SSH mới")).strong().color(Color32::from_rgb(56, 189, 248))).clicked() {
                                 self.editing_tunnel_idx = None;
                                 self.new_tunnel_name = "New Port Forward".to_string();
                                 self.new_tunnel_local_port = 8080;
@@ -5257,7 +5349,7 @@ impl eframe::App for RustyBoxApp {
 
                     ui.add_space(6.0);
                     ui.horizontal(|ui| {
-                        ui.label(RichText::new("Filter Mode:").strong().size(11.5));
+                        ui.label(RichText::new(tr(lang, "Filter Mode:", "Bộ lọc:")).strong().size(11.5));
                         let filter_chip = |ui: &mut egui::Ui, label: &str, mode_idx: usize, current: &mut usize| {
                             let is_sel = *current == mode_idx;
                             let bg = if is_sel { Color32::from_rgb(31, 111, 235) } else { Color32::from_rgb(22, 28, 40) };
@@ -5271,10 +5363,10 @@ impl eframe::App for RustyBoxApp {
                             }
                         };
 
-                        filter_chip(ui, "All Tunnels", 0, &mut self.tunnel_filter_mode);
-                        filter_chip(ui, "Local Forward (-L)", 1, &mut self.tunnel_filter_mode);
-                        filter_chip(ui, "Remote Forward (-R)", 2, &mut self.tunnel_filter_mode);
-                        filter_chip(ui, "Dynamic SOCKS5 (-D)", 3, &mut self.tunnel_filter_mode);
+                        filter_chip(ui, tr(lang, "All Tunnels", "Tất cả"), 0, &mut self.tunnel_filter_mode);
+                        filter_chip(ui, tr(lang, "Local Forward (-L)", "Cục bộ (-L)"), 1, &mut self.tunnel_filter_mode);
+                        filter_chip(ui, tr(lang, "Remote Forward (-R)", "Từ xa (-R)"), 2, &mut self.tunnel_filter_mode);
+                        filter_chip(ui, tr(lang, "Dynamic SOCKS5 (-D)", "SOCKS5 động (-D)"), 3, &mut self.tunnel_filter_mode);
                     });
 
                     ui.add_space(8.0);
@@ -5291,8 +5383,8 @@ impl eframe::App for RustyBoxApp {
                             if self.tunnel_manager.tunnels.is_empty() {
                                 ui.vertical_centered(|ui| {
                                     ui.add_space(40.0);
-                                    ui.label(RichText::new("No SSH tunnels configured yet.").size(14.0).weak());
-                                    ui.label("Click '➕ New SSH Tunnel' above to forward local or remote ports securely.");
+                                    ui.label(RichText::new(tr(lang, "No SSH tunnels configured yet.", "Chưa có đường hầm SSH nào được cấu hình.")).size(14.0).weak());
+                                    ui.label(tr(lang, "Click '➕ New SSH Tunnel' above to forward local or remote ports securely.", "Nhấn '➕ Tạo đường hầm SSH mới' ở trên để chuyển tiếp cổng an toàn."));
                                 });
                             }
 
@@ -5322,33 +5414,33 @@ impl eframe::App for RustyBoxApp {
                                     .show(ui, |ui| {
                                         ui.horizontal(|ui| {
                                             if is_running {
-                                                ui.label(RichText::new("🟢 Active").color(Color32::from_rgb(34, 197, 94)).strong());
+                                                ui.label(RichText::new(tr(lang, "🟢 Active", "🟢 Đang chạy")).color(Color32::from_rgb(34, 197, 94)).strong());
                                             } else {
-                                                ui.label(RichText::new("⚪ Inactive").color(Color32::from_rgb(148, 163, 184)));
+                                                ui.label(RichText::new(tr(lang, "⚪ Inactive", "⚪ Đã dừng")).color(Color32::from_rgb(148, 163, 184)));
                                             }
 
                                             ui.label(RichText::new(&tunnel.name).strong().size(13.5).color(Color32::WHITE));
 
                                             let (mode_badge, mode_color) = match tunnel.mode {
-                                                crate::tunneling::TunnelMode::LocalForward => ("Local Forward (-L)", Color32::from_rgb(56, 189, 248)),
-                                                crate::tunneling::TunnelMode::RemoteForward => ("Remote Forward (-R)", Color32::from_rgb(251, 191, 36)),
-                                                crate::tunneling::TunnelMode::DynamicSocks5 => ("Dynamic SOCKS5 (-D)", Color32::from_rgb(192, 132, 252)),
+                                                crate::tunneling::TunnelMode::LocalForward => (tr(lang, "Local Forward (-L)", "Cục bộ (-L)"), Color32::from_rgb(56, 189, 248)),
+                                                crate::tunneling::TunnelMode::RemoteForward => (tr(lang, "Remote Forward (-R)", "Từ xa (-R)"), Color32::from_rgb(251, 191, 36)),
+                                                crate::tunneling::TunnelMode::DynamicSocks5 => (tr(lang, "Dynamic SOCKS5 (-D)", "SOCKS5 động (-D)"), Color32::from_rgb(192, 132, 252)),
                                             };
                                             ui.label(RichText::new(format!("[{}]", mode_badge)).size(11.0).color(mode_color));
 
                                             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                                                if ui.button("🗑 Delete").clicked() {
+                                                if ui.button(tr(lang, "🗑 Delete", "🗑 Xóa")).clicked() {
                                                     tunnel_to_remove = Some(idx);
                                                 }
-                                                if ui.button("✏ Edit").clicked() {
+                                                if ui.button(tr(lang, "✏ Edit", "✏ Sửa")).clicked() {
                                                     tunnel_to_edit = Some(idx);
                                                 }
                                                 if is_running {
-                                                    if ui.button(RichText::new("⏹ Stop").color(Color32::from_rgb(248, 113, 113)).strong()).clicked() {
+                                                    if ui.button(RichText::new(tr(lang, "⏹ Stop", "⏹ Dừng")).color(Color32::from_rgb(248, 113, 113)).strong()).clicked() {
                                                         tunnel_to_stop = Some(idx);
                                                     }
                                                 } else {
-                                                    if ui.button(RichText::new("▶ Start").color(Color32::from_rgb(74, 222, 128)).strong()).clicked() {
+                                                    if ui.button(RichText::new(tr(lang, "▶ Start", "▶ Chạy")).color(Color32::from_rgb(74, 222, 128)).strong()).clicked() {
                                                         tunnel_to_start = Some(idx);
                                                     }
                                                 }
@@ -5366,25 +5458,37 @@ impl eframe::App for RustyBoxApp {
                                                 ui.horizontal(|ui| {
                                                     match tunnel.mode {
                                                         crate::tunneling::TunnelMode::LocalForward => {
-                                                            ui.label(RichText::new(format!("💻 Local :{}", tunnel.local_port)).strong().color(Color32::from_rgb(56, 189, 248)));
+                                                            ui.label(RichText::new(match lang {
+                                                                AppLanguage::English => format!("💻 Local :{}", tunnel.local_port),
+                                                                AppLanguage::Vietnamese => format!("💻 Cục bộ :{}", tunnel.local_port),
+                                                            }).strong().color(Color32::from_rgb(56, 189, 248)));
                                                             ui.label(RichText::new("───➔").weak());
                                                             ui.label(RichText::new(format!("🔐 Gateway {}@{}:{}", tunnel.ssh_user, tunnel.ssh_server, tunnel.ssh_port)).color(Color32::from_rgb(163, 230, 53)));
                                                             ui.label(RichText::new("───➔").weak());
-                                                            ui.label(RichText::new(format!("🌐 Remote {}:{}", tunnel.remote_host, tunnel.remote_port)).strong().color(Color32::from_rgb(251, 191, 36)));
+                                                            ui.label(RichText::new(match lang {
+                                                                AppLanguage::English => format!("🌐 Remote {}:{}", tunnel.remote_host, tunnel.remote_port),
+                                                                AppLanguage::Vietnamese => format!("🌐 Đích từ xa {}:{}", tunnel.remote_host, tunnel.remote_port),
+                                                            }).strong().color(Color32::from_rgb(251, 191, 36)));
                                                         }
                                                         crate::tunneling::TunnelMode::RemoteForward => {
-                                                            ui.label(RichText::new(format!("🌐 Remote :{}", tunnel.remote_port)).strong().color(Color32::from_rgb(251, 191, 36)));
+                                                            ui.label(RichText::new(match lang {
+                                                                AppLanguage::English => format!("🌐 Remote :{}", tunnel.remote_port),
+                                                                AppLanguage::Vietnamese => format!("🌐 Từ xa :{}", tunnel.remote_port),
+                                                            }).strong().color(Color32::from_rgb(251, 191, 36)));
                                                             ui.label(RichText::new("───➔").weak());
                                                             ui.label(RichText::new(format!("🔐 Gateway {}@{}:{}", tunnel.ssh_user, tunnel.ssh_server, tunnel.ssh_port)).color(Color32::from_rgb(163, 230, 53)));
                                                             ui.label(RichText::new("───➔").weak());
-                                                            ui.label(RichText::new(format!("💻 Local {}:{}", tunnel.remote_host, tunnel.local_port)).strong().color(Color32::from_rgb(56, 189, 248)));
+                                                            ui.label(RichText::new(match lang {
+                                                                AppLanguage::English => format!("💻 Local {}:{}", tunnel.remote_host, tunnel.local_port),
+                                                                AppLanguage::Vietnamese => format!("💻 Cục bộ {}:{}", tunnel.remote_host, tunnel.local_port),
+                                                            }).strong().color(Color32::from_rgb(56, 189, 248)));
                                                         }
                                                         crate::tunneling::TunnelMode::DynamicSocks5 => {
                                                             ui.label(RichText::new(format!("💻 SOCKS5 127.0.0.1:{}", tunnel.local_port)).strong().color(Color32::from_rgb(192, 132, 252)));
                                                             ui.label(RichText::new("───➔").weak());
                                                             ui.label(RichText::new(format!("🔐 Gateway {}@{}:{}", tunnel.ssh_user, tunnel.ssh_server, tunnel.ssh_port)).color(Color32::from_rgb(163, 230, 53)));
                                                             ui.label(RichText::new("───➔").weak());
-                                                            ui.label(RichText::new("🌐 Dynamic Internet Target").strong().color(Color32::from_rgb(56, 189, 248)));
+                                                            ui.label(RichText::new(tr(lang, "🌐 Dynamic Internet Target", "🌐 Đích Internet động")).strong().color(Color32::from_rgb(56, 189, 248)));
                                                         }
                                                     }
                                                 });
@@ -5393,12 +5497,18 @@ impl eframe::App for RustyBoxApp {
                                         ui.add_space(4.0);
                                         ui.horizontal(|ui| {
                                             let msg = &self.tunnel_manager.status_messages[idx];
-                                            ui.label(RichText::new(format!("Status: {}", msg)).size(11.0).color(if is_running { Color32::from_rgb(74, 222, 128) } else { Color32::from_rgb(148, 163, 184) }));
+                                            ui.label(RichText::new(match lang {
+                                                AppLanguage::English => format!("Status: {}", msg),
+                                                AppLanguage::Vietnamese => format!("Trạng thái: {}", msg),
+                                            }).size(11.0).color(if is_running { Color32::from_rgb(74, 222, 128) } else { Color32::from_rgb(148, 163, 184) }));
                                             ui.separator();
-                                            let hint = match tunnel.mode {
-                                                crate::tunneling::TunnelMode::LocalForward => format!("Target app: Connect client to 127.0.0.1:{}", tunnel.local_port),
-                                                crate::tunneling::TunnelMode::RemoteForward => format!("Remote clients access port :{} on {}", tunnel.remote_port, tunnel.ssh_server),
-                                                crate::tunneling::TunnelMode::DynamicSocks5 => format!("Configure browser proxy: SOCKS5 127.0.0.1:{}", tunnel.local_port),
+                                            let hint = match (tunnel.mode, lang) {
+                                                (crate::tunneling::TunnelMode::LocalForward, AppLanguage::English) => format!("Target app: Connect client to 127.0.0.1:{}", tunnel.local_port),
+                                                (crate::tunneling::TunnelMode::LocalForward, AppLanguage::Vietnamese) => format!("Ứng dụng đích: Kết nối tới 127.0.0.1:{}", tunnel.local_port),
+                                                (crate::tunneling::TunnelMode::RemoteForward, AppLanguage::English) => format!("Remote clients access port :{} on {}", tunnel.remote_port, tunnel.ssh_server),
+                                                (crate::tunneling::TunnelMode::RemoteForward, AppLanguage::Vietnamese) => format!("Máy từ xa truy cập cổng :{} trên {}", tunnel.remote_port, tunnel.ssh_server),
+                                                (crate::tunneling::TunnelMode::DynamicSocks5, AppLanguage::English) => format!("Configure browser proxy: SOCKS5 127.0.0.1:{}", tunnel.local_port),
+                                                (crate::tunneling::TunnelMode::DynamicSocks5, AppLanguage::Vietnamese) => format!("Cấu hình proxy trình duyệt: SOCKS5 127.0.0.1:{}", tunnel.local_port),
                                             };
                                             ui.label(RichText::new(hint).size(10.5).color(Color32::from_rgb(120, 135, 155)));
                                         });
@@ -5445,31 +5555,34 @@ impl eframe::App for RustyBoxApp {
             let mut open = self.show_tunnel_edit;
             let mut close_te = false;
             let mut save_te = false;
-            egui::Window::new(if self.editing_tunnel_idx.is_some() { "✏ Edit SSH Tunnel" } else { "➕ New SSH Tunnel" })
+            egui::Window::new(if self.editing_tunnel_idx.is_some() { tr(lang, "✏ Edit SSH Tunnel", "✏ Sửa đường hầm SSH") } else { tr(lang, "➕ New SSH Tunnel", "➕ Tạo đường hầm SSH mới") })
                 .open(&mut open)
                 .default_size(Vec2::new(680.0, 480.0))
                 .show(ctx, |ui| {
                     ui.horizontal(|ui| {
-                        ui.radio_value(&mut self.tunnel_edit_mode, 0, "Local port forwarding (-L)");
-                        ui.radio_value(&mut self.tunnel_edit_mode, 1, "Remote port forwarding (-R)");
-                        ui.radio_value(&mut self.tunnel_edit_mode, 2, "Dynamic SOCKS5 proxy (-D)");
+                        ui.radio_value(&mut self.tunnel_edit_mode, 0, tr(lang, "Local port forwarding (-L)", "Chuyển tiếp cổng cục bộ (-L)"));
+                        ui.radio_value(&mut self.tunnel_edit_mode, 1, tr(lang, "Remote port forwarding (-R)", "Chuyển tiếp cổng từ xa (-R)"));
+                        ui.radio_value(&mut self.tunnel_edit_mode, 2, tr(lang, "Dynamic SOCKS5 proxy (-D)", "Proxy SOCKS5 động (-D)"));
                     });
                     ui.separator();
                     ui.add_space(4.0);
-                    let desc = match self.tunnel_edit_mode {
-                        0 => "Local clients ──(127.0.0.1:ForwardedPort)──► SSH Gateway ──► Remote Server:RemotePort",
-                        1 => "Remote clients ──(SSH Server:ForwardedPort)──► SSH Gateway ──► Local Target:LocalPort",
-                        _ => "Local apps (SOCKS5 127.0.0.1:ForwardedPort) ──► SSH Gateway ──► Any Dynamic Internet Host",
+                    let desc = match (self.tunnel_edit_mode, lang) {
+                        (0, AppLanguage::English) => "Local clients ──(127.0.0.1:ForwardedPort)──► SSH Gateway ──► Remote Server:RemotePort",
+                        (0, AppLanguage::Vietnamese) => "Máy cục bộ ──(127.0.0.1:CổngChuyểnTiếp)──► Cổng SSH ──► Máy chủ đích:CổngĐích",
+                        (1, AppLanguage::English) => "Remote clients ──(SSH Server:ForwardedPort)──► SSH Gateway ──► Local Target:LocalPort",
+                        (1, AppLanguage::Vietnamese) => "Máy từ xa ──(MáyChủSSH:CổngChuyểnTiếp)──► Cổng SSH ──► Đích cục bộ:CổngCụcBộ",
+                        (_, AppLanguage::English) => "Local apps (SOCKS5 127.0.0.1:ForwardedPort) ──► SSH Gateway ──► Any Dynamic Internet Host",
+                        (_, AppLanguage::Vietnamese) => "Ứng dụng cục bộ (SOCKS5 127.0.0.1:CổngChuyểnTiếp) ──► Cổng SSH ──► Bất kỳ máy chủ Internet nào",
                     };
                     ui.label(RichText::new(desc).monospace().size(11.5).color(Color32::from_rgb(56, 189, 248)));
                     ui.add_space(6.0);
 
                     // Auto-fill from saved sessions
                     ui.horizontal(|ui| {
-                        ui.label(RichText::new("Auto-fill from Saved Session:").size(12.0).color(Color32::from_rgb(148, 163, 184)));
+                        ui.label(RichText::new(tr(lang, "Auto-fill from Saved Session:", "Tự điền từ phiên đã lưu:")).size(12.0).color(Color32::from_rgb(148, 163, 184)));
                         let ssh_sessions: Vec<&Session> = self.sessions.iter().filter(|s| matches!(s.session_type, SessionType::Ssh { .. })).collect();
                         egui::ComboBox::from_id_salt("tunnel_session_picker")
-                            .selected_text(if self.selected_session_fill.is_empty() { "-- Select SSH session --" } else { &self.selected_session_fill })
+                            .selected_text(if self.selected_session_fill.is_empty() { tr(lang, "-- Select SSH session --", "-- Chọn phiên SSH --") } else { &self.selected_session_fill })
                             .width(240.0)
                             .show_ui(ui, |ui| {
                                 for s in &ssh_sessions {
@@ -5488,24 +5601,24 @@ impl eframe::App for RustyBoxApp {
                     ui.add_space(8.0);
 
                     egui::Grid::new("tunnel_edit_grid").num_columns(4).spacing([12.0, 10.0]).show(ui, |ui| {
-                        ui.label("Tunnel name:");
+                        ui.label(tr(lang, "Tunnel name:", "Tên đường hầm:"));
                         ui.add(TextEdit::singleline(&mut self.new_tunnel_name).desired_width(210.0).margin(Margin::symmetric(8.0, 5.0)));
-                        ui.label("Forwarded port:");
+                        ui.label(tr(lang, "Forwarded port:", "Cổng chuyển tiếp:"));
                         ui.add(egui::DragValue::new(&mut self.new_tunnel_local_port).range(1..=65535));
                         ui.end_row();
 
-                        ui.label("SSH gateway host:");
+                        ui.label(tr(lang, "SSH gateway host:", "Máy chủ SSH:"));
                         ui.add(TextEdit::singleline(&mut self.tunnel_ssh_srv).desired_width(210.0).margin(Margin::symmetric(8.0, 5.0)));
-                        ui.label("SSH gateway port:");
+                        ui.label(tr(lang, "SSH gateway port:", "Cổng SSH:"));
                         ui.add(egui::DragValue::new(&mut self.tunnel_ssh_port).range(1..=65535));
                         ui.end_row();
 
-                        ui.label("SSH gateway user:");
+                        ui.label(tr(lang, "SSH gateway user:", "Người dùng SSH:"));
                         ui.add(TextEdit::singleline(&mut self.tunnel_ssh_user).desired_width(210.0).margin(Margin::symmetric(8.0, 5.0)));
-                        ui.label("SSH private key:");
+                        ui.label(tr(lang, "SSH private key:", "Khóa riêng SSH:"));
                         ui.horizontal(|ui| {
                             ui.add(TextEdit::singleline(&mut self.tunnel_ssh_key_path).desired_width(150.0).margin(Margin::symmetric(8.0, 5.0)));
-                            if ui.small_button("📂").on_hover_text("Browse key file").clicked()
+                            if ui.small_button("📂").on_hover_text(tr(lang, "Browse key file", "Chọn tệp khóa")).clicked()
                                 && let Some(f) = rfd::FileDialog::new().pick_file() {
                                     self.tunnel_ssh_key_path = f.to_string_lossy().to_string();
                                 }
@@ -5513,9 +5626,9 @@ impl eframe::App for RustyBoxApp {
                         ui.end_row();
 
                         if self.tunnel_edit_mode != 2 {
-                            ui.label("Remote target host:");
+                            ui.label(tr(lang, "Remote target host:", "Máy chủ đích từ xa:"));
                             ui.add(TextEdit::singleline(&mut self.new_tunnel_remote_host).desired_width(170.0));
-                            ui.label("Remote target port:");
+                            ui.label(tr(lang, "Remote target port:", "Cổng đích từ xa:"));
                             ui.add(egui::DragValue::new(&mut self.new_tunnel_remote_port).range(1..=65535));
                             ui.end_row();
                         }
@@ -5525,10 +5638,10 @@ impl eframe::App for RustyBoxApp {
                     ui.separator();
                     ui.add_space(4.0);
                     ui.horizontal(|ui| {
-                        if ui.button(RichText::new("💾 Save Tunnel").strong().color(Color32::from_rgb(56, 189, 248))).clicked() {
+                        if ui.button(RichText::new(tr(lang, "💾 Save Tunnel", "💾 Lưu đường hầm")).strong().color(Color32::from_rgb(56, 189, 248))).clicked() {
                             save_te = true;
                         }
-                        if ui.button("Cancel").clicked() {
+                        if ui.button(tr(lang, "Cancel", "Hủy")).clicked() {
                             close_te = true;
                         }
                     });
@@ -5591,16 +5704,16 @@ impl eframe::App for RustyBoxApp {
             let mut edit_snippet_idx: Option<usize> = None;
             let mut delete_snippet_idx: Option<usize> = None;
 
-            egui::Window::new("📋 Command Snippets (DevOps & SysAdmin Library)")
+            egui::Window::new(tr(lang, "📋 Command Snippets (DevOps & SysAdmin Library)", "📋 Đoạn lệnh mẫu (Thư viện DevOps & SysAdmin)"))
                 .open(&mut open)
                 .default_size(Vec2::new(840.0, 560.0))
                 .resizable(true)
                 .anchor(egui::Align2::CENTER_CENTER, Vec2::ZERO)
                 .show(ctx, |ui| {
                     ui.horizontal(|ui| {
-                        ui.label(RichText::new("Quick executable DevOps scripts & commands with placeholder variables").size(12.5).color(Color32::from_rgb(148, 163, 184)));
+                        ui.label(RichText::new(tr(lang, "Quick executable DevOps scripts & commands with placeholder variables", "Các lệnh & script DevOps chạy nhanh có hỗ trợ biến tham số")).size(12.5).color(Color32::from_rgb(148, 163, 184)));
                         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                            if ui.button(RichText::new("➕ Add Snippet").strong().color(Color32::from_rgb(56, 189, 248))).clicked() {
+                            if ui.button(RichText::new(tr(lang, "➕ Add Snippet", "➕ Thêm đoạn lệnh")).strong().color(Color32::from_rgb(56, 189, 248))).clicked() {
                                 self.editing_snippet_idx = None;
                                 self.snippet_form_name.clear();
                                 self.snippet_form_command.clear();
@@ -5614,11 +5727,11 @@ impl eframe::App for RustyBoxApp {
                     ui.add_space(8.0);
                     ui.horizontal(|ui| {
                         ui.label(RichText::new("🔍").size(14.0));
-                        ui.add(TextEdit::singleline(&mut self.snippet_search).hint_text("Search snippets...").desired_width(260.0).margin(Margin::symmetric(8.0, 5.0)));
+                        ui.add(TextEdit::singleline(&mut self.snippet_search).hint_text(tr(lang, "Search snippets...", "Tìm kiếm đoạn lệnh...")).desired_width(260.0).margin(Margin::symmetric(8.0, 5.0)));
 
                         ui.add_space(8.0);
-                        let cat_chip = |ui: &mut egui::Ui, label: &str, current: &mut String| {
-                            let is_sel = current == label;
+                        let cat_chip = |ui: &mut egui::Ui, label: &str, key: &str, current: &mut String| {
+                            let is_sel = current == key;
                             let bg = if is_sel { Color32::from_rgb(37, 99, 235) } else { Color32::from_rgb(22, 28, 40) };
                             let stroke = if is_sel { egui::Stroke::new(1.0_f32, Color32::from_rgb(56, 189, 248)) } else { egui::Stroke::new(1.0_f32, Color32::from_rgb(51, 65, 85)) };
                             let btn = egui::Button::new(RichText::new(label).size(12.0).color(if is_sel { Color32::WHITE } else { Color32::from_rgb(226, 232, 240) }))
@@ -5626,16 +5739,16 @@ impl eframe::App for RustyBoxApp {
                                 .stroke(stroke)
                                 .rounding(6.0);
                             if ui.add(btn).clicked() {
-                                *current = label.to_string();
+                                *current = key.to_string();
                             }
                         };
 
-                        cat_chip(ui, "All", &mut self.snippet_category_filter);
-                        cat_chip(ui, "Docker", &mut self.snippet_category_filter);
-                        cat_chip(ui, "Nginx", &mut self.snippet_category_filter);
-                        cat_chip(ui, "System", &mut self.snippet_category_filter);
-                        cat_chip(ui, "Database", &mut self.snippet_category_filter);
-                        cat_chip(ui, "Git", &mut self.snippet_category_filter);
+                        cat_chip(ui, tr(lang, "All", "Tất cả"), "All", &mut self.snippet_category_filter);
+                        cat_chip(ui, "Docker", "Docker", &mut self.snippet_category_filter);
+                        cat_chip(ui, "Nginx", "Nginx", &mut self.snippet_category_filter);
+                        cat_chip(ui, tr(lang, "System", "Hệ thống"), "System", &mut self.snippet_category_filter);
+                        cat_chip(ui, tr(lang, "Database", "Cơ sở dữ liệu"), "Database", &mut self.snippet_category_filter);
+                        cat_chip(ui, "Git", "Git", &mut self.snippet_category_filter);
                     });
 
                     ui.add_space(8.0);
@@ -5680,16 +5793,16 @@ impl eframe::App for RustyBoxApp {
                                             }
 
                                             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                                                if ui.small_button("🗑").on_hover_text("Delete Snippet").clicked() {
+                                                if ui.small_button("🗑").on_hover_text(tr(lang, "Delete Snippet", "Xóa đoạn lệnh")).clicked() {
                                                     delete_snippet_idx = Some(idx);
                                                 }
-                                                if ui.small_button("✏").on_hover_text("Edit Snippet").clicked() {
+                                                if ui.small_button("✏").on_hover_text(tr(lang, "Edit Snippet", "Sửa đoạn lệnh")).clicked() {
                                                     edit_snippet_idx = Some(idx);
                                                 }
-                                                if ui.button(RichText::new("📋 Insert").size(11.5)).on_hover_text("Paste into terminal without running").clicked() {
+                                                if ui.button(RichText::new(tr(lang, "📋 Insert", "📋 Chèn")).size(11.5)).on_hover_text(tr(lang, "Paste into terminal without running", "Dán vào terminal không tự chạy")).clicked() {
                                                     insert_snippet = Some(snip.clone());
                                                 }
-                                                if ui.button(RichText::new("▶ Run").strong().size(11.5).color(Color32::from_rgb(74, 222, 128))).on_hover_text("Execute command in active terminal").clicked() {
+                                                if ui.button(RichText::new(tr(lang, "▶ Run", "▶ Chạy")).strong().size(11.5).color(Color32::from_rgb(74, 222, 128))).on_hover_text(tr(lang, "Execute command in active terminal", "Thực thi lệnh trong terminal đang mở")).clicked() {
                                                     run_snippet = Some(snip.clone());
                                                 }
                                             });
@@ -5764,32 +5877,32 @@ impl eframe::App for RustyBoxApp {
             let mut close_edit = false;
             let mut save_snippet = false;
 
-            egui::Window::new(if self.editing_snippet_idx.is_some() { "✏ Edit Snippet" } else { "➕ Add New Snippet" })
+            egui::Window::new(if self.editing_snippet_idx.is_some() { tr(lang, "✏ Edit Snippet", "✏ Sửa đoạn lệnh") } else { tr(lang, "➕ Add New Snippet", "➕ Thêm đoạn lệnh mới") })
                 .open(&mut open)
                 .collapsible(false)
                 .default_size(Vec2::new(620.0, 460.0))
                 .anchor(egui::Align2::CENTER_CENTER, Vec2::ZERO)
                 .show(ctx, |ui| {
-                    ui.label(RichText::new("Configure Reusable Command Template").strong().size(13.5));
+                    ui.label(RichText::new(tr(lang, "Configure Reusable Command Template", "Cấu hình mẫu lệnh dùng lại")).strong().size(13.5));
                     ui.add_space(6.0);
 
                     egui::Grid::new("snippet_edit_grid").num_columns(2).spacing([14.0, 10.0]).show(ui, |ui| {
-                        ui.label(RichText::new("Name:").size(12.5).color(Color32::from_rgb(226, 232, 240)));
+                        ui.label(RichText::new(tr(lang, "Name:", "Tên:")).size(12.5).color(Color32::from_rgb(226, 232, 240)));
                         ui.add(TextEdit::singleline(&mut self.snippet_form_name).desired_width(420.0).margin(Margin::symmetric(8.0, 5.0)));
                         ui.end_row();
 
-                        ui.label(RichText::new("Category:").size(12.5).color(Color32::from_rgb(226, 232, 240)));
+                        ui.label(RichText::new(tr(lang, "Category:", "Nhóm:")).size(12.5).color(Color32::from_rgb(226, 232, 240)));
                         ui.horizontal(|ui| {
                             ui.add(TextEdit::singleline(&mut self.snippet_form_category).desired_width(200.0).margin(Margin::symmetric(8.0, 5.0)));
-                            ui.label(RichText::new("(e.g. Docker, Nginx, System, Database, Git)").size(11.5).color(Color32::from_rgb(148, 163, 184)));
+                            ui.label(RichText::new(tr(lang, "(e.g. Docker, Nginx, System, Database, Git)", "(VD: Docker, Nginx, System, Database, Git)")).size(11.5).color(Color32::from_rgb(148, 163, 184)));
                         });
                         ui.end_row();
 
-                        ui.label(RichText::new("Description:").size(12.5).color(Color32::from_rgb(226, 232, 240)));
+                        ui.label(RichText::new(tr(lang, "Description:", "Mô tả:")).size(12.5).color(Color32::from_rgb(226, 232, 240)));
                         ui.add(TextEdit::singleline(&mut self.snippet_form_desc).desired_width(420.0).margin(Margin::symmetric(8.0, 5.0)));
                         ui.end_row();
 
-                        ui.label(RichText::new("Command:").size(12.5).color(Color32::from_rgb(226, 232, 240)));
+                        ui.label(RichText::new(tr(lang, "Command:", "Câu lệnh:")).size(12.5).color(Color32::from_rgb(226, 232, 240)));
                         ui.add(
                             TextEdit::multiline(&mut self.snippet_form_command)
                                 .font(egui::TextStyle::Monospace)
@@ -5801,16 +5914,16 @@ impl eframe::App for RustyBoxApp {
                     });
 
                     ui.add_space(6.0);
-                    ui.label(RichText::new("Tip: Insert {{variable_name}} to prompt for dynamic arguments at runtime!").size(11.0).color(Color32::from_rgb(56, 189, 248)));
+                    ui.label(RichText::new(tr(lang, "Tip: Insert {{variable_name}} to prompt for dynamic arguments at runtime!", "Mẹo: Chèn {{ten_bien}} để nhập tham số động khi chạy!")).size(11.0).color(Color32::from_rgb(56, 189, 248)));
                     ui.add_space(8.0);
                     ui.separator();
                     ui.add_space(4.0);
 
                     ui.horizontal(|ui| {
-                        if ui.button(RichText::new("💾 Save Snippet").strong().color(Color32::from_rgb(56, 189, 248))).clicked() {
+                        if ui.button(RichText::new(tr(lang, "💾 Save Snippet", "💾 Lưu đoạn lệnh")).strong().color(Color32::from_rgb(56, 189, 248))).clicked() {
                             save_snippet = true;
                         }
-                        if ui.button("✖ Cancel").clicked() {
+                        if ui.button(tr(lang, "✖ Cancel", "✖ Hủy")).clicked() {
                             close_edit = true;
                         }
                     });
@@ -5861,13 +5974,17 @@ impl eframe::App for RustyBoxApp {
             let active_snip = self.active_var_snippet.clone();
 
             if let Some(ref snip) = active_snip {
-                egui::Window::new(format!("📝 Fill Parameters - {}", snip.name))
+                let win_title = match lang {
+                    AppLanguage::English => format!("📝 Fill Parameters - {}", snip.name),
+                    AppLanguage::Vietnamese => format!("📝 Nhập tham số - {}", snip.name),
+                };
+                egui::Window::new(win_title)
                     .open(&mut open)
                     .collapsible(false)
                     .default_size(Vec2::new(480.0, 260.0))
                     .anchor(egui::Align2::CENTER_CENTER, Vec2::ZERO)
                     .show(ctx, |ui| {
-                        ui.label(RichText::new("Provide values for command template:").strong());
+                        ui.label(RichText::new(tr(lang, "Provide values for command template:", "Nhập giá trị cho mẫu lệnh:")).strong());
                         ui.add_space(4.0);
 
                         egui::Frame::none()
@@ -5893,11 +6010,11 @@ impl eframe::App for RustyBoxApp {
                         ui.add_space(4.0);
 
                         ui.horizontal(|ui| {
-                            let action_label = if self.active_var_is_run { "▶ Run Command" } else { "📋 Insert Command" };
+                            let action_label = if self.active_var_is_run { tr(lang, "▶ Run Command", "▶ Chạy lệnh") } else { tr(lang, "📋 Insert Command", "📋 Chèn lệnh") };
                             if ui.button(RichText::new(action_label).strong().color(Color32::from_rgb(74, 222, 128))).clicked() {
                                 submit_vars = true;
                             }
-                            if ui.button("✖ Cancel").clicked() {
+                            if ui.button(tr(lang, "✖ Cancel", "✖ Hủy")).clicked() {
                                 close_vars = true;
                             }
                         });
@@ -5928,7 +6045,7 @@ impl eframe::App for RustyBoxApp {
             let mut delete_rule_idx: Option<usize> = None;
             let mut reset_defaults = false;
 
-            egui::Window::new("🎨 Auto-Highlight Keywords (ZOC Style)")
+            egui::Window::new(tr(lang, "🎨 Auto-Highlight Keywords (ZOC Style)", "🎨 Tự động tô màu từ khóa (kiểu ZOC)"))
                 .open(&mut open)
                 .default_size(Vec2::new(720.0, 560.0))
                 .min_width(660.0)
@@ -5938,19 +6055,19 @@ impl eframe::App for RustyBoxApp {
                 .show(ctx, |ui| {
                     ui.horizontal(|ui| {
                         let prev_enabled = self.highlight_rules_enabled;
-                        ui.checkbox(&mut self.highlight_rules_enabled, RichText::new("Enable Real-Time Auto-Highlight in Terminal").strong());
+                        ui.checkbox(&mut self.highlight_rules_enabled, RichText::new(tr(lang, "Enable Real-Time Auto-Highlight in Terminal", "Bật tô màu tự động theo thời gian thực trong Terminal")).strong());
                         if prev_enabled != self.highlight_rules_enabled {
                             let _ = self.storage.save_highlight_rules(&self.highlight_rules, self.highlight_rules_enabled);
                         }
 
                         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                            if ui.button("🔄 Reset Default Rules").on_hover_text("Reset to standard Error, Warn, Success & Info rules").clicked() {
+                            if ui.button(tr(lang, "🔄 Reset Default Rules", "🔄 Khôi phục mặc định")).on_hover_text(tr(lang, "Reset to standard Error, Warn, Success & Info rules", "Đặt lại các quy tắc Error, Warn, Success & Info mặc định")).clicked() {
                                 reset_defaults = true;
                             }
                         });
                     });
 
-                    ui.label(RichText::new("Automatically highlights critical log phrases (errors, warnings, successes, IPs) in real-time without modifying server shells.").size(12.0).color(Color32::from_rgb(148, 163, 184)));
+                    ui.label(RichText::new(tr(lang, "Automatically highlights critical log phrases (errors, warnings, successes, IPs) in real-time without modifying server shells.", "Tự động tô sáng các cụm từ nhật ký quan trọng (lỗi, cảnh báo, thành công, IP) theo thời gian thực mà không tác động tới shell máy chủ.")).size(12.0).color(Color32::from_rgb(148, 163, 184)));
 
                     ui.add_space(6.0);
                     ui.separator();
@@ -5964,29 +6081,29 @@ impl eframe::App for RustyBoxApp {
                         .inner_margin(8.0)
                         .show(ui, |ui| {
                             ui.horizontal(|ui| {
-                                ui.label(RichText::new(if self.editing_highlight_idx.is_some() { "✏ Edit Keyword:" } else { "➕ Add Keyword:" }).strong().color(Color32::from_rgb(56, 189, 248)));
-                                ui.add(TextEdit::singleline(&mut self.highlight_kw_input).hint_text("e.g. TIMEOUT, CRITICAL...").desired_width(140.0));
+                                ui.label(RichText::new(if self.editing_highlight_idx.is_some() { tr(lang, "✏ Edit Keyword:", "✏ Sửa từ khóa:") } else { tr(lang, "➕ Add Keyword:", "➕ Thêm từ khóa:") }).strong().color(Color32::from_rgb(56, 189, 248)));
+                                ui.add(TextEdit::singleline(&mut self.highlight_kw_input).hint_text(tr(lang, "e.g. TIMEOUT, CRITICAL...", "VD: TIMEOUT, CRITICAL...")).desired_width(140.0));
 
-                                ui.label("Color:");
+                                ui.label(tr(lang, "Color:", "Màu:"));
                                 egui::ComboBox::from_id_salt("hl_color_picker")
                                     .selected_text(match self.highlight_color_idx {
-                                        0 => "🔴 Red (Error)",
-                                        1 => "🟡 Yellow (Warn)",
-                                        2 => "🟢 Green (Success)",
-                                        3 => "🔵 Cyan (Notice)",
-                                        4 => "🟣 Magenta (Special)",
-                                        _ => "⚪ White",
+                                        0 => tr(lang, "🔴 Red (Error)", "🔴 Đỏ (Lỗi)"),
+                                        1 => tr(lang, "🟡 Yellow (Warn)", "🟡 Vàng (Cảnh báo)"),
+                                        2 => tr(lang, "🟢 Green (Success)", "🟢 Xanh lá (Thành công)"),
+                                        3 => tr(lang, "🔵 Cyan (Notice)", "🔵 Xanh lơ (Thông báo)"),
+                                        4 => tr(lang, "🟣 Magenta (Special)", "🟣 Tím (Đặc biệt)"),
+                                        _ => tr(lang, "⚪ White", "⚪ Trắng"),
                                     })
                                     .width(130.0)
                                     .show_ui(ui, |ui| {
-                                        ui.selectable_value(&mut self.highlight_color_idx, 0, "🔴 Red (Error)");
-                                        ui.selectable_value(&mut self.highlight_color_idx, 1, "🟡 Yellow (Warn)");
-                                        ui.selectable_value(&mut self.highlight_color_idx, 2, "🟢 Green (Success)");
-                                        ui.selectable_value(&mut self.highlight_color_idx, 3, "🔵 Cyan (Notice)");
-                                        ui.selectable_value(&mut self.highlight_color_idx, 4, "🟣 Magenta (Special)");
+                                        ui.selectable_value(&mut self.highlight_color_idx, 0, tr(lang, "🔴 Red (Error)", "🔴 Đỏ (Lỗi)"));
+                                        ui.selectable_value(&mut self.highlight_color_idx, 1, tr(lang, "🟡 Yellow (Warn)", "🟡 Vàng (Cảnh báo)"));
+                                        ui.selectable_value(&mut self.highlight_color_idx, 2, tr(lang, "🟢 Green (Success)", "🟢 Xanh lá (Thành công)"));
+                                        ui.selectable_value(&mut self.highlight_color_idx, 3, tr(lang, "🔵 Cyan (Notice)", "🔵 Xanh lơ (Thông báo)"));
+                                        ui.selectable_value(&mut self.highlight_color_idx, 4, tr(lang, "🟣 Magenta (Special)", "🟣 Tím (Đặc biệt)"));
                                     });
 
-                                let btn_label = if self.editing_highlight_idx.is_some() { "💾 Update" } else { "➕ Add Rule" };
+                                let btn_label = if self.editing_highlight_idx.is_some() { tr(lang, "💾 Update", "💾 Cập nhật") } else { tr(lang, "➕ Add Rule", "➕ Thêm quy tắc") };
                                 if ui.button(RichText::new(btn_label).strong().color(Color32::from_rgb(74, 222, 128))).clicked() {
                                     let kw = self.highlight_kw_input.trim();
                                     if !kw.is_empty() {
@@ -6017,7 +6134,7 @@ impl eframe::App for RustyBoxApp {
                                     }
                                 }
                                 if self.editing_highlight_idx.is_some()
-                                    && ui.button("✖ Cancel").clicked() {
+                                    && ui.button(tr(lang, "✖ Cancel", "✖ Hủy")).clicked() {
                                         self.editing_highlight_idx = None;
                                         self.highlight_kw_input.clear();
                                     }
@@ -6025,16 +6142,16 @@ impl eframe::App for RustyBoxApp {
 
                             ui.add_space(4.0);
                             ui.horizontal(|ui| {
-                                ui.label(RichText::new("Options:").size(11.0).weak());
-                                ui.checkbox(&mut self.highlight_whole_word, "Match whole word only").on_hover_text("Avoid matching inside other words (e.g. 'error' won't match inside 'terror')");
-                                ui.checkbox(&mut self.highlight_match_case, "Match case sensitive").on_hover_text("Match exact casing only");
+                                ui.label(RichText::new(tr(lang, "Options:", "Tùy chọn:")).size(11.0).weak());
+                                ui.checkbox(&mut self.highlight_whole_word, tr(lang, "Match whole word only", "Chỉ khớp nguyên từ")).on_hover_text(tr(lang, "Avoid matching inside other words (e.g. 'error' won't match inside 'terror')", "Tránh khớp bên trong từ khác (VD: 'error' không khớp với 'terror')"));
+                                ui.checkbox(&mut self.highlight_match_case, tr(lang, "Match case sensitive", "Phân biệt chữ hoa/thường")).on_hover_text(tr(lang, "Match exact casing only", "Chỉ khớp đúng chữ hoa/thường"));
                             });
                         });
 
                     ui.add_space(8.0);
 
                     // Rules List
-                    ui.label(RichText::new("Configured Keyword Rules:").strong().size(12.5));
+                    ui.label(RichText::new(tr(lang, "Configured Keyword Rules:", "Danh sách quy tắc từ khóa:")).strong().size(12.5));
                     let list_h = 170.0;
                     ScrollArea::vertical()
                         .id_salt("highlight_rules_scroll")
@@ -6045,11 +6162,11 @@ impl eframe::App for RustyBoxApp {
                                 .min_col_width(50.0)
                                 .spacing(vec2(10.0, 6.0))
                                 .show(ui, |ui| {
-                                    ui.label(RichText::new("Active").strong());
-                                    ui.label(RichText::new("Color").strong());
-                                    ui.label(RichText::new("Keyword").strong());
-                                    ui.label(RichText::new("Matching Mode").strong());
-                                    ui.label(RichText::new("Actions").strong());
+                                    ui.label(RichText::new(tr(lang, "Active", "Bật")).strong());
+                                    ui.label(RichText::new(tr(lang, "Color", "Màu")).strong());
+                                    ui.label(RichText::new(tr(lang, "Keyword", "Từ khóa")).strong());
+                                    ui.label(RichText::new(tr(lang, "Matching Mode", "Kiểu khớp")).strong());
+                                    ui.label(RichText::new(tr(lang, "Actions", "Thao tác")).strong());
                                     ui.end_row();
 
                                     let mut state_changed = false;
@@ -6069,15 +6186,15 @@ impl eframe::App for RustyBoxApp {
                                         ui.label(RichText::new(&rule.keyword).strong().color(col));
 
                                         let mode_desc = match (rule.whole_word, rule.match_case) {
-                                            (true, true) => "Whole Word + Case Sensitive",
-                                            (true, false) => "Whole Word (Any Case)",
-                                            (false, true) => "Substring + Case Sensitive",
-                                            (false, false) => "Substring (Any Case)",
+                                            (true, true) => tr(lang, "Whole Word + Case Sensitive", "Nguyên từ + Phân biệt hoa/thường"),
+                                            (true, false) => tr(lang, "Whole Word (Any Case)", "Nguyên từ (Không phân biệt hoa/thường)"),
+                                            (false, true) => tr(lang, "Substring + Case Sensitive", "Chuỗi con + Phân biệt hoa/thường"),
+                                            (false, false) => tr(lang, "Substring (Any Case)", "Chuỗi con (Không phân biệt hoa/thường)"),
                                         };
                                         ui.label(RichText::new(mode_desc).size(11.0).color(Color32::from_rgb(148, 163, 184)));
 
                                         ui.horizontal(|ui| {
-                                            if ui.small_button("✏ Edit").clicked() {
+                                            if ui.small_button(tr(lang, "✏ Edit", "✏ Sửa")).clicked() {
                                                 self.editing_highlight_idx = Some(idx);
                                                 self.highlight_kw_input = rule.keyword.clone();
                                                 self.highlight_whole_word = rule.whole_word;
@@ -6091,7 +6208,7 @@ impl eframe::App for RustyBoxApp {
                                                     _ => 0,
                                                 };
                                             }
-                                            if ui.small_button("🗑").on_hover_text("Delete keyword").clicked() {
+                                            if ui.small_button("🗑").on_hover_text(tr(lang, "Delete keyword", "Xóa từ khóa")).clicked() {
                                                 delete_rule_idx = Some(idx);
                                             }
                                         });
@@ -6120,7 +6237,7 @@ impl eframe::App for RustyBoxApp {
                     ui.add_space(4.0);
 
                     // Real-Time Live Preview Pane
-                    ui.label(RichText::new("🔬 Real-Time Terminal Rendering Preview:").strong().size(12.0).color(Color32::from_rgb(56, 189, 248)));
+                    ui.label(RichText::new(tr(lang, "🔬 Real-Time Terminal Rendering Preview:", "🔬 Xem trước hiển thị trên Terminal:")).strong().size(12.0).color(Color32::from_rgb(56, 189, 248)));
                     ui.add_space(2.0);
 
                     egui::Frame::none()
@@ -6155,7 +6272,7 @@ impl eframe::App for RustyBoxApp {
 
                     ui.add_space(4.0);
                     ui.horizontal(|ui| {
-                        ui.label(RichText::new("Edit test log:").size(11.0).weak());
+                        ui.label(RichText::new(tr(lang, "Edit test log:", "Sửa dòng thử:")).size(11.0).weak());
                         ui.add(TextEdit::multiline(&mut self.highlight_preview_text).desired_rows(2).desired_width(560.0));
                     });
                 });
@@ -6167,50 +6284,53 @@ impl eframe::App for RustyBoxApp {
         if self.show_keygen {
             let mut open = self.show_keygen;
             let mut close_kg = false;
-            egui::Window::new("🔑 RustyBox KeyGen - SSH Key Generator")
+            egui::Window::new(tr(lang, "🔑 RustyBox KeyGen - SSH Key Generator", "🔑 RustyBox KeyGen - Trình tạo khóa SSH"))
                 .open(&mut open)
                 .default_size(Vec2::new(560.0, 440.0))
                 .show(ctx, |ui| {
-                    ui.label(RichText::new("Generate OpenSSH Public / Private Key Pairs").strong());
+                    ui.label(RichText::new(tr(lang, "Generate OpenSSH Public / Private Key Pairs", "Tạo cặp khóa công khai / riêng tư chuẩn OpenSSH")).strong());
                     ui.separator();
 
                     ui.horizontal(|ui| {
-                        ui.label("Key Type:");
-                        ui.radio_value(&mut self.keygen_type, 0, "Ed25519 (Modern & Fast)");
-                        ui.radio_value(&mut self.keygen_type, 1, "RSA (4096-bit Standard)");
+                        ui.label(tr(lang, "Key Type:", "Loại khóa:"));
+                        ui.radio_value(&mut self.keygen_type, 0, tr(lang, "Ed25519 (Modern & Fast)", "Ed25519 (Hiện đại & Nhanh)"));
+                        ui.radio_value(&mut self.keygen_type, 1, tr(lang, "RSA (4096-bit Standard)", "RSA (Chuẩn 4096-bit)"));
                     });
 
                     ui.horizontal(|ui| {
-                        ui.label("Key Comment:");
+                        ui.label(tr(lang, "Key Comment:", "Ghi chú khóa:"));
                         ui.text_edit_singleline(&mut self.keygen_comment);
                     });
 
                     ui.add_space(4.0);
-                    if ui.button(RichText::new("⚡ Generate New Key Pair").strong().color(Color32::from_rgb(56, 189, 248))).clicked() {
+                    if ui.button(RichText::new(tr(lang, "⚡ Generate New Key Pair", "⚡ Tạo cặp khóa mới")).strong().color(Color32::from_rgb(56, 189, 248))).clicked() {
                         self.generate_ssh_key_pair();
                     }
 
                     if !self.keygen_public.is_empty() {
                         ui.separator();
                         ui.horizontal(|ui| {
-                            ui.label(RichText::new("Public Key (authorized_keys format):").strong());
-                            if ui.button("📋 Copy").clicked() {
+                            ui.label(RichText::new(tr(lang, "Public Key (authorized_keys format):", "Khóa công khai (định dạng authorized_keys):")).strong());
+                            if ui.button(tr(lang, "📋 Copy", "📋 Sao chép")).clicked() {
                                 ctx.copy_text(self.keygen_public.clone());
                             }
                         });
                         ui.add(egui::TextEdit::multiline(&mut self.keygen_public).desired_rows(3).font(egui::TextStyle::Monospace));
 
                         if !self.keygen_fingerprint.is_empty() {
-                            ui.label(format!("Key Fingerprint: {}", self.keygen_fingerprint));
+                            ui.label(match lang {
+                                AppLanguage::English => format!("Key Fingerprint: {}", self.keygen_fingerprint),
+                                AppLanguage::Vietnamese => format!("Dấu vân tay khóa: {}", self.keygen_fingerprint),
+                            });
                         }
 
                         ui.add_space(4.0);
                         ui.horizontal(|ui| {
-                            if ui.button("💾 Save Public Key (.pub)...").clicked()
+                            if ui.button(tr(lang, "💾 Save Public Key (.pub)...", "💾 Lưu khóa công khai (.pub)...")).clicked()
                                 && let Some(path) = rfd::FileDialog::new().add_filter("Public Key", &["pub"]).save_file() {
                                     let _ = std::fs::write(&path, &self.keygen_public);
                                 }
-                            if ui.button("🔒 Save Private Key...").clicked()
+                            if ui.button(tr(lang, "🔒 Save Private Key...", "🔒 Lưu khóa riêng tư...")).clicked()
                                 && let Some(path) = rfd::FileDialog::new().save_file() {
                                     let _ = std::fs::write(&path, &self.keygen_private);
                                 }
@@ -6218,7 +6338,7 @@ impl eframe::App for RustyBoxApp {
                     }
                     ui.add_space(8.0);
                     ui.separator();
-                    if ui.button("Close").clicked() {
+                    if ui.button(tr(lang, "Close", "Đóng")).clicked() {
                         close_kg = true;
                     }
                 });
@@ -6229,29 +6349,29 @@ impl eframe::App for RustyBoxApp {
         if self.show_pwdgen {
             let mut open = self.show_pwdgen;
             let mut close_pg = false;
-            egui::Window::new("🗝 Random Password Generator")
+            egui::Window::new(tr(lang, "🗝 Random Password Generator", "🗝 Trình tạo mật khẩu ngẫu nhiên"))
                 .open(&mut open)
                 .default_size(Vec2::new(480.0, 320.0))
                 .show(ctx, |ui| {
-                    ui.label(RichText::new("Generate Cryptographically Strong Passwords").strong());
+                    ui.label(RichText::new(tr(lang, "Generate Cryptographically Strong Passwords", "Tạo mật khẩu ngẫu nhiên độ an toàn cao")).strong());
                     ui.separator();
 
                     ui.horizontal(|ui| {
-                        ui.label("Password Length:");
+                        ui.label(tr(lang, "Password Length:", "Độ dài mật khẩu:"));
                         ui.add(egui::DragValue::new(&mut self.pwdgen_len).range(8..=64));
                     });
 
                     ui.horizontal(|ui| {
-                        ui.checkbox(&mut self.pwdgen_upper, "Uppercase (A-Z)");
-                        ui.checkbox(&mut self.pwdgen_lower, "Lowercase (a-z)");
+                        ui.checkbox(&mut self.pwdgen_upper, tr(lang, "Uppercase (A-Z)", "Chữ hoa (A-Z)"));
+                        ui.checkbox(&mut self.pwdgen_lower, tr(lang, "Lowercase (a-z)", "Chữ thường (a-z)"));
                     });
                     ui.horizontal(|ui| {
-                        ui.checkbox(&mut self.pwdgen_digits, "Numbers (0-9)");
-                        ui.checkbox(&mut self.pwdgen_symbols, "Symbols (!@#$%)");
+                        ui.checkbox(&mut self.pwdgen_digits, tr(lang, "Numbers (0-9)", "Chữ số (0-9)"));
+                        ui.checkbox(&mut self.pwdgen_symbols, tr(lang, "Symbols (!@#$%)", "Ký tự đặc biệt (!@#$%)"));
                     });
 
                     ui.add_space(6.0);
-                    if ui.button(RichText::new("⚡ Generate Password").strong().color(Color32::from_rgb(56, 189, 248))).clicked() {
+                    if ui.button(RichText::new(tr(lang, "⚡ Generate Password", "⚡ Tạo mật khẩu")).strong().color(Color32::from_rgb(56, 189, 248))).clicked() {
                         self.generate_random_password();
                     }
 
@@ -6259,14 +6379,14 @@ impl eframe::App for RustyBoxApp {
                         ui.separator();
                         ui.horizontal(|ui| {
                             ui.add(egui::TextEdit::singleline(&mut self.pwdgen_output).font(egui::TextStyle::Monospace).desired_width(280.0));
-                            if ui.button("📋 Copy").clicked() {
+                            if ui.button(tr(lang, "📋 Copy", "📋 Sao chép")).clicked() {
                                 ctx.copy_text(self.pwdgen_output.clone());
                             }
                         });
                     }
                     ui.add_space(8.0);
                     ui.separator();
-                    if ui.button("Close").clicked() {
+                    if ui.button(tr(lang, "Close", "Đóng")).clicked() {
                         close_pg = true;
                     }
                 });
@@ -6277,25 +6397,25 @@ impl eframe::App for RustyBoxApp {
         if self.show_diff {
             let mut open = self.show_diff;
             let mut close_df = false;
-            egui::Window::new("📄 File Comparison (RustyBox Diff)")
+            egui::Window::new(tr(lang, "📄 File Comparison (RustyBox Diff)", "📄 So sánh tệp & văn bản (RustyBox Diff)"))
                 .open(&mut open)
                 .default_size(Vec2::new(660.0, 480.0))
                 .show(ctx, |ui| {
-                    ui.label(RichText::new("Visual Text & Configuration Diff Tool").strong());
+                    ui.label(RichText::new(tr(lang, "Visual Text & Configuration Diff Tool", "Công cụ so sánh trực quan văn bản & tệp cấu hình")).strong());
                     ui.separator();
 
                     ui.columns(2, |cols| {
-                        cols[0].label(RichText::new("Original Text / File A:").strong());
+                        cols[0].label(RichText::new(tr(lang, "Original Text / File A:", "Văn bản gốc / Tệp A:")).strong());
                         cols[0].add(egui::TextEdit::multiline(&mut self.diff_text_a).desired_rows(8).font(egui::TextStyle::Monospace));
-                        if cols[0].button("Load File A...").clicked()
+                        if cols[0].button(tr(lang, "Load File A...", "Mở Tệp A...")).clicked()
                             && let Some(path) = rfd::FileDialog::new().pick_file()
                                 && let Ok(s) = std::fs::read_to_string(&path) {
                                     self.diff_text_a = s;
                                 }
 
-                        cols[1].label(RichText::new("Modified Text / File B:").strong());
+                        cols[1].label(RichText::new(tr(lang, "Modified Text / File B:", "Văn bản sửa / Tệp B:")).strong());
                         cols[1].add(egui::TextEdit::multiline(&mut self.diff_text_b).desired_rows(8).font(egui::TextStyle::Monospace));
-                        if cols[1].button("Load File B...").clicked()
+                        if cols[1].button(tr(lang, "Load File B...", "Mở Tệp B...")).clicked()
                             && let Some(path) = rfd::FileDialog::new().pick_file()
                                 && let Ok(s) = std::fs::read_to_string(&path) {
                                     self.diff_text_b = s;
@@ -6303,13 +6423,13 @@ impl eframe::App for RustyBoxApp {
                     });
 
                     ui.add_space(6.0);
-                    if ui.button(RichText::new("🔍 Compare Texts / Files").strong().color(Color32::from_rgb(56, 189, 248))).clicked() {
+                    if ui.button(RichText::new(tr(lang, "🔍 Compare Texts / Files", "🔍 So sánh văn bản / tệp")).strong().color(Color32::from_rgb(56, 189, 248))).clicked() {
                         self.compute_diff();
                     }
 
                     if !self.diff_result.is_empty() {
                         ui.separator();
-                        ui.label(RichText::new("Diff Results (- removed, + added):").strong());
+                        ui.label(RichText::new(tr(lang, "Diff Results (- removed, + added):", "Kết quả so sánh (- đã xóa, + đã thêm):")).strong());
                         ScrollArea::vertical().max_height(160.0).show(ui, |ui| {
                             for line in &self.diff_result {
                                 if line.starts_with('+') {
@@ -6324,7 +6444,7 @@ impl eframe::App for RustyBoxApp {
                     }
                     ui.add_space(8.0);
                     ui.separator();
-                    if ui.button("Close").clicked() {
+                    if ui.button(tr(lang, "Close", "Đóng")).clicked() {
                         close_df = true;
                     }
                 });
@@ -6348,12 +6468,12 @@ impl eframe::App for RustyBoxApp {
                 ("mtr", "0.95", "Network diagnostic tool combining ping and traceroute", false),
             ];
 
-            egui::Window::new("📦 RustyBox Apt Package Manager")
+            egui::Window::new(tr(lang, "📦 RustyBox Apt Package Manager", "📦 Trình quản lý gói RustyBox Apt"))
                 .open(&mut open)
                 .default_size(Vec2::new(620.0, 440.0))
                 .show(ctx, |ui| {
                     ui.horizontal(|ui| {
-                        ui.label("Filter packages:");
+                        ui.label(tr(lang, "Filter packages:", "Lọc gói:"));
                         ui.add(TextEdit::singleline(&mut self.mobapt_search).desired_width(200.0).hint_text("curl, git, tmux, htop, nmap..."));
                     });
                     ui.separator();
@@ -6364,10 +6484,10 @@ impl eframe::App for RustyBoxApp {
                             .min_col_width(70.0)
                             .spacing(vec2(12.0, 6.0))
                             .show(ui, |ui| {
-                                ui.label(RichText::new("Package").strong());
-                                ui.label(RichText::new("Version").strong());
-                                ui.label(RichText::new("Description").strong());
-                                ui.label(RichText::new("Status").strong());
+                                ui.label(RichText::new(tr(lang, "Package", "Tên gói")).strong());
+                                ui.label(RichText::new(tr(lang, "Version", "Phiên bản")).strong());
+                                ui.label(RichText::new(tr(lang, "Description", "Mô tả")).strong());
+                                ui.label(RichText::new(tr(lang, "Status", "Trạng thái")).strong());
                                 ui.end_row();
 
                                 for (pkg, ver, desc, installed) in &packages {
@@ -6382,9 +6502,9 @@ impl eframe::App for RustyBoxApp {
                                     ui.label(*ver);
                                     ui.label(*desc);
                                     if *installed {
-                                        ui.label(RichText::new("Installed").color(Color32::from_rgb(46, 160, 67)).strong());
+                                        ui.label(RichText::new(tr(lang, "Installed", "Đã cài đặt")).color(Color32::from_rgb(46, 160, 67)).strong());
                                     } else {
-                                        ui.label(RichText::new("Available").color(Color32::from_rgb(56, 189, 248)));
+                                        ui.label(RichText::new(tr(lang, "Available", "Khả dụng")).color(Color32::from_rgb(56, 189, 248)));
                                     }
                                     ui.end_row();
                                 }
@@ -6392,7 +6512,7 @@ impl eframe::App for RustyBoxApp {
                     });
                     ui.add_space(8.0);
                     ui.separator();
-                    if ui.button("Close").clicked() {
+                    if ui.button(tr(lang, "Close", "Đóng")).clicked() {
                         close_apt = true;
                     }
                 });
@@ -6404,19 +6524,19 @@ impl eframe::App for RustyBoxApp {
             let mut open = self.show_macro_manager;
             let mut delete_idx: Option<usize> = None;
 
-            egui::Window::new("⚡ Manage Sysadmin Quick Macros")
+            egui::Window::new(tr(lang, "⚡ Manage Sysadmin Quick Macros", "⚡ Quản lý Macro thao tác nhanh"))
                 .open(&mut open)
                 .default_size(Vec2::new(480.0, 360.0))
                 .show(ctx, |ui| {
-                    ui.label("Add, remove, or customize single-click terminal macros:");
+                    ui.label(tr(lang, "Add, remove, or customize single-click terminal macros:", "Thêm, xóa hoặc tùy chỉnh các lệnh Macro chạy chỉ với 1 lần nhấn:"));
                     ui.separator();
 
                     ui.horizontal(|ui| {
-                        ui.label("Name:");
+                        ui.label(tr(lang, "Name:", "Tên:"));
                         ui.add(TextEdit::singleline(&mut self.new_macro_name).desired_width(100.0).hint_text("ps aux"));
-                        ui.label("Command:");
+                        ui.label(tr(lang, "Command:", "Lệnh:"));
                         ui.add(TextEdit::singleline(&mut self.new_macro_cmd).desired_width(160.0).hint_text("ps aux\n"));
-                        if ui.button("➕ Add").clicked()
+                        if ui.button(tr(lang, "➕ Add", "➕ Thêm")).clicked()
                             && !self.new_macro_name.trim().is_empty() && !self.new_macro_cmd.is_empty() {
                                 let mut cmd = self.new_macro_cmd.clone();
                                 if !cmd.ends_with('\n') {
@@ -6430,7 +6550,7 @@ impl eframe::App for RustyBoxApp {
                     });
 
                     ui.separator();
-                    ui.label(RichText::new("Existing Macros:").strong());
+                    ui.label(RichText::new(tr(lang, "Existing Macros:", "Danh sách Macro hiện có:")).strong());
 
                     ScrollArea::vertical().max_height(200.0).show(ui, |ui| {
                         for (idx, (name, cmd)) in self.quick_macros.iter().enumerate() {
@@ -6457,47 +6577,170 @@ impl eframe::App for RustyBoxApp {
         if self.show_vault {
             let mut open = self.show_vault;
             let mut close_vault = false;
+            let lang = self.language;
             let is_vault_configured = self.storage.is_vault_configured();
             let is_unlocked = self.storage.is_vault_unlocked();
 
-            egui::Window::new("🔒 Master Password & AES-256 Vault")
+            egui::Window::new(tr(lang, "🔒 Master Password & AES-256 Vault", "🔒 Mật khẩu chính & Két AES-256"))
                 .open(&mut open)
                 .collapsible(false)
                 .resizable(false)
-                .default_size(Vec2::new(500.0, 340.0))
+                .fixed_size(Vec2::new(480.0, 0.0))
                 .pivot(egui::Align2::CENTER_CENTER)
                 .default_pos(ctx.screen_rect().center())
                 .show(ctx, |ui| {
-                    ui.heading(RichText::new("RustyBox Credentials Vault").color(Color32::from_rgb(56, 189, 248)));
-                    ui.label("Military-grade AES-256-GCM encryption with Argon2id key derivation.");
+                    ui.heading(RichText::new(tr(lang, "RustyBox Credentials Vault", "Két bảo mật RustyBox")).color(Color32::from_rgb(56, 189, 248)));
+                    ui.label(
+                        RichText::new(tr(
+                            lang,
+                            "Military-grade AES-256-GCM encryption with Argon2id key derivation.",
+                            "Mã hóa AES-256-GCM kết hợp dẫn xuất khóa Argon2id an toàn tuyệt đối.",
+                        ))
+                        .size(12.0)
+                        .color(Color32::from_rgb(180, 195, 215)),
+                    );
                     ui.add_space(8.0);
+
+                    let mut trigger_setup = false;
+                    let mut trigger_unlock = false;
 
                     if !is_vault_configured {
                         // Case A: No Master Password set yet
                         ui.group(|ui| {
-                            ui.label(RichText::new("Status: Unencrypted (Plaintext)").color(Color32::from_rgb(248, 113, 113)).strong());
-                            ui.label("Set a master password to encrypt all session and credential passwords in data/RustyBox.json.");
-                            ui.add_space(8.0);
-
-                            ui.horizontal(|ui| {
-                                ui.label("New Master Password:   ");
-                                ui.add(TextEdit::singleline(&mut self.master_password).password(true).desired_width(180.0));
-                            });
-                            ui.horizontal(|ui| {
-                                ui.label("Confirm Master Password:");
-                                ui.add(TextEdit::singleline(&mut self.master_password_confirm).password(true).desired_width(180.0));
-                            });
-
+                            ui.set_width(ui.available_width());
+                            ui.label(RichText::new(tr(lang, "Status: Unencrypted (Plaintext)", "Trạng thái: Chưa mã hóa (Văn bản rõ)")).color(Color32::from_rgb(248, 113, 113)).strong());
+                            ui.add_space(2.0);
+                            ui.label(tr(
+                                lang,
+                                "Set a master password to encrypt all session and credential passwords in data/RustyBox.json.",
+                                "Đặt mật khẩu chính để mã hóa toàn bộ mật khẩu phiên và tài khoản trong data/RustyBox.json.",
+                            ));
                             ui.add_space(10.0);
-                            if ui.add(
-                                egui::Button::new(RichText::new("🔐 Enable Master Password & Encrypt Data").strong().color(Color32::WHITE))
-                                    .fill(Color32::from_rgb(34, 197, 94))
+
+                            egui::Grid::new("vault_setup_grid")
+                                .num_columns(2)
+                                .spacing([12.0, 8.0])
+                                .show(ui, |ui| {
+                                    ui.label(tr(lang, "New Master Password:", "Mật khẩu chính mới:"));
+                                    ui.add(
+                                        TextEdit::singleline(&mut self.master_password)
+                                            .password(true)
+                                            .desired_width(250.0),
+                                    );
+                                    ui.end_row();
+
+                                    ui.label(tr(lang, "Confirm Master Password:", "Nhập lại mật khẩu:"));
+                                    let confirm_edit = ui.add(
+                                        TextEdit::singleline(&mut self.master_password_confirm)
+                                            .password(true)
+                                            .desired_width(250.0),
+                                    );
+                                    if confirm_edit.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+                                        trigger_setup = true;
+                                    }
+                                    ui.end_row();
+                                });
+                            ui.add_space(4.0);
+                        });
+                    } else if !is_unlocked {
+                        // Case B: Vault is configured on disk, but currently LOCKED
+                        ui.group(|ui| {
+                            ui.set_width(ui.available_width());
+                            ui.label(RichText::new(tr(lang, "Status: 🔒 LOCKED (AES-256-GCM Encrypted on disk)", "Trạng thái: 🔒 ĐANG KHÓA (Đã mã hóa AES-256-GCM)")).color(Color32::from_rgb(251, 191, 36)).strong());
+                            ui.add_space(2.0);
+                            ui.label(tr(
+                                lang,
+                                "Enter your master password to unlock credentials for session use and management.",
+                                "Nhập mật khẩu chính để mở khóa thông tin đăng nhập cho các phiên kết nối.",
+                            ));
+                            ui.add_space(10.0);
+
+                            ui.horizontal(|ui| {
+                                ui.label(tr(lang, "Master Password:", "Mật khẩu chính:"));
+                                ui.add_space(6.0);
+                                let pass_edit = ui.add(
+                                    TextEdit::singleline(&mut self.master_password)
+                                        .password(true)
+                                        .desired_width(ui.available_width()),
+                                );
+                                if pass_edit.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+                                    trigger_unlock = true;
+                                }
+                            });
+                            ui.add_space(4.0);
+                        });
+                    } else {
+                        // Case C: Vault is configured and currently UNLOCKED
+                        ui.group(|ui| {
+                            ui.set_width(ui.available_width());
+                            ui.label(RichText::new(tr(lang, "Status: 🔓 UNLOCKED (Active in memory, AES-256-GCM on disk)", "Trạng thái: 🔓 ĐÃ MỞ KHÓA (Đang hoạt động, mã hóa trên đĩa)")).color(Color32::from_rgb(34, 197, 94)).strong());
+                            ui.add_space(2.0);
+                            ui.label(tr(
+                                lang,
+                                "Credentials in data/RustyBox.json remain securely encrypted with AES-256-GCM.",
+                                "Dữ liệu trong data/RustyBox.json luôn được mã hóa an toàn bằng AES-256-GCM.",
+                            ));
+                            ui.add_space(10.0);
+
+                            ui.horizontal(|ui| {
+                                if ui
+                                    .add_sized([165.0, 28.0], egui::Button::new(RichText::new(tr(lang, "🔒 Lock Vault Now", "🔒 Khóa két ngay")).strong()))
+                                    .clicked()
+                                {
+                                    self.storage.set_vault_key(None);
+                                    self.sessions = self.storage.load_sessions();
+                                    self.credentials = self.storage.load_credentials();
+                                    self.vault_status = Some((tr(lang, "🔒 Vault locked. Passwords masked in memory.", "🔒 Đã khóa két. Mật khẩu đã được ẩn.").into(), false));
+                                }
+                                ui.add_space(8.0);
+                                if ui
+                                    .add_sized(
+                                        [245.0, 28.0],
+                                        egui::Button::new(
+                                            RichText::new(tr(lang, "🔓 Remove Master Password", "🔓 Gỡ bỏ mật khẩu chính"))
+                                                .color(Color32::from_rgb(248, 113, 113)),
+                                        ),
+                                    )
+                                    .clicked()
+                                {
+                                    let mut new_cfg = self.storage.load_config();
+                                    new_cfg.vault = None;
+                                    self.storage.set_vault_key(None);
+                                    self.storage.set_vault_configured(false);
+                                    new_cfg.sessions = self.sessions.clone();
+                                    new_cfg.credentials = self.credentials.clone();
+                                    let _ = self.storage.save_config(&new_cfg);
+                                    self.vault_status = Some((tr(lang, "ℹ Master password removed. Passwords stored in standard format.", "ℹ Đã gỡ mật khẩu chính.").into(), false));
+                                }
+                            });
+                        });
+                    }
+
+                    if let Some((ref st, is_err)) = self.vault_status {
+                        ui.add_space(8.0);
+                        let color = if is_err { Color32::from_rgb(239, 68, 68) } else { Color32::from_rgb(34, 197, 94) };
+                        ui.label(RichText::new(st).color(color).strong());
+                    }
+
+                    ui.add_space(12.0);
+                    ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                        if ui.add_sized([96.0, 30.0], egui::Button::new(tr(lang, "Close", "Đóng"))).clicked() {
+                            close_vault = true;
+                        }
+                        ui.add_space(8.0);
+
+                        if !is_vault_configured {
+                            if ui.add_sized(
+                                [230.0, 30.0],
+                                egui::Button::new(RichText::new(tr(lang, "🔐 Enable & Encrypt Vault", "🔐 Bật mật khẩu & Mã hóa")).strong().color(Color32::WHITE))
+                                    .fill(Color32::from_rgb(34, 197, 94)),
                             ).clicked()
+                                || trigger_setup
                             {
                                 if self.master_password.is_empty() {
-                                    self.vault_status = Some(("❌ Master password cannot be empty!".into(), true));
+                                    self.vault_status = Some((tr(lang, "❌ Master password cannot be empty!", "❌ Mật khẩu chính không được để trống!").into(), true));
                                 } else if self.master_password != self.master_password_confirm {
-                                    self.vault_status = Some(("❌ Passwords do not match! Please re-type.".into(), true));
+                                    self.vault_status = Some((tr(lang, "❌ Passwords do not match! Please re-type.", "❌ Mật khẩu nhập lại không khớp!").into(), true));
                                 } else {
                                     match create_vault(&self.master_password) {
                                         Ok((meta, key)) => {
@@ -6511,7 +6754,7 @@ impl eframe::App for RustyBoxApp {
                                                 Ok(_) => {
                                                     self.master_password.clear();
                                                     self.master_password_confirm.clear();
-                                                    self.vault_status = Some(("✅ Master Password enabled! All credentials in data/RustyBox.json are now encrypted with AES-256-GCM.".into(), false));
+                                                    self.vault_status = Some((tr(lang, "✅ Master Password enabled! All credentials are now encrypted with AES-256-GCM.", "✅ Đã bật mật khẩu chính! Toàn bộ mật khẩu đã được mã hóa AES-256-GCM.").into(), false));
                                                 }
                                                 Err(e) => {
                                                     self.vault_status = Some((format!("❌ Failed to save encrypted configuration: {}", e), true));
@@ -6524,97 +6767,41 @@ impl eframe::App for RustyBoxApp {
                                     }
                                 }
                             }
-                        });
-                    } else if !is_unlocked {
-                        // Case B: Vault is configured on disk, but currently LOCKED
-                        ui.group(|ui| {
-                            ui.label(RichText::new("Status: 🔒 LOCKED (AES-256-GCM Encrypted on disk)").color(Color32::from_rgb(251, 191, 36)).strong());
-                            ui.label("Enter your master password to unlock credentials for session use and management.");
-                            ui.add_space(8.0);
-
-                            let mut trigger_unlock = false;
-                            ui.horizontal(|ui| {
-                                ui.label("Master Password:");
-                                let pass_edit = ui.add(TextEdit::singleline(&mut self.master_password).password(true).desired_width(180.0));
-                                if pass_edit.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
-                                    trigger_unlock = true;
-                                }
-                            });
-
-                            ui.add_space(10.0);
-                            if (ui.add(
-                                egui::Button::new(RichText::new("🔓 Unlock Vault").strong().color(Color32::WHITE))
-                                    .fill(Color32::from_rgb(56, 189, 248))
+                        } else if !is_unlocked
+                            && (ui.add_sized(
+                                [140.0, 30.0],
+                                egui::Button::new(RichText::new(tr(lang, "🔓 Unlock Vault", "🔓 Mở khóa két")).strong().color(Color32::WHITE))
+                                    .fill(Color32::from_rgb(56, 189, 248)),
                             ).clicked()
                                 || trigger_unlock)
-                                && let Some(ref meta) = self.storage.load_config().vault {
-                                    match unlock_vault(meta, &self.master_password) {
-                                        Ok(key) => {
-                                            self.storage.set_vault_key(Some(key));
-                                            // Decrypt in memory
-                                            for s in &mut self.sessions {
-                                                if let Some(ref p) = s.password
-                                                    && is_encrypted(p)
-                                                        && let Ok(dec) = decrypt_str(&key, p) {
-                                                            s.password = Some(dec);
-                                                        }
-                                            }
-                                            for c in &mut self.credentials {
-                                                if is_encrypted(&c.password)
-                                                    && let Ok(dec) = decrypt_str(&key, &c.password) {
-                                                        c.password = dec;
-                                                    }
-                                            }
-                                            self.master_password.clear();
-                                            self.vault_status = Some(("✅ Vault successfully unlocked! Credentials decrypted in memory.".into(), false));
-                                            close_vault = true;
-                                        }
-                                        Err(_) => {
-                                            self.vault_status = Some(("❌ Incorrect master password!".into(), true));
+                            && let Some(ref meta) = self.storage.load_config().vault
+                        {
+                            match unlock_vault(meta, &self.master_password) {
+                                Ok(key) => {
+                                    self.storage.set_vault_key(Some(key));
+                                    for s in &mut self.sessions {
+                                        if let Some(ref p) = s.password
+                                            && is_encrypted(p)
+                                            && let Ok(dec) = decrypt_str(&key, p)
+                                        {
+                                            s.password = Some(dec);
                                         }
                                     }
+                                    for c in &mut self.credentials {
+                                        if is_encrypted(&c.password)
+                                            && let Ok(dec) = decrypt_str(&key, &c.password)
+                                        {
+                                            c.password = dec;
+                                        }
+                                    }
+                                    self.master_password.clear();
+                                    self.vault_status = Some((tr(lang, "✅ Vault successfully unlocked! Credentials decrypted in memory.", "✅ Đã mở khóa két thành công!").into(), false));
+                                    close_vault = true;
                                 }
-                        });
-                    } else {
-                        // Case C: Vault is configured and currently UNLOCKED
-                        ui.group(|ui| {
-                            ui.label(RichText::new("Status: 🔓 UNLOCKED (Active in memory, AES-256-GCM on disk)").color(Color32::from_rgb(34, 197, 94)).strong());
-                            ui.label("Credentials in data/RustyBox.json remain securely encrypted with AES-256-GCM.");
-                            ui.add_space(12.0);
-
-                            ui.horizontal(|ui| {
-                                if ui.button(RichText::new("🔒 Lock Vault Now").strong()).clicked() {
-                                    self.storage.set_vault_key(None);
-                                    // Reload encrypted sessions from disk into memory so memory is masked
-                                    self.sessions = self.storage.load_sessions();
-                                    self.credentials = self.storage.load_credentials();
-                                    self.vault_status = Some(("🔒 Vault locked. Passwords masked in memory.".into(), false));
+                                Err(_) => {
+                                    self.vault_status = Some((tr(lang, "❌ Incorrect master password!", "❌ Sai mật khẩu chính!").into(), true));
                                 }
-
-                                if ui.button(RichText::new("🔓 Remove Master Password (Store Plaintext)").color(Color32::from_rgb(239, 68, 68))).clicked() {
-                                    let mut new_cfg = self.storage.load_config();
-                                    new_cfg.vault = None;
-                                    self.storage.set_vault_key(None);
-                                    self.storage.set_vault_configured(false);
-                                    new_cfg.sessions = self.sessions.clone();
-                                    new_cfg.credentials = self.credentials.clone();
-                                    let _ = self.storage.save_config(&new_cfg);
-                                    self.vault_status = Some(("ℹ Master password removed. Passwords stored in standard format.".into(), false));
-                                }
-                            });
-                        });
-                    }
-
-                    if let Some((ref st, is_err)) = self.vault_status {
-                        ui.add_space(8.0);
-                        let color = if is_err { Color32::from_rgb(239, 68, 68) } else { Color32::from_rgb(34, 197, 94) };
-                        ui.label(RichText::new(st).color(color).strong());
-                    }
-
-                    ui.add_space(14.0);
-                    ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                        if ui.add_sized([90.0, 26.0], egui::Button::new("Close")).clicked() {
-                            close_vault = true;
+                            }
                         }
                     });
                 });
@@ -6629,7 +6816,7 @@ impl eframe::App for RustyBoxApp {
             let mut open = self.show_manage_passwords;
             let mut close_dialog = false;
             let screen_center = ctx.screen_rect().center();
-            egui::Window::new("RustyBox passwords settings")
+            egui::Window::new(tr(lang, "RustyBox passwords settings", "Quản lý mật khẩu RustyBox"))
                 .open(&mut open)
                 .collapsible(false)
                 .resizable(true)
@@ -6650,9 +6837,9 @@ impl eframe::App for RustyBoxApp {
                             .inner_margin(egui::Margin::symmetric(10.0, 6.0))
                             .show(ui, |ui| {
                                 ui.horizontal(|ui| {
-                                    ui.label(RichText::new("🔒 Credentials Vault is LOCKED. Passwords on disk are encrypted with AES-256-GCM.").color(Color32::from_rgb(251, 191, 36)).strong());
+                                    ui.label(RichText::new(tr(lang, "🔒 Credentials Vault is LOCKED. Passwords on disk are encrypted with AES-256-GCM.", "🔒 Két bảo mật ĐANG KHÓA. Mật khẩu trên đĩa đang được mã hóa AES-256-GCM.")).color(Color32::from_rgb(251, 191, 36)).strong());
                                     if ui.add(
-                                        egui::Button::new(RichText::new("🔓 Unlock Vault...").strong().color(Color32::WHITE))
+                                        egui::Button::new(RichText::new(tr(lang, "🔓 Unlock Vault...", "🔓 Mở khóa két...")).strong().color(Color32::WHITE))
                                             .fill(Color32::from_rgb(217, 119, 6))
                                     ).clicked() {
                                         self.show_vault = true;
@@ -6663,20 +6850,20 @@ impl eframe::App for RustyBoxApp {
                     }
 
                     ui.horizontal(|ui| {
-                        ui.label(RichText::new("Save sessions passwords:").strong());
-                        ui.radio_value(&mut self.manage_passwords_save_mode, 0, "Always");
-                        ui.radio_value(&mut self.manage_passwords_save_mode, 1, "Never");
-                        ui.radio_value(&mut self.manage_passwords_save_mode, 2, "Ask");
+                        ui.label(RichText::new(tr(lang, "Save sessions passwords:", "Lưu mật khẩu phiên:")).strong());
+                        ui.radio_value(&mut self.manage_passwords_save_mode, 0, tr(lang, "Always", "Luôn lưu"));
+                        ui.radio_value(&mut self.manage_passwords_save_mode, 1, tr(lang, "Never", "Không bao giờ"));
+                        ui.radio_value(&mut self.manage_passwords_save_mode, 2, tr(lang, "Ask", "Luôn hỏi"));
                     });
-                    ui.checkbox(&mut self.manage_passwords_save_ssh_keys, "Save SSH keys passphrases as well");
+                    ui.checkbox(&mut self.manage_passwords_save_ssh_keys, tr(lang, "Save SSH keys passphrases as well", "Lưu cả cụm mật khẩu khóa SSH"));
                     ui.add_space(6.0);
 
                     // 2. Tabs: Passwords / Credentials
                     ui.horizontal(|ui| {
-                        if ui.selectable_label(self.manage_passwords_tab == 0, "🔑 Passwords").clicked() {
+                        if ui.selectable_label(self.manage_passwords_tab == 0, tr(lang, "🔑 Passwords", "🔑 Mật khẩu đã lưu")).clicked() {
                             self.manage_passwords_tab = 0;
                         }
-                        if ui.selectable_label(self.manage_passwords_tab == 1, "👥 Credentials").clicked() {
+                        if ui.selectable_label(self.manage_passwords_tab == 1, tr(lang, "👥 Credentials", "👥 Hồ sơ đăng nhập")).clicked() {
                             self.manage_passwords_tab = 1;
                         }
                     });
@@ -6685,10 +6872,10 @@ impl eframe::App for RustyBoxApp {
                     if self.manage_passwords_tab == 0 {
                         // 3. Search Filter & Show Passwords Toggle
                         ui.horizontal(|ui| {
-                            ui.label("🔍 Filter:");
+                            ui.label(tr(lang, "🔍 Filter:", "🔍 Lọc:"));
                             ui.add(
                                 TextEdit::singleline(&mut self.manage_passwords_search)
-                                    .hint_text("Search username or IP / server...")
+                                    .hint_text(tr(lang, "Search username or IP / server...", "Tìm tên người dùng hoặc IP / máy chủ..."))
                                     .desired_width(220.0),
                             );
                             if !self.manage_passwords_search.is_empty() && ui.small_button("✖").clicked() {
@@ -6696,7 +6883,7 @@ impl eframe::App for RustyBoxApp {
                             }
 
                             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                                ui.checkbox(&mut self.manage_passwords_show_all, "👁 Show passwords");
+                                ui.checkbox(&mut self.manage_passwords_show_all, tr(lang, "👁 Show passwords", "👁 Hiện mật khẩu"));
                             });
                         });
                         ui.add_space(4.0);
@@ -6725,11 +6912,11 @@ impl eframe::App for RustyBoxApp {
                                         .striped(true)
                                         .spacing([14.0, 6.0])
                                         .show(ui, |ui| {
-                                            ui.label(RichText::new("Protocol").strong().color(Color32::from_rgb(56, 189, 248)));
-                                            ui.label(RichText::new("Username").strong().color(Color32::from_rgb(56, 189, 248)));
-                                            ui.label(RichText::new("Servername").strong().color(Color32::from_rgb(56, 189, 248)));
-                                            ui.label(RichText::new("Password").strong().color(Color32::from_rgb(56, 189, 248)));
-                                            ui.label(RichText::new("Action").strong().color(Color32::from_rgb(56, 189, 248)));
+                                            ui.label(RichText::new(tr(lang, "Protocol", "Giao thức")).strong().color(Color32::from_rgb(56, 189, 248)));
+                                            ui.label(RichText::new(tr(lang, "Username", "Tài khoản")).strong().color(Color32::from_rgb(56, 189, 248)));
+                                            ui.label(RichText::new(tr(lang, "Servername", "Máy chủ")).strong().color(Color32::from_rgb(56, 189, 248)));
+                                            ui.label(RichText::new(tr(lang, "Password", "Mật khẩu")).strong().color(Color32::from_rgb(56, 189, 248)));
+                                            ui.label(RichText::new(tr(lang, "Action", "Thao tác")).strong().color(Color32::from_rgb(56, 189, 248)));
                                             ui.end_row();
 
                                             let mut row_count = 0;
@@ -6783,19 +6970,19 @@ impl eframe::App for RustyBoxApp {
                                                         ui.label(RichText::new(pw_display).family(egui::FontFamily::Monospace).color(pw_col));
                                                         if let Some(ref plain) = decrypted_pw {
                                                             let eye_icon = if is_unmasked { "🔒" } else { "👁" };
-                                                            if ui.small_button(eye_icon).on_hover_text("Toggle password visibility for this row").clicked() {
+                                                            if ui.small_button(eye_icon).on_hover_text(tr(lang, "Toggle password visibility for this row", "Hiện / ẩn mật khẩu cho dòng này")).clicked() {
                                                                 if let Some(pos) = self.manage_passwords_unmasked_ids.iter().position(|id| id == &sess.id) {
                                                                     self.manage_passwords_unmasked_ids.remove(pos);
                                                                 } else {
                                                                     self.manage_passwords_unmasked_ids.push(sess.id.clone());
                                                                 }
                                                             }
-                                                            if ui.small_button("📋").on_hover_text("Copy password to clipboard").clicked() {
+                                                            if ui.small_button("📋").on_hover_text(tr(lang, "Copy password to clipboard", "Sao chép mật khẩu vào clipboard")).clicked() {
                                                                 copy_text_to_clipboard(ui, plain);
-                                                                self.status_toast = Some(("Password copied to clipboard".into(), std::time::Instant::now()));
+                                                                self.status_toast = Some((tr(lang, "Password copied to clipboard", "Đã sao chép mật khẩu vào clipboard").into(), std::time::Instant::now()));
                                                             }
                                                         } else {
-                                                            if ui.small_button("🔓").on_hover_text("Unlock Vault to view and copy decrypted password").clicked() {
+                                                            if ui.small_button("🔓").on_hover_text(tr(lang, "Unlock Vault to view and copy decrypted password", "Mở khóa Két để xem và sao chép mật khẩu")).clicked() {
                                                                 self.show_vault = true;
                                                             }
                                                         }
@@ -6804,7 +6991,7 @@ impl eframe::App for RustyBoxApp {
                                                     ui.horizontal(|ui| {
                                                         ui.add_space(28.0);
                                                         if ui.add(egui::Button::new(RichText::new("🗑").color(Color32::from_rgb(248, 113, 113))).small())
-                                                            .on_hover_text("Delete saved password")
+                                                            .on_hover_text(tr(lang, "Delete saved password", "Xóa mật khẩu đã lưu"))
                                                             .clicked()
                                                         {
                                                             to_delete_id = Some(sess.id.clone());
@@ -6815,7 +7002,7 @@ impl eframe::App for RustyBoxApp {
                                             }
 
                                             if row_count == 0 {
-                                                ui.label(RichText::new("No saved passwords matching filter.").weak());
+                                                ui.label(RichText::new(tr(lang, "No saved passwords matching filter.", "Không tìm thấy mật khẩu nào khớp bộ lọc.")).weak());
                                                 ui.end_row();
                                             }
                                         });
@@ -6834,22 +7021,22 @@ impl eframe::App for RustyBoxApp {
                         ui.add_space(4.0);
                         // Action buttons
                         ui.horizontal(|ui| {
-                            if ui.button("⚡ Delete all").clicked() {
+                            if ui.button(tr(lang, "⚡ Delete all", "⚡ Xóa tất cả")).clicked() {
                                 for s in &mut self.sessions {
                                     s.password = None;
                                 }
                                 let _ = self.storage.save_sessions(&self.sessions);
                             }
-                            if ui.button("📁 Export to file").clicked() {
+                            if ui.button(tr(lang, "📁 Export to file", "📁 Xuất ra tệp")).clicked() {
                                 // Export action
                             }
                         });
                     } else {
                         // Credentials Tab (MobaXterm User Credentials Profiles)
                         ui.horizontal(|ui| {
-                            ui.label(RichText::new("Shared Credentials & User Profiles").strong());
+                            ui.label(RichText::new(tr(lang, "Shared Credentials & User Profiles", "Hồ sơ tài khoản & mật khẩu dùng chung")).strong());
                             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                                if ui.button(RichText::new("➕ New credential / user").strong().color(Color32::from_rgb(56, 189, 248))).clicked() {
+                                if ui.button(RichText::new(tr(lang, "➕ New credential / user", "➕ Thêm tài khoản mới")).strong().color(Color32::from_rgb(56, 189, 248))).clicked() {
                                     self.new_cred_name.clear();
                                     self.new_cred_user.clear();
                                     self.new_cred_password.clear();
@@ -6880,10 +7067,10 @@ impl eframe::App for RustyBoxApp {
                                         .striped(true)
                                         .spacing([14.0, 6.0])
                                         .show(ui, |ui| {
-                                            ui.label(RichText::new("Profile Name").strong().color(Color32::from_rgb(56, 189, 248)));
-                                            ui.label(RichText::new("Username").strong().color(Color32::from_rgb(56, 189, 248)));
-                                            ui.label(RichText::new("Password").strong().color(Color32::from_rgb(56, 189, 248)));
-                                            ui.label(RichText::new("Action").strong().color(Color32::from_rgb(56, 189, 248)));
+                                            ui.label(RichText::new(tr(lang, "Profile Name", "Tên hồ sơ")).strong().color(Color32::from_rgb(56, 189, 248)));
+                                            ui.label(RichText::new(tr(lang, "Username", "Tài khoản")).strong().color(Color32::from_rgb(56, 189, 248)));
+                                            ui.label(RichText::new(tr(lang, "Password", "Mật khẩu")).strong().color(Color32::from_rgb(56, 189, 248)));
+                                            ui.label(RichText::new(tr(lang, "Action", "Thao tác")).strong().color(Color32::from_rgb(56, 189, 248)));
                                             ui.end_row();
 
                                             for (c_idx, cred) in self.credentials.iter().enumerate() {
@@ -6913,7 +7100,7 @@ impl eframe::App for RustyBoxApp {
                                                     ui.label(RichText::new(c_display).family(egui::FontFamily::Monospace).color(c_col));
                                                     if let Some(ref plain) = decrypted_cred_pw {
                                                         let eye = if cred_unmasked { "🔒" } else { "👁" };
-                                                        if ui.small_button(eye).on_hover_text("Toggle password visibility").clicked() {
+                                                        if ui.small_button(eye).on_hover_text(tr(lang, "Toggle password visibility", "Hiện / ẩn mật khẩu")).clicked() {
                                                             let key = format!("cred_{}", c_idx);
                                                             if let Some(pos) = self.manage_passwords_unmasked_ids.iter().position(|id| id == &key) {
                                                                 self.manage_passwords_unmasked_ids.remove(pos);
@@ -6921,12 +7108,12 @@ impl eframe::App for RustyBoxApp {
                                                                 self.manage_passwords_unmasked_ids.push(key);
                                                             }
                                                         }
-                                                        if ui.small_button("📋").on_hover_text("Copy password to clipboard").clicked() {
+                                                        if ui.small_button("📋").on_hover_text(tr(lang, "Copy password to clipboard", "Sao chép mật khẩu vào clipboard")).clicked() {
                                                             copy_text_to_clipboard(ui, plain);
-                                                            self.status_toast = Some(("Credential password copied to clipboard".into(), std::time::Instant::now()));
+                                                            self.status_toast = Some((tr(lang, "Credential password copied to clipboard", "Đã sao chép mật khẩu tài khoản vào clipboard").into(), std::time::Instant::now()));
                                                         }
                                                     } else {
-                                                        if ui.small_button("🔓").on_hover_text("Unlock Vault to view and copy decrypted password").clicked() {
+                                                        if ui.small_button("🔓").on_hover_text(tr(lang, "Unlock Vault to view and copy decrypted password", "Mở khóa Két để xem và sao chép mật khẩu")).clicked() {
                                                             self.show_vault = true;
                                                         }
                                                     }
@@ -6934,7 +7121,7 @@ impl eframe::App for RustyBoxApp {
                                                 ui.horizontal(|ui| {
                                                     ui.add_space(28.0);
                                                     if ui.add(egui::Button::new(RichText::new("🗑").color(Color32::from_rgb(248, 113, 113))).small())
-                                                        .on_hover_text("Delete credential")
+                                                        .on_hover_text(tr(lang, "Delete credential", "Xóa hồ sơ đăng nhập"))
                                                         .clicked()
                                                     {
                                                         to_delete_cred_idx = Some(c_idx);
@@ -6944,7 +7131,7 @@ impl eframe::App for RustyBoxApp {
                                             }
 
                                             if self.credentials.is_empty() {
-                                                ui.label(RichText::new("No shared credentials configured. Click '+ New credential / user' above to add one.").weak());
+                                                ui.label(RichText::new(tr(lang, "No shared credentials configured. Click '+ New credential / user' above to add one.", "Chưa có hồ sơ đăng nhập nào. Nhấn '+ Thêm tài khoản mới' ở trên để tạo.")).weak());
                                                 ui.end_row();
                                             }
                                         });
@@ -6961,14 +7148,14 @@ impl eframe::App for RustyBoxApp {
                     ui.separator();
                     // 5. Storage Location & Master Password
                     ui.horizontal(|ui| {
-                        ui.label("Where passwords are saved:");
-                        ui.label(RichText::new("Configuration file (data/RustyBox.json)").strong().color(Color32::from_rgb(100, 220, 100)));
+                        ui.label(tr(lang, "Where passwords are saved:", "Nơi lưu mật khẩu:"));
+                        ui.label(RichText::new(tr(lang, "Configuration file (data/RustyBox.json)", "Tệp cấu hình (data/RustyBox.json)")).strong().color(Color32::from_rgb(100, 220, 100)));
                         let (vault_txt, vault_col) = if !is_vault_configured {
-                            ("🔒 Set Master Password...", Color32::from_rgb(56, 189, 248))
+                            (tr(lang, "🔒 Set Master Password...", "🔒 Đặt mật khẩu chính..."), Color32::from_rgb(56, 189, 248))
                         } else if is_vault_unlocked {
-                            ("🔓 Master Password (Unlocked)", Color32::from_rgb(34, 197, 94))
+                            (tr(lang, "🔓 Master Password (Unlocked)", "🔓 Mật khẩu chính (Đã mở khóa)"), Color32::from_rgb(34, 197, 94))
                         } else {
-                            ("🔒 Master Password (Locked)", Color32::from_rgb(251, 191, 36))
+                            (tr(lang, "🔒 Master Password (Locked)", "🔒 Mật khẩu chính (Đang khóa)"), Color32::from_rgb(251, 191, 36))
                         };
                         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                             if ui.button(RichText::new(vault_txt).color(vault_col).strong()).clicked() {
@@ -6980,10 +7167,10 @@ impl eframe::App for RustyBoxApp {
                     ui.add_space(8.0);
                     ui.horizontal(|ui| {
                         ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                            if ui.button("✖ Cancel").clicked() {
+                            if ui.button(tr(lang, "✖ Cancel", "✖ Hủy")).clicked() {
                                 close_dialog = true;
                             }
-                            if ui.button("✔ OK").clicked() {
+                            if ui.button(tr(lang, "✔ OK", "✔ Đồng ý")).clicked() {
                                 let _ = self.storage.save_sessions(&self.sessions);
                                 let _ = self.storage.save_credentials(&self.credentials);
                                 let _ = self.storage.save_password_settings(
@@ -7004,7 +7191,7 @@ impl eframe::App for RustyBoxApp {
         // Add New Credential / User Profile Modal
         if self.show_new_cred_modal {
             let mut open = self.show_new_cred_modal;
-            egui::Window::new("➕ New User Credential Profile")
+            egui::Window::new(tr(lang, "➕ New User Credential Profile", "➕ Tạo hồ sơ đăng nhập mới"))
                 .open(&mut open)
                 .collapsible(false)
                 .resizable(false)
@@ -7013,12 +7200,12 @@ impl eframe::App for RustyBoxApp {
                 .show(ctx, |ui| {
                     ui.group(|ui| {
                         ui.set_width(ui.available_width());
-                        ui.label(RichText::new("Enter user credentials details:").strong().size(13.5));
+                        ui.label(RichText::new(tr(lang, "Enter user credentials details:", "Nhập thông tin tài khoản:")).strong().size(13.5));
                         ui.add_space(6.0);
 
                         egui::Grid::new("new_cred_grid").num_columns(2).spacing([12.0, 8.0]).show(ui, |ui| {
-                            ui.label(RichText::new("Profile name:").size(12.5).color(Color32::from_rgb(226, 232, 240)));
-                            ui.add(TextEdit::singleline(&mut self.new_cred_name).desired_width(260.0).margin(Margin::symmetric(8.0, 5.0)).hint_text("e.g. Root VPS"));
+                            ui.label(RichText::new(tr(lang, "Profile name:", "Tên hồ sơ:")).size(12.5).color(Color32::from_rgb(226, 232, 240)));
+                            ui.add(TextEdit::singleline(&mut self.new_cred_name).desired_width(260.0).margin(Margin::symmetric(8.0, 5.0)).hint_text(tr(lang, "e.g. Root VPS", "VD: Root VPS")));
                             ui.end_row();
 
                             // Filter out bracket characters [] {} () to prevent INI/JSON section parsing corruption
@@ -7026,18 +7213,18 @@ impl eframe::App for RustyBoxApp {
                                 self.new_cred_name.retain(|c| !matches!(c, '[' | ']' | '{' | '}' | '<' | '>'));
                             }
 
-                            ui.label(RichText::new("Username:").size(12.5).color(Color32::from_rgb(226, 232, 240)));
-                            ui.add(TextEdit::singleline(&mut self.new_cred_user).desired_width(260.0).margin(Margin::symmetric(8.0, 5.0)).hint_text("e.g. root / admin"));
+                            ui.label(RichText::new(tr(lang, "Username:", "Tên đăng nhập:")).size(12.5).color(Color32::from_rgb(226, 232, 240)));
+                            ui.add(TextEdit::singleline(&mut self.new_cred_user).desired_width(260.0).margin(Margin::symmetric(8.0, 5.0)).hint_text(tr(lang, "e.g. root / admin", "VD: root / admin")));
                             ui.end_row();
 
-                            ui.label(RichText::new("Password:").size(12.5).color(Color32::from_rgb(226, 232, 240)));
-                            ui.add(TextEdit::singleline(&mut self.new_cred_password).password(true).desired_width(260.0).margin(Margin::symmetric(8.0, 5.0)).hint_text("Password"));
+                            ui.label(RichText::new(tr(lang, "Password:", "Mật khẩu:")).size(12.5).color(Color32::from_rgb(226, 232, 240)));
+                            ui.add(TextEdit::singleline(&mut self.new_cred_password).password(true).desired_width(260.0).margin(Margin::symmetric(8.0, 5.0)).hint_text(tr(lang, "Password", "Mật khẩu")));
                             ui.end_row();
                         });
                     });
                     ui.add_space(6.0);
                     ui.horizontal(|ui| {
-                        if (ui.button("✔ Save Credential").clicked() || ui.input(|i| i.key_pressed(egui::Key::Enter)))
+                        if (ui.button(tr(lang, "✔ Save Credential", "✔ Lưu hồ sơ")).clicked() || ui.input(|i| i.key_pressed(egui::Key::Enter)))
                             && !self.new_cred_user.trim().is_empty() {
                                 let name = if self.new_cred_name.trim().is_empty() {
                                     self.new_cred_user.trim().to_string()
@@ -7052,7 +7239,7 @@ impl eframe::App for RustyBoxApp {
                                 let _ = self.storage.save_credentials(&self.credentials);
                                 self.show_new_cred_modal = false;
                             }
-                        if ui.button("✖ Cancel").clicked() || ui.input(|i| i.key_pressed(egui::Key::Escape)) {
+                        if ui.button(tr(lang, "✖ Cancel", "✖ Hủy")).clicked() || ui.input(|i| i.key_pressed(egui::Key::Escape)) {
                             self.show_new_cred_modal = false;
                         }
                     });
@@ -7122,10 +7309,10 @@ impl eframe::App for RustyBoxApp {
                         }
                         1 => {
                             // Terminal Tab
-                            ui.label(RichText::new("Default Terminal Settings").strong());
+                            ui.label(RichText::new(tr(lang, "Default Terminal Settings", "Cài đặt Terminal mặc định")).strong());
                             ui.add_space(4.0);
                             ui.horizontal(|ui| {
-                                ui.label("Terminal Font:");
+                                ui.label(tr(lang, "Terminal Font:", "Phông chữ Terminal:"));
                                 let prev_font = self.terminal_font_family.clone();
                                 egui::ComboBox::from_id_salt("global_settings_terminal_font")
                                     .selected_text(crate::terminal::fonts::terminal_font_display_name(&self.terminal_font_family))
@@ -7143,7 +7330,7 @@ impl eframe::App for RustyBoxApp {
                                 }
                             });
                             ui.horizontal(|ui| {
-                                ui.label("Default Terminal Font Size:");
+                                ui.label(tr(lang, "Default Terminal Font Size:", "Cỡ chữ Terminal mặc định:"));
                                 ui.add(egui::DragValue::new(&mut self.font_size).range(9.0..=28.0).speed(0.5));
                                 ui.label("px");
                             });
@@ -7151,7 +7338,7 @@ impl eframe::App for RustyBoxApp {
                             ui.group(|ui| {
                                 ui.set_width(ui.available_width());
                                 ui.horizontal(|ui| {
-                                    ui.label(RichText::new("Font Preview:").weak().size(11.0));
+                                    ui.label(RichText::new(tr(lang, "Font Preview:", "Xem trước phông chữ:")).weak().size(11.0));
                                     ui.label(RichText::new(format!("({} @ {:.0}px)", crate::terminal::fonts::terminal_font_display_name(&self.terminal_font_family), self.font_size)).weak().size(11.0));
                                 });
                                 ui.add_space(2.0);
@@ -7164,7 +7351,7 @@ impl eframe::App for RustyBoxApp {
                             });
                             ui.add_space(4.0);
                             ui.horizontal(|ui| {
-                                ui.label("Terminal Color Scheme:");
+                                ui.label(tr(lang, "Terminal Color Scheme:", "Bảng màu Terminal:"));
                                 for t in crate::terminal::vt_screen::TerminalTheme::all() {
                                     if ui.selectable_value(&mut self.theme, *t, t.name()).clicked() {
                                         if let Some(tab) = self.open_tabs.get_mut(self.active_tab_idx)
@@ -7177,18 +7364,18 @@ impl eframe::App for RustyBoxApp {
                                 }
                             });
                             ui.add_space(6.0);
-                            ui.checkbox(&mut self.paste_protection_enabled, "Display confirmation dialog when pasting multiple lines");
-                            if ui.checkbox(&mut self.copy_on_select, "Automatically copy selected text to clipboard (Copy on select)").changed() {
+                            ui.checkbox(&mut self.paste_protection_enabled, tr(lang, "Display confirmation dialog when pasting multiple lines", "Hiển thị hộp thoại xác nhận khi dán nhiều dòng"));
+                            if ui.checkbox(&mut self.copy_on_select, tr(lang, "Automatically copy selected text to clipboard (Copy on select)", "Tự động sao chép vùng chọn vào clipboard")).changed() {
                                 let _ = self.persist_preferences();
                             }
                             ui.add_space(6.0);
-                            if ui.checkbox(&mut self.auto_log_sessions, "Automatically log all terminal sessions to file").changed() {
+                            if ui.checkbox(&mut self.auto_log_sessions, tr(lang, "Automatically log all terminal sessions to file", "Tự động ghi nhật ký tất cả phiên Terminal ra tệp")).changed() {
                                 let _ = self.storage.save_logging_settings(self.auto_log_sessions, &self.default_log_directory);
                             }
                             if self.auto_log_sessions {
                                 ui.horizontal(|ui| {
                                     let placeholder = self.storage.data_dir().join("logs").to_string_lossy().to_string();
-                                    ui.label("Log directory:");
+                                    ui.label(tr(lang, "Log directory:", "Thư mục nhật ký:"));
                                     let log_dir_resp = ui.add(
                                         TextEdit::singleline(&mut self.default_log_directory)
                                             .hint_text(&placeholder)
@@ -7197,7 +7384,7 @@ impl eframe::App for RustyBoxApp {
                                     if log_dir_resp.lost_focus() || log_dir_resp.changed() {
                                         let _ = self.storage.save_logging_settings(self.auto_log_sessions, &self.default_log_directory);
                                     }
-                                    if ui.small_button("📂 Open Logs").on_hover_text("Open log folder in File Explorer").clicked() {
+                                    if ui.small_button(tr(lang, "📂 Open Logs", "📂 Mở nhật ký")).on_hover_text(tr(lang, "Open log folder in File Explorer", "Mở thư mục nhật ký trong trình quản lý tệp")).clicked() {
                                         let target = if !self.default_log_directory.trim().is_empty() {
                                             std::path::PathBuf::from(self.default_log_directory.trim())
                                         } else {
@@ -7220,60 +7407,60 @@ impl eframe::App for RustyBoxApp {
                                         }
                                     }
                                 });
-                                ui.label(RichText::new("ℹ Logs are organized by day (YYYY-MM-DD) and retained for up to 5 days.").weak().size(11.0));
+                                ui.label(RichText::new(tr(lang, "ℹ Logs are organized by day (YYYY-MM-DD) and retained for up to 5 days.", "ℹ Nhật ký được phân loại theo ngày (YYYY-MM-DD) và lưu tối đa 5 ngày.")).weak().size(11.0));
                             }
                             ui.add_space(6.0);
                             ui.horizontal(|ui| {
                                 let mut hl_en = self.highlight_rules_enabled;
-                                if ui.checkbox(&mut hl_en, "Enable Auto-Highlight Keywords in Terminal (ZOC Style)").changed() {
+                                if ui.checkbox(&mut hl_en, tr(lang, "Enable Auto-Highlight Keywords in Terminal (ZOC Style)", "Bật tự động tô màu từ khóa trong Terminal (kiểu ZOC)")).changed() {
                                     self.highlight_rules_enabled = hl_en;
                                     let _ = self.storage.save_highlight_rules(&self.highlight_rules, self.highlight_rules_enabled);
                                 }
-                                if ui.button("🎨 Configure Highlight Rules...").clicked() {
+                                if ui.button(tr(lang, "🎨 Configure Highlight Rules...", "🎨 Cấu hình quy tắc tô màu...")).clicked() {
                                     self.show_highlight_modal = true;
                                 }
                             });
                         }
                         2 => {
                             // X11 Tab
-                            ui.label(RichText::new("Embedded X11 Server Configuration").strong());
+                            ui.label(RichText::new(tr(lang, "Embedded X11 Server Configuration", "Cấu hình máy chủ X11 tích hợp")).strong());
                             ui.add_space(4.0);
-                            ui.label("• Automatically start X server at RustyBox startup");
-                            ui.label("• Hardware-accelerated OpenGL rendering (WGL)");
-                            ui.label("• Multiwindow mode (transparent desktop integration)");
+                            ui.label(tr(lang, "• Automatically start X server at RustyBox startup", "• Tự động khởi chạy máy chủ X khi mở RustyBox"));
+                            ui.label(tr(lang, "• Hardware-accelerated OpenGL rendering (WGL)", "• Tăng tốc phần cứng OpenGL (WGL)"));
+                            ui.label(tr(lang, "• Multiwindow mode (transparent desktop integration)", "• Chế độ đa cửa sổ (tích hợp trực tiếp vào màn hình nền)"));
                         }
                         3 => {
                             // SSH Tab
-                            ui.label(RichText::new("Global SSH Engine & Agent Settings").strong());
+                            ui.label(RichText::new(tr(lang, "Global SSH Engine & Agent Settings", "Cài đặt SSH & Agent toàn cục")).strong());
                             ui.add_space(4.0);
-                            ui.label("• Send SSH keepalive packets every 60 seconds (prevent connection drops)");
-                            ui.label("• Use external Pageant / Windows OpenSSH Agent");
-                            ui.label("• Use internal RustyBox Agent SSH key agent at startup");
+                            ui.label(tr(lang, "• Send SSH keepalive packets every 60 seconds (prevent connection drops)", "• Gửi gói giữ kết nối SSH mỗi 60 giây (tránh rớt mạng)"));
+                            ui.label(tr(lang, "• Use external Pageant / Windows OpenSSH Agent", "• Dùng Pageant / Windows OpenSSH Agent bên ngoài"));
+                            ui.label(tr(lang, "• Use internal RustyBox Agent SSH key agent at startup", "• Dùng RustyBox Agent nội bộ khi khởi động"));
                         }
                         4 => {
                             // RDP Tab
-                            ui.label(RichText::new("Global Remote Desktop (RDP) Settings").strong());
+                            ui.label(RichText::new(tr(lang, "Global Remote Desktop (RDP) Settings", "Cài đặt Remote Desktop (RDP) toàn cục")).strong());
                             ui.add_space(4.0);
-                            ui.label("• Redirect local clipboard to remote Windows sessions");
-                            ui.label("• Auto-reconnect on transient network drop");
+                            ui.label(tr(lang, "• Redirect local clipboard to remote Windows sessions", "• Đồng bộ clipboard cục bộ vào phiên Windows từ xa"));
+                            ui.label(tr(lang, "• Auto-reconnect on transient network drop", "• Tự động kết nối lại khi mất mạng tạm thời"));
                         }
                         5 => {
                             // Display Tab
-                            ui.label(RichText::new("Interface & Display Preferences").strong());
+                            ui.label(RichText::new(tr(lang, "Interface & Display Preferences", "Tùy chọn giao diện & hiển thị")).strong());
                             ui.add_space(4.0);
                             ui.horizontal(|ui| {
-                                ui.label("UI Font & Interface Zoom:");
+                                ui.label(tr(lang, "UI Font & Interface Zoom:", "Tỉ lệ phóng to giao diện:"));
                                 let mut pct = (self.ui_scale * 100.0).round() as i32;
                                 if ui.add(egui::Slider::new(&mut pct, 70..=200).suffix("%").step_by(5.0)).changed() {
                                     self.ui_scale = pct as f32 / 100.0;
                                 }
-                                if ui.button("↺ Reset 100%").clicked() {
+                                if ui.button(tr(lang, "↺ Reset 100%", "↺ Đặt lại 100%")).clicked() {
                                     self.ui_scale = 1.0;
                                 }
                             });
                             ui.add_space(4.0);
                             ui.horizontal(|ui| {
-                                ui.label("Preset UI Scales:");
+                                ui.label(tr(lang, "Preset UI Scales:", "Mức thu phóng nhanh:"));
                                 for s in [0.8, 0.9, 1.0, 1.1, 1.25, 1.5] {
                                     let label = format!("{:.0}%", s * 100.0);
                                     if ui.selectable_label((self.ui_scale - s).abs() < 0.02, label).clicked() {
@@ -7282,18 +7469,18 @@ impl eframe::App for RustyBoxApp {
                                 }
                             });
                             ui.add_space(6.0);
-                            ui.label("• Display left sidebar at startup");
-                            ui.label("• Use compact tab bar height");
-                            ui.label("• Ask for confirmation when closing window with active sessions");
+                            ui.label(tr(lang, "• Display left sidebar at startup", "• Hiển thị thanh bên trái khi khởi động"));
+                            ui.label(tr(lang, "• Use compact tab bar height", "• Dùng thanh tab gọn nhẹ"));
+                            ui.label(tr(lang, "• Ask for confirmation when closing window with active sessions", "• Hỏi xác nhận khi đóng cửa sổ có phiên đang chạy"));
                         }
                         6 => {
                             // Misc Tab
-                            ui.label(RichText::new("Miscellaneous Settings").strong());
+                            ui.label(RichText::new(tr(lang, "Miscellaneous Settings", "Cài đặt khác")).strong());
                             ui.add_space(4.0);
-                            ui.label("Integrate RustyBox into Windows Explorer context menu:");
-                            ui.label("• Add 'Open RustyBox terminal here' on folders");
-                            ui.label("• Add 'Run script with RustyBox shell' on .sh files");
-                            ui.label("• Add 'Edit with RustyBox Quick Editor' on text/config files");
+                            ui.label(tr(lang, "Integrate RustyBox into Windows Explorer context menu:", "Tích hợp RustyBox vào menu chuột phải Windows Explorer:"));
+                            ui.label(tr(lang, "• Add 'Open RustyBox terminal here' on folders", "• Thêm 'Mở Terminal RustyBox tại đây' cho thư mục"));
+                            ui.label(tr(lang, "• Add 'Run script with RustyBox shell' on .sh files", "• Thêm 'Chạy script bằng RustyBox' cho tệp .sh"));
+                            ui.label(tr(lang, "• Add 'Edit with RustyBox Quick Editor' on text/config files", "• Thêm 'Sửa bằng Trình soạn thảo RustyBox' cho tệp văn bản/cấu hình"));
                         }
                         _ => {}
                     }
@@ -7302,12 +7489,12 @@ impl eframe::App for RustyBoxApp {
                     ui.separator();
                     ui.add_space(4.0);
                     ui.horizontal(|ui| {
-                        if ui.button(RichText::new("💾 Save Preferences").strong().color(Color32::from_rgb(56, 189, 248))).clicked() {
+                        if ui.button(RichText::new(tr(lang, "💾 Save Preferences", "💾 Lưu tùy chọn")).strong().color(Color32::from_rgb(56, 189, 248))).clicked() {
                             let _ = self.storage.save_sessions(&self.sessions);
                             let _ = self.persist_preferences();
                             close_dialog = true;
                         }
-                        if ui.button("Close").clicked() {
+                        if ui.button(tr(lang, "Close", "Đóng")).clicked() {
                             close_dialog = true;
                         }
                     });
@@ -7322,31 +7509,31 @@ impl eframe::App for RustyBoxApp {
         if self.show_hotkeys_dialog {
             let mut open = self.show_hotkeys_dialog;
             let mut close_dialog = false;
-            egui::Window::new("⌨ Keyboard Shortcuts (Hotkeys Reference)")
+            egui::Window::new(tr(lang, "⌨ Keyboard Shortcuts (Hotkeys Reference)", "⌨ Phím tắt hệ thống (Tra cứu nhanh)"))
                 .open(&mut open)
                 .default_size(Vec2::new(480.0, 380.0))
                 .show(ctx, |ui| {
-                    ui.label(RichText::new("Default Keyboard Shortcuts:").strong());
+                    ui.label(RichText::new(tr(lang, "Default Keyboard Shortcuts:", "Phím tắt mặc định:")).strong());
                     ui.separator();
 
                     ScrollArea::vertical().show(ui, |ui| {
                         let shortcuts = [
-                            ("Ctrl + T", "Open new Local Terminal tab"),
-                            ("Ctrl + Shift + W", "Close active tab (or Ctrl+W if exited)"),
-                            ("Ctrl + PageUp/Down", "Switch between terminal tabs"),
-                            ("Ctrl + Shift + C/V", "Copy / Paste terminal text"),
-                            ("Ctrl + F", "Find in active terminal screen buffer"),
-                            ("Ctrl + L", "Clear terminal screen buffer"),
-                            ("Ctrl + C", "Send SIGINT interrupt signal to process"),
-                            ("Ctrl + D", "Send EOF (End of File) / logout"),
-                            ("Ctrl + Z", "Send SIGTSTP suspend signal"),
-                            ("Ctrl + A", "Move cursor to beginning of line"),
-                            ("Ctrl + E", "Move cursor to end of line"),
-                            ("Ctrl + K", "Cut text from cursor to end of line"),
-                            ("Ctrl + U", "Cut whole line before cursor"),
-                            ("Ctrl + + / -", "Zoom in / out terminal font size"),
-                            ("Ctrl + Shift + +/-", "Scale entire application UI"),
-                            ("Right Click", "Context Menu: Copy, Paste, Clear, Save output"),
+                            ("Ctrl + T", tr(lang, "Open new Local Terminal tab", "Mở tab Terminal cục bộ mới")),
+                            ("Ctrl + Shift + W", tr(lang, "Close active tab (or Ctrl+W if exited)", "Đóng tab đang mở (hoặc Ctrl+W nếu đã thoát)")),
+                            ("Ctrl + PageUp/Down", tr(lang, "Switch between terminal tabs", "Chuyển đổi qua lại giữa các tab Terminal")),
+                            ("Ctrl + Shift + C/V", tr(lang, "Copy / Paste terminal text", "Sao chép / Dán văn bản Terminal")),
+                            ("Ctrl + F", tr(lang, "Find in active terminal screen buffer", "Tìm kiếm trong bộ đệm Terminal hiện tại")),
+                            ("Ctrl + L", tr(lang, "Clear terminal screen buffer", "Xóa trắng màn hình Terminal")),
+                            ("Ctrl + C", tr(lang, "Send SIGINT interrupt signal to process", "Gửi tín hiệu ngắt SIGINT tới tiến trình")),
+                            ("Ctrl + D", tr(lang, "Send EOF (End of File) / logout", "Gửi EOF (Kết thúc tệp) / đăng xuất")),
+                            ("Ctrl + Z", tr(lang, "Send SIGTSTP suspend signal", "Gửi tín hiệu tạm dừng SIGTSTP")),
+                            ("Ctrl + A", tr(lang, "Move cursor to beginning of line", "Di chuyển con trỏ về đầu dòng")),
+                            ("Ctrl + E", tr(lang, "Move cursor to end of line", "Di chuyển con trỏ về cuối dòng")),
+                            ("Ctrl + K", tr(lang, "Cut text from cursor to end of line", "Cắt văn bản từ con trỏ đến cuối dòng")),
+                            ("Ctrl + U", tr(lang, "Cut whole line before cursor", "Cắt toàn bộ dòng trước con trỏ")),
+                            ("Ctrl + + / -", tr(lang, "Zoom in / out terminal font size", "Phóng to / thu nhỏ cỡ chữ Terminal")),
+                            ("Ctrl + Shift + +/-", tr(lang, "Scale entire application UI", "Phóng to / thu nhỏ toàn bộ giao diện")),
+                            (tr(lang, "Right Click", "Chuột phải"), tr(lang, "Context Menu: Copy, Paste, Clear, Save output", "Menu ngữ cảnh: Sao chép, Dán, Xóa, Lưu đầu ra")),
                         ];
 
                         for (key, desc) in shortcuts {
@@ -7358,7 +7545,7 @@ impl eframe::App for RustyBoxApp {
                     });
 
                     ui.separator();
-                    if ui.button("Close").clicked() {
+                    if ui.button(tr(lang, "Close", "Đóng")).clicked() {
                         close_dialog = true;
                     }
                 });
@@ -7380,7 +7567,7 @@ impl eframe::App for RustyBoxApp {
                         ui.heading("🚀 RustyBox");
                         ui.label(RichText::new(tr(lang, "Complete Remote Toolbox & Terminal Suite in Pure Rust", "Bộ công cụ Terminal & Quản trị từ xa toàn diện viết bằng Rust")).strong());
                         ui.add_space(4.0);
-                        ui.label(RichText::new("Version v1.4.8").color(Color32::from_rgb(147, 197, 253)).strong());
+                        ui.label(RichText::new(tr(lang, "Version v1.4.9", "Phiên bản v1.4.9")).color(Color32::from_rgb(147, 197, 253)).strong());
                         ui.add_space(8.0);
                         ui.label(tr(lang, "High-performance, zero-install, lightweight remote terminal toolbox.", "Gọn nhẹ, hiệu năng cao, không cần cài đặt."));
                         ui.label(tr(lang, "Runs natively on Windows, macOS, and Linux.", "Chạy trực tiếp trên Windows, macOS và Linux."));
@@ -7402,19 +7589,19 @@ impl eframe::App for RustyBoxApp {
                         ui.add_space(8.0);
                         ui.separator();
                         ui.add_space(4.0);
-                        ui.label(RichText::new("Integrated Features:").strong());
-                        ui.label("• Multi-tab & Multi-Split Terminal (ConPTY / Unix PTY / VT100)");
-                        ui.label("• Realtime Multi-Execution (Command Broadcasting)");
-                        ui.label("• Multi-line Paste Safety Confirmation (Anti-accidental execution)");
-                        ui.label("• Terminal Themes (RustyBox Dark, Dracula, Solarized, Monokai, Nord, Matrix)");
-                        ui.label("• Interactive Quick Macros / Sysadmin Toolbar & Manager");
-                        ui.label("• Embedded Services Hub (Micro HTTP Daemon, Syslog UDP Server)");
-                        ui.label("• Graphical SFTP Explorer with Advanced Built-in Code Editor");
-                        ui.label("• High-Speed SFTP Transfer (512KB Buffers & 2MB Sockets)");
-                        ui.label("• SSH Port Forwarding / Tunneling Manager");
-                        ui.label("• Network Tools (NetScan Subnet Scanner, Port Scanner, Ping, Netstat)");
-                        ui.label("• AES-256-GCM Master Password Encrypted Vault");
-                        ui.label("• 5-Day Daily Auto-Rotating Terminal Session Logs");
+                        ui.label(RichText::new(tr(lang, "Integrated Features:", "Tính năng tích hợp:")).strong());
+                        ui.label(tr(lang, "• Multi-tab & Multi-Split Terminal (ConPTY / Unix PTY / VT100)", "• Terminal đa tab & chia đôi màn hình (ConPTY / Unix PTY / VT100)"));
+                        ui.label(tr(lang, "• Realtime Multi-Execution (Command Broadcasting)", "• Thực thi đồng thời nhiều phiên (Gửi lệnh hàng loạt)"));
+                        ui.label(tr(lang, "• Multi-line Paste Safety Confirmation (Anti-accidental execution)", "• Cảnh báo an toàn khi dán nhiều dòng (Chống chạy nhầm lệnh)"));
+                        ui.label(tr(lang, "• Terminal Themes (RustyBox Dark, Dracula, Solarized, Monokai, Nord, Matrix)", "• Đa dạng giao diện màu Terminal (Dracula, Solarized, Monokai, Nord, Matrix)"));
+                        ui.label(tr(lang, "• Interactive Quick Macros / Sysadmin Toolbar & Manager", "• Thanh công cụ & Trình quản lý Macro thao tác nhanh"));
+                        ui.label(tr(lang, "• Embedded Services Hub (Micro HTTP Daemon, Syslog UDP Server)", "• Dịch vụ mạng tích hợp (HTTP Daemon, Syslog UDP, TFTP)"));
+                        ui.label(tr(lang, "• Graphical SFTP Explorer with Advanced Built-in Code Editor", "• Trình duyệt SFTP trực quan kèm trình soạn thảo mã tích hợp"));
+                        ui.label(tr(lang, "• High-Speed SFTP Transfer (512KB Buffers & 2MB Sockets)", "• Truyền tải SFTP tốc độ cao (Bộ đệm 512KB & Socket 2MB)"));
+                        ui.label(tr(lang, "• SSH Port Forwarding / Tunneling Manager", "• Trình quản lý chuyển tiếp cổng / Đường hầm SSH"));
+                        ui.label(tr(lang, "• Network Tools (NetScan Subnet Scanner, Port Scanner, Ping, Netstat)", "• Công cụ mạng (Quét mạng nội bộ, Quét cổng, Ping, Netstat)"));
+                        ui.label(tr(lang, "• AES-256-GCM Master Password Encrypted Vault", "• Két bảo mật mã hóa mật khẩu chính chuẩn AES-256-GCM"));
+                        ui.label(tr(lang, "• 5-Day Daily Auto-Rotating Terminal Session Logs", "• Tự động ghi và xoay vòng nhật ký phiên Terminal theo ngày (5 ngày)"));
                     });
                 });
             self.show_about = open;
@@ -7424,26 +7611,29 @@ impl eframe::App for RustyBoxApp {
         if let Some((target_session, mut cur_user)) = self.connect_as_target.clone() {
             let mut close_modal = false;
             let mut do_launch = false;
-            egui::Window::new("👤 Connect as...")
+            egui::Window::new(tr(lang, "👤 Connect as...", "👤 Kết nối bằng tài khoản khác..."))
                 .collapsible(false)
                 .resizable(false)
                 .anchor(egui::Align2::CENTER_CENTER, egui::vec2(0.0, 0.0))
                 .default_width(320.0)
                 .show(ctx, |ui| {
-                    ui.label(RichText::new(format!("Session: {}", target_session.name)).strong());
+                    ui.label(RichText::new(match lang {
+                        AppLanguage::English => format!("Session: {}", target_session.name),
+                        AppLanguage::Vietnamese => format!("Phiên: {}", target_session.name),
+                    }).strong());
                     ui.add_space(4.0);
                     ui.horizontal(|ui| {
-                        ui.label("Username:");
+                        ui.label(tr(lang, "Username:", "Tên người dùng:"));
                         ui.text_edit_singleline(&mut cur_user);
                     });
                     ui.add_space(8.0);
                     ui.separator();
                     ui.horizontal(|ui| {
-                        if ui.button(RichText::new("▶ Connect").strong()).clicked() {
+                        if ui.button(RichText::new(tr(lang, "▶ Connect", "▶ Kết nối")).strong()).clicked() {
                             do_launch = true;
                             close_modal = true;
                         }
-                        if ui.button("Cancel").clicked() {
+                        if ui.button(tr(lang, "Cancel", "Hủy")).clicked() {
                             close_modal = true;
                         }
                     });
@@ -7466,22 +7656,22 @@ impl eframe::App for RustyBoxApp {
         if let Some((target_id, mut new_name)) = self.rename_session_target.clone() {
             let mut close_modal = false;
             let mut do_rename = false;
-            egui::Window::new("✏️ Rename session")
+            egui::Window::new(tr(lang, "✏️ Rename session", "✏️ Đổi tên phiên"))
                 .collapsible(false)
                 .resizable(false)
                 .anchor(egui::Align2::CENTER_CENTER, egui::vec2(0.0, 0.0))
                 .default_width(320.0)
                 .show(ctx, |ui| {
-                    ui.label("New session name:");
+                    ui.label(tr(lang, "New session name:", "Tên phiên mới:"));
                     ui.text_edit_singleline(&mut new_name);
                     ui.add_space(8.0);
                     ui.separator();
                     ui.horizontal(|ui| {
-                        if ui.button(RichText::new("✓ Rename").strong()).clicked() {
+                        if ui.button(RichText::new(tr(lang, "✓ Rename", "✓ Đổi tên")).strong()).clicked() {
                             do_rename = true;
                             close_modal = true;
                         }
-                        if ui.button("Cancel").clicked() {
+                        if ui.button(tr(lang, "Cancel", "Hủy")).clicked() {
                             close_modal = true;
                         }
                     });
@@ -7506,22 +7696,22 @@ impl eframe::App for RustyBoxApp {
         if let Some((old_folder, mut new_folder)) = self.rename_folder_target.clone() {
             let mut close_modal = false;
             let mut do_rename = false;
-            egui::Window::new("📁 Rename folder")
+            egui::Window::new(tr(lang, "📁 Rename folder", "📁 Đổi tên thư mục"))
                 .collapsible(false)
                 .resizable(false)
                 .anchor(egui::Align2::CENTER_CENTER, egui::vec2(0.0, 0.0))
                 .default_width(320.0)
                 .show(ctx, |ui| {
-                    ui.label("New folder name:");
+                    ui.label(tr(lang, "New folder name:", "Tên thư mục mới:"));
                     ui.text_edit_singleline(&mut new_folder);
                     ui.add_space(8.0);
                     ui.separator();
                     ui.horizontal(|ui| {
-                        if ui.button(RichText::new("✓ Rename").strong()).clicked() {
+                        if ui.button(RichText::new(tr(lang, "✓ Rename", "✓ Đổi tên")).strong()).clicked() {
                             do_rename = true;
                             close_modal = true;
                         }
-                        if ui.button("Cancel").clicked() {
+                        if ui.button(tr(lang, "Cancel", "Hủy")).clicked() {
                             close_modal = true;
                         }
                     });
@@ -7548,22 +7738,22 @@ impl eframe::App for RustyBoxApp {
         if let Some((tab_idx, mut new_tab_name)) = self.rename_tab_target.clone() {
             let mut close_modal = false;
             let mut do_rename = false;
-            egui::Window::new("✏ Rename Tab")
+            egui::Window::new(tr(lang, "✏ Rename Tab", "✏ Đổi tên Tab"))
                 .collapsible(false)
                 .resizable(false)
                 .anchor(egui::Align2::CENTER_CENTER, egui::vec2(0.0, 0.0))
                 .default_width(320.0)
                 .show(ctx, |ui| {
-                    ui.label("Enter new tab title:");
+                    ui.label(tr(lang, "Enter new tab title:", "Nhập tiêu đề Tab mới:"));
                     ui.text_edit_singleline(&mut new_tab_name);
                     ui.add_space(8.0);
                     ui.separator();
                     ui.horizontal(|ui| {
-                        if ui.button(RichText::new("✓ Rename").strong()).clicked() {
+                        if ui.button(RichText::new(tr(lang, "✓ Rename", "✓ Đổi tên")).strong()).clicked() {
                             do_rename = true;
                             close_modal = true;
                         }
-                        if ui.button("Cancel").clicked() {
+                        if ui.button(tr(lang, "Cancel", "Hủy")).clicked() {
                             close_modal = true;
                         }
                     });

@@ -1,6 +1,7 @@
 use super::highlight::HighlightRule;
 use super::pty_session::PtySession;
 use super::vt_screen::{apply_bold_dim, vt_to_egui_color, TerminalTheme};
+use crate::session::storage::{tr, AppLanguage};
 use egui::{
     pos2, vec2, Color32, Event, FontFamily, FontId, Key, Rect, Response, RichText, Sense, Stroke, Ui,
 };
@@ -19,6 +20,7 @@ pub struct TerminalWidget<'a> {
     pub highlight_rules: Option<&'a [HighlightRule]>,
     pub highlight_enabled: bool,
     pub suppress_escape: bool,
+    pub language: AppLanguage,
 }
 
 pub enum TerminalAction {
@@ -51,7 +53,13 @@ impl<'a> TerminalWidget<'a> {
             highlight_rules: None,
             highlight_enabled: true,
             suppress_escape: false,
+            language: AppLanguage::English,
         }
+    }
+
+    pub fn with_language(mut self, language: AppLanguage) -> Self {
+        self.language = language;
+        self
     }
 
     pub fn with_suppress_escape(mut self, suppress: bool) -> Self {
@@ -544,13 +552,14 @@ impl<'a> TerminalWidget<'a> {
         }
 
         // Right-Click Context Menu (MobaXterm TFORMRIGHTCLICKMENU)
+        let lang = self.language;
         if !self.right_click_paste || shift_held || ctrl_held_now {
             response.context_menu(|ui| {
                 ui.set_min_width(210.0);
 
                 let has_selection = selection.map(|(s, e)| s != e).unwrap_or(false);
                 if has_selection
-                    && ui.button("📄 Copy Selection").clicked() {
+                    && ui.button(tr(lang, "📄 Copy Selection", "📄 Sao chép vùng chọn")).clicked() {
                         if let Some((s, e)) = selection {
                             let mut parser = self.session.parser.lock();
                             let text =
@@ -565,7 +574,7 @@ impl<'a> TerminalWidget<'a> {
                         ui.close_menu();
                     }
 
-                if ui.button("📋 Paste Clipboard").clicked() {
+                if ui.button(tr(lang, "📋 Paste Clipboard", "📋 Dán từ Clipboard")).clicked() {
                     let text_opt = get_clipboard_text(ui, false);
 
                     if let Some(text) = text_opt
@@ -582,7 +591,7 @@ impl<'a> TerminalWidget<'a> {
                     ui.close_menu();
                 }
 
-                if ui.button("📄 Copy All Terminal Text").clicked() {
+                if ui.button(tr(lang, "📄 Copy All Terminal Text", "📄 Sao chép toàn bộ Terminal")).clicked() {
                     let mut parser = self.session.parser.lock();
                     let all_text = extract_all_terminal_text(parser.screen_mut());
                     drop(parser);
@@ -593,7 +602,7 @@ impl<'a> TerminalWidget<'a> {
                 }
                 ui.separator();
                 if ui
-                    .button("🛑 Send Ctrl+C (Interrupt Process)")
+                    .button(tr(lang, "🛑 Send Ctrl+C (Interrupt Process)", "🛑 Gửi Ctrl+C (Ngắt tiến trình)"))
                     .clicked()
                 {
                     self.session.parser.lock().screen_mut().set_scrollback(0);
@@ -605,20 +614,20 @@ impl<'a> TerminalWidget<'a> {
                     clear_selection_in_ui(ui);
                     ui.close_menu();
                 }
-                if ui.button("🔍 Find in Terminal (Ctrl+F)").clicked() {
+                if ui.button(tr(lang, "🔍 Find in Terminal (Ctrl+F)", "🔍 Tìm trong Terminal (Ctrl+F)")).clicked() {
                     action = TerminalAction::OpenSearch;
                     ui.close_menu();
                 }
-                if ui.button("🔎 Zoom In (Ctrl +)").clicked() {
+                if ui.button(tr(lang, "🔎 Zoom In (Ctrl +)", "🔎 Phóng to chữ (Ctrl +)")).clicked() {
                     action = TerminalAction::ZoomIn;
                     ui.close_menu();
                 }
-                if ui.button("🔍 Zoom Out (Ctrl -)").clicked() {
+                if ui.button(tr(lang, "🔍 Zoom Out (Ctrl -)", "🔍 Thu nhỏ chữ (Ctrl -)")).clicked() {
                     action = TerminalAction::ZoomOut;
                     ui.close_menu();
                 }
                 ui.separator();
-                if ui.button("🧹 Clear Terminal Screen").clicked() {
+                if ui.button(tr(lang, "🧹 Clear Terminal Screen", "🧹 Xóa màn hình Terminal")).clicked() {
                     self.session.parser.lock().screen_mut().set_scrollback(0);
                     #[cfg(target_os = "windows")]
                     let _ = self.session.write_bytes(b"cls\r\n");
@@ -626,13 +635,16 @@ impl<'a> TerminalWidget<'a> {
                     let _ = self.session.write_bytes(b"clear\n");
                     ui.close_menu();
                 }
-                if ui.button("💾 Save Buffer to File...").clicked() {
+                if ui.button(tr(lang, "💾 Save Buffer to File...", "💾 Lưu nội dung ra tệp...")).clicked() {
                     action = TerminalAction::SaveBufferToFile;
                     ui.close_menu();
                 }
                 ui.separator();
                 ui.label(
-                    RichText::new(format!("Size: {} cols x {} rows", cols, rows))
+                    RichText::new(match lang {
+                        AppLanguage::English => format!("Size: {} cols x {} rows", cols, rows),
+                        AppLanguage::Vietnamese => format!("Kích thước: {} cột x {} dòng", cols, rows),
+                    })
                         .weak()
                         .size(11.0),
                 );

@@ -1,10 +1,12 @@
 use super::{AuthMethod, Session, SessionType};
+use crate::session::storage::{tr, AppLanguage};
 use egui::{
     pos2, vec2, Align2, Color32, FontId, Margin, Rect, RichText, Rounding, Sense, Stroke,
     TextEdit, Vec2,
 };
 
 pub struct NewSessionDialog {
+    pub language: AppLanguage,
     pub is_open: bool,
     pub editing_session_id: Option<String>,
     pub request_open_passwords: bool,
@@ -115,6 +117,7 @@ impl Default for NewSessionDialog {
 impl NewSessionDialog {
     pub fn new() -> Self {
         Self {
+            language: AppLanguage::English,
             is_open: false,
             editing_session_id: None,
             request_open_passwords: false,
@@ -751,10 +754,11 @@ pub fn render_new_session_dialog(
         }
     }
 
+    let lang = dialog.language;
     let win_title = if dialog.editing_session_id.is_some() {
-        "Session settings (Edit session)"
+        tr(lang, "Session settings (Edit session)", "Cấu hình phiên kết nối (Chỉnh sửa)")
     } else {
-        "Session settings"
+        tr(lang, "Session settings", "Tạo phiên kết nối mới")
     };
 
     egui::Window::new(win_title)
@@ -867,7 +871,7 @@ pub fn render_new_session_dialog(
                                 kp.line_segment([pos2(kc.x + 5.0, kc.y), pos2(kc.x + 5.0, kc.y + 2.2)], ks);
 
                                 ui.label(
-                                    RichText::new("Basic SSH settings")
+                                    RichText::new(tr(lang, "Basic SSH settings", "Thiết lập SSH cơ bản"))
                                         .size(13.5)
                                         .strong()
                                         .color(Color32::from_rgb(251, 191, 36)),
@@ -878,27 +882,27 @@ pub fn render_new_session_dialog(
                             // Row 1: Target host, Port & Session name
                             ui.horizontal(|ui| {
                                 ui.spacing_mut().item_spacing.x = 8.0;
-                                ui.label(RichText::new("Remote host *").size(12.5).strong().color(Color32::from_rgb(226, 232, 240)));
+                                ui.label(RichText::new(tr(lang, "Remote host *", "Máy chủ *")).size(12.5).strong().color(Color32::from_rgb(226, 232, 240)));
                                 ui.add(
                                     TextEdit::singleline(&mut dialog.ssh_host)
                                         .desired_width(260.0)
                                         .margin(Margin::symmetric(9.0, 6.0))
-                                        .hint_text("e.g. 51.79.157.8 or domain.com"),
+                                        .hint_text(tr(lang, "e.g. 51.79.157.8 or domain.com", "VD: 51.79.157.8 hoặc domain.com")),
                                 );
                                 ui.add_space(6.0);
-                                ui.label(RichText::new("Port:").size(12.5).strong().color(Color32::from_rgb(226, 232, 240)));
+                                ui.label(RichText::new(tr(lang, "Port:", "Cổng:")).size(12.5).strong().color(Color32::from_rgb(226, 232, 240)));
                                 ui.add(
                                     egui::DragValue::new(&mut dialog.ssh_port)
                                         .range(1..=65535)
                                         .speed(1),
                                 );
                                 ui.add_space(8.0);
-                                ui.label(RichText::new("Session name:").size(12.5).strong().color(Color32::from_rgb(226, 232, 240)));
+                                ui.label(RichText::new(tr(lang, "Session name:", "Tên phiên:")).size(12.5).strong().color(Color32::from_rgb(226, 232, 240)));
                                 ui.add(
                                     TextEdit::singleline(&mut dialog.session_name)
                                         .desired_width(220.0)
                                         .margin(Margin::symmetric(9.0, 6.0))
-                                        .hint_text("e.g. Production Web"),
+                                        .hint_text(tr(lang, "e.g. Production Web", "VD: Web Production")),
                                 );
                             });
 
@@ -907,7 +911,7 @@ pub fn render_new_session_dialog(
                             // Row 2: Folder, Username & Password
                             ui.horizontal(|ui| {
                                 ui.spacing_mut().item_spacing.x = 8.0;
-                                ui.label(RichText::new("Folder:").size(12.5).strong().color(Color32::from_rgb(226, 232, 240)));
+                                ui.label(RichText::new(tr(lang, "Folder:", "Thư mục:")).size(12.5).strong().color(Color32::from_rgb(226, 232, 240)));
                                 ui.add(
                                     TextEdit::singleline(&mut dialog.folder_name)
                                         .desired_width(170.0)
@@ -915,7 +919,7 @@ pub fn render_new_session_dialog(
                                         .hint_text("Servers"),
                                 );
                                 ui.add_space(6.0);
-                                rusty_checkbox(ui, &mut dialog.specify_username, "Specify username:");
+                                rusty_checkbox(ui, &mut dialog.specify_username, tr(lang, "Specify username:", "Chỉ định tên đăng nhập:"));
                                 ui.add_enabled(
                                     dialog.specify_username,
                                     TextEdit::singleline(&mut dialog.ssh_user)
@@ -924,13 +928,13 @@ pub fn render_new_session_dialog(
                                         .hint_text("root / ubuntu"),
                                 );
                                 ui.add_space(6.0);
-                                ui.label(RichText::new("Password:").size(12.5).strong().color(Color32::from_rgb(226, 232, 240)));
+                                ui.label(RichText::new(tr(lang, "Password:", "Mật khẩu:")).size(12.5).strong().color(Color32::from_rgb(226, 232, 240)));
                                 ui.add(
                                     TextEdit::singleline(&mut dialog.password)
                                         .password(true)
                                         .desired_width(160.0)
                                         .margin(Margin::symmetric(9.0, 6.0))
-                                        .hint_text("SSH password"),
+                                        .hint_text(tr(lang, "SSH password", "Mật khẩu SSH")),
                                 );
                             });
 
@@ -939,11 +943,11 @@ pub fn render_new_session_dialog(
                             // Row 3: Password Vault, Credentials Manager, Saved Users
                             ui.horizontal(|ui| {
                                 ui.spacing_mut().item_spacing.x = 8.0;
-                                rusty_checkbox(ui, &mut dialog.save_password, "Save password in Vault");
+                                rusty_checkbox(ui, &mut dialog.save_password, tr(lang, "Save password in Vault", "Lưu mật khẩu vào Két"));
 
                                 ui.add_space(8.0);
-                                if ui.add(egui::Button::new(RichText::new("👤🔑 Manage Credentials").size(12.0)))
-                                    .on_hover_text("Manage credentials & add new user profile")
+                                if ui.add(egui::Button::new(RichText::new(tr(lang, "👤🔑 Manage Credentials", "👤🔑 Quản lý tài khoản")).size(12.0)))
+                                    .on_hover_text(tr(lang, "Manage credentials & add new user profile", "Quản lý tài khoản & thêm hồ sơ mới"))
                                     .clicked()
                                 {
                                     dialog.request_open_passwords = true;
@@ -951,11 +955,11 @@ pub fn render_new_session_dialog(
 
                                 ui.add_space(6.0);
                                 egui::ComboBox::from_id_salt("ssh_cred_picker_main")
-                                    .selected_text(if dialog.ssh_user.is_empty() { "Saved user profiles..." } else { &dialog.ssh_user })
+                                    .selected_text(if dialog.ssh_user.is_empty() { tr(lang, "Saved user profiles...", "Hồ sơ đã lưu...") } else { &dialog.ssh_user })
                                     .width(160.0)
                                     .show_ui(ui, |ui| {
                                         if dialog.available_credentials.is_empty() {
-                                            ui.label(RichText::new("No saved credentials").italics().color(Color32::GRAY));
+                                            ui.label(RichText::new(tr(lang, "No saved credentials", "Chưa có tài khoản đã lưu")).italics().color(Color32::GRAY));
                                         } else {
                                             for cred in &dialog.available_credentials {
                                                 let label = format!("{} ({})", cred.name, cred.username);
@@ -977,10 +981,10 @@ pub fn render_new_session_dialog(
 
                     // 3. RUSTYBOX 4 SUB-TABS WITH VECTOR ICONS
                     let sub_tabs: &[(&str, usize, Color32)] = &[
-                        ("Advanced SSH settings", 0, Color32::from_rgb(251, 191, 36)),
-                        ("Terminal settings", 1, Color32::from_rgb(52, 211, 153)),
-                        ("Network settings", 2, Color32::from_rgb(56, 189, 248)),
-                        ("Bookmark settings", 3, Color32::from_rgb(251, 191, 36)),
+                        (tr(lang, "Advanced SSH settings", "SSH nâng cao"), 0, Color32::from_rgb(251, 191, 36)),
+                        (tr(lang, "Terminal settings", "Cấu hình Terminal"), 1, Color32::from_rgb(52, 211, 153)),
+                        (tr(lang, "Network settings", "Mạng & Gateway"), 2, Color32::from_rgb(56, 189, 248)),
+                        (tr(lang, "Bookmark settings", "Thẻ & Ghi chú"), 3, Color32::from_rgb(251, 191, 36)),
                     ];
                     ui.horizontal(|ui| {
                         ui.spacing_mut().item_spacing.x = 6.0;
@@ -1074,7 +1078,7 @@ pub fn render_new_session_dialog(
                                     // Row 1: SSH-browser type + Follow SSH path + X11-Forwarding + Compression
                                     ui.horizontal(|ui| {
                                         ui.spacing_mut().item_spacing.x = 10.0;
-                                        ui.label("SSH-browser type:");
+                                        ui.label(tr(lang, "SSH-browser type:", "Trình duyệt tệp SSH:"));
                                         egui::ComboBox::from_id_salt("sftp_browser_type")
                                             .selected_text(&dialog.ssh_browser_type)
                                             .width(155.0)
@@ -1097,9 +1101,9 @@ pub fn render_new_session_dialog(
                                                     }
                                                 }
                                             });
-                                        rusty_checkbox(ui, &mut dialog.ssh_auto_sftp, "Follow SSH path");
+                                        rusty_checkbox(ui, &mut dialog.ssh_auto_sftp, tr(lang, "Follow SSH path", "Theo thư mục SSH"));
                                         rusty_checkbox(ui, &mut dialog.ssh_x11, "X11-Forwarding");
-                                        rusty_checkbox(ui, &mut dialog.ssh_compression, "Compression");
+                                        rusty_checkbox(ui, &mut dialog.ssh_compression, tr(lang, "Compression", "Nén dữ liệu"));
                                     });
 
                                     ui.add_space(10.0);
@@ -1107,18 +1111,18 @@ pub fn render_new_session_dialog(
                                     // Row 2: Execute command + Do not exit after command ends
                                     ui.horizontal(|ui| {
                                         ui.spacing_mut().item_spacing.x = 8.0;
-                                        ui.label("Execute command:");
+                                        ui.label(tr(lang, "Execute command:", "Chạy lệnh khi kết nối:"));
                                         ui.add(
                                             TextEdit::singleline(&mut dialog.remote_command)
                                                 .desired_width(280.0)
                                                 .margin(Margin::symmetric(7.0, 4.0))
-                                                .hint_text("Optional startup command (e.g. tmux attach)"),
+                                                .hint_text(tr(lang, "Optional startup command (e.g. tmux attach)", "Lệnh khởi động tùy chọn (VD: tmux attach)")),
                                         );
                                         ui.add_space(4.0);
                                         rusty_checkbox(
                                             ui,
                                             &mut dialog.do_not_exit_after_cmd,
-                                            "Do not exit after command ends",
+                                            tr(lang, "Do not exit after command ends", "Không thoát sau khi lệnh chạy xong"),
                                         );
                                     });
 
@@ -1127,7 +1131,7 @@ pub fn render_new_session_dialog(
                                     // Row 3: Use private key checkbox + path input + Browse...
                                     ui.horizontal(|ui| {
                                         ui.spacing_mut().item_spacing.x = 8.0;
-                                        rusty_checkbox(ui, &mut dialog.use_private_key, "Use private key:");
+                                        rusty_checkbox(ui, &mut dialog.use_private_key, tr(lang, "Use private key:", "Dùng khóa riêng (Key):"));
                                         ui.add_enabled(
                                             dialog.use_private_key,
                                             TextEdit::singleline(&mut dialog.ssh_key_path)
@@ -1138,7 +1142,7 @@ pub fn render_new_session_dialog(
                                         if ui
                                             .add_enabled(
                                                 dialog.use_private_key,
-                                                egui::Button::new("Browse..."),
+                                                egui::Button::new(tr(lang, "Browse...", "Chọn tệp...")),
                                             )
                                             .clicked()
                                             && let Some(file) = rfd::FileDialog::new().pick_file() {
@@ -1152,11 +1156,11 @@ pub fn render_new_session_dialog(
                                     // Row 4: Advanced SSH tools
                                     ui.horizontal(|ui| {
                                         ui.spacing_mut().item_spacing.x = 8.0;
-                                        if ui.button("⚙ Expert SSH settings").clicked() {
+                                        if ui.button(tr(lang, "⚙ Expert SSH settings", "⚙ Thiết lập SSH chuyên sâu")).clicked() {
                                             dialog.show_expert_ssh = true;
                                         }
                                         ui.label(
-                                            RichText::new("ℹ Password and Credentials are now conveniently configured in Basic SSH settings above.")
+                                            RichText::new(tr(lang, "ℹ Password and Credentials are now conveniently configured in Basic SSH settings above.", "ℹ Mật khẩu và tài khoản được cấu hình trực tiếp ở phần Thiết lập SSH cơ bản phía trên."))
                                                 .size(11.0)
                                                 .color(Color32::from_rgb(148, 163, 184)),
                                         );
@@ -1164,33 +1168,33 @@ pub fn render_new_session_dialog(
                                 }
                                 1 => {
                                     ui.label(
-                                        RichText::new("Terminal Display & Emulation Settings")
+                                        RichText::new(tr(lang, "Terminal Display & Emulation Settings", "Hiển thị & Giả lập Terminal"))
                                             .strong()
                                             .color(Color32::from_rgb(56, 189, 248)),
                                     );
                                     ui.add_space(8.0);
                                     ui.horizontal(|ui| {
-                                        ui.label("Terminal font:");
+                                        ui.label(tr(lang, "Terminal font:", "Phông chữ:"));
                                         egui::ComboBox::from_id_salt("advanced_term_font_family")
                                             .selected_text(crate::terminal::fonts::terminal_font_display_name(&dialog.terminal_font_family))
                                             .width(150.0)
                                             .show_ui(ui, |ui| {
-                                                ui.selectable_value(&mut dialog.terminal_font_family, "".to_string(), "Default (Global Setting)");
+                                                ui.selectable_value(&mut dialog.terminal_font_family, "".to_string(), tr(lang, "Default (Global Setting)", "Mặc định (Theo cài đặt chung)"));
                                                 for opt in crate::terminal::fonts::AVAILABLE_TERMINAL_FONTS {
                                                     ui.selectable_value(&mut dialog.terminal_font_family, opt.id.to_string(), opt.name);
                                                 }
                                             });
                                         ui.add_space(8.0);
-                                        ui.label("Size:");
+                                        ui.label(tr(lang, "Size:", "Cỡ chữ:"));
                                         ui.add(
                                             egui::DragValue::new(&mut dialog.terminal_font_size)
                                                 .range(9..=28),
                                         );
-                                        if ui.button("Font settings...").clicked() {
+                                        if ui.button(tr(lang, "Font settings...", "Cài đặt phông...")).clicked() {
                                             dialog.show_font_selector = true;
                                         }
                                         ui.add_space(8.0);
-                                        ui.label("Color scheme:");
+                                        ui.label(tr(lang, "Color scheme:", "Bảng màu:"));
                                         egui::ComboBox::from_id_salt("term_color_scheme_combo")
                                             .selected_text(&dialog.terminal_color_scheme)
                                             .width(160.0)
@@ -1211,7 +1215,7 @@ pub fn render_new_session_dialog(
                                                     );
                                                 }
                                             });
-                                        if ui.button("Colors...").clicked() {
+                                        if ui.button(tr(lang, "Colors...", "Màu sắc...")).clicked() {
                                             dialog.show_color_selector = true;
                                         }
                                     });
@@ -1220,19 +1224,19 @@ pub fn render_new_session_dialog(
                                         rusty_checkbox(
                                             ui,
                                             &mut dialog.backspace_sends_ctrl_h,
-                                            "Backspace sends ^H",
+                                            tr(lang, "Backspace sends ^H", "Backspace gửi ^H"),
                                         );
                                         ui.add_space(14.0);
                                         rusty_checkbox(
                                             ui,
                                             &mut dialog.right_click_paste,
-                                            "Paste using right-click",
+                                            tr(lang, "Paste using right-click", "Chuột phải để dán"),
                                         );
                                         ui.add_space(14.0);
-                                        if ui.button("Customize syntax...").clicked() {
+                                        if ui.button(tr(lang, "Customize syntax...", "Tùy chỉnh tô màu...")).clicked() {
                                             dialog.show_syntax_customizer = true;
                                         }
-                                        if ui.button("Expert terminal settings...").clicked() {
+                                        if ui.button(tr(lang, "Expert terminal settings...", "Terminal nâng cao...")).clicked() {
                                             dialog.show_expert_term = true;
                                         }
                                     });
@@ -1241,7 +1245,7 @@ pub fn render_new_session_dialog(
                                         rusty_checkbox(
                                             ui,
                                             &mut dialog.log_terminal_output,
-                                            "Log terminal output to directory:",
+                                            tr(lang, "Log terminal output to directory:", "Ghi log terminal vào thư mục:"),
                                         );
                                         ui.add_enabled(
                                             dialog.log_terminal_output,
@@ -1255,12 +1259,12 @@ pub fn render_new_session_dialog(
                                 2 => {
                                     ui.horizontal(|ui| {
                                         ui.label(
-                                            RichText::new("SSH Gateway (Jump Host / Bastion) & Keepalive")
+                                            RichText::new(tr(lang, "SSH Gateway (Jump Host / Bastion) & Keepalive", "Cầu nối SSH (Jump Host / Bastion) & Keepalive"))
                                                 .strong()
                                                 .color(Color32::from_rgb(56, 189, 248)),
                                         );
                                         ui.add_space(12.0);
-                                        if ui.button("⛓ Configure multiple jump hosts...").clicked() {
+                                        if ui.button(tr(lang, "⛓ Configure multiple jump hosts...", "⛓ Cấu hình Jump Host...")).clicked() {
                                             dialog.show_jump_hosts = true;
                                         }
                                     });
@@ -1268,11 +1272,11 @@ pub fn render_new_session_dialog(
                                     rusty_checkbox(
                                         ui,
                                         &mut dialog.use_ssh_gateway,
-                                        "Connect through SSH gateway (jump host)",
+                                        tr(lang, "Connect through SSH gateway (jump host)", "Kết nối qua SSH Gateway (Jump Host)"),
                                     );
                                     ui.add_space(8.0);
                                     ui.horizontal(|ui| {
-                                        ui.label("Gateway host:");
+                                        ui.label(tr(lang, "Gateway host:", "Máy chủ Gateway:"));
                                         ui.add_enabled(
                                             dialog.use_ssh_gateway,
                                             TextEdit::singleline(&mut dialog.gateway_host)
@@ -1280,7 +1284,7 @@ pub fn render_new_session_dialog(
                                                 .margin(Margin::symmetric(7.0, 4.0))
                                                 .hint_text("bastion.example.com"),
                                         );
-                                        ui.label("User:");
+                                        ui.label(tr(lang, "User:", "Tài khoản:"));
                                         ui.add_enabled(
                                             dialog.use_ssh_gateway,
                                             TextEdit::singleline(&mut dialog.gateway_user)
@@ -1288,7 +1292,7 @@ pub fn render_new_session_dialog(
                                                 .margin(Margin::symmetric(7.0, 4.0))
                                                 .hint_text("ubuntu"),
                                         );
-                                        ui.label("Port:");
+                                        ui.label(tr(lang, "Port:", "Cổng:"));
                                         ui.add_enabled(
                                             dialog.use_ssh_gateway,
                                             egui::DragValue::new(&mut dialog.gateway_port)
@@ -1299,18 +1303,18 @@ pub fn render_new_session_dialog(
                                     rusty_checkbox(
                                         ui,
                                         &mut dialog.ssh_keepalive,
-                                        "Send SSH keepalive packets every 60 seconds",
+                                        tr(lang, "Send SSH keepalive packets every 60 seconds", "Gửi gói giữ kết nối SSH (Keepalive) mỗi 60 giây"),
                                     );
                                 }
                                 _ => {
                                     ui.label(
-                                        RichText::new("Bookmark & Folder Organization")
+                                        RichText::new(tr(lang, "Bookmark & Folder Organization", "Sắp xếp thẻ & thư mục"))
                                             .strong()
                                             .color(Color32::from_rgb(251, 191, 36)),
                                     );
                                     ui.add_space(8.0);
                                     ui.horizontal(|ui| {
-                                        ui.label("Session name (Bookmark):");
+                                        ui.label(tr(lang, "Session name (Bookmark):", "Tên phiên (Bookmark):"));
                                         ui.add(
                                             TextEdit::singleline(&mut dialog.session_name)
                                                 .desired_width(220.0)
@@ -1318,7 +1322,7 @@ pub fn render_new_session_dialog(
                                                 .hint_text("dev-vn"),
                                         );
                                         ui.add_space(10.0);
-                                        ui.label("Folder / Subfolder:");
+                                        ui.label(tr(lang, "Folder / Subfolder:", "Thư mục / Nhánh:"));
                                         ui.add(
                                             TextEdit::singleline(&mut dialog.folder_name)
                                                 .desired_width(180.0)
@@ -1328,7 +1332,7 @@ pub fn render_new_session_dialog(
                                     });
                                     ui.add_space(8.0);
                                     ui.horizontal(|ui| {
-                                        ui.label("Tab color:");
+                                        ui.label(tr(lang, "Tab color:", "Màu thẻ Tab:"));
                                         egui::ComboBox::from_id_salt("bookmark_tab_color")
                                             .selected_text(&dialog.tab_color)
                                             .width(160.0)
@@ -1347,21 +1351,21 @@ pub fn render_new_session_dialog(
                                                 }
                                             });
                                         ui.add_space(10.0);
-                                        ui.label("Comments:");
+                                        ui.label(tr(lang, "Comments:", "Ghi chú:"));
                                         ui.add(
                                             TextEdit::singleline(&mut dialog.comments)
                                                 .desired_width(240.0)
                                                 .margin(Margin::symmetric(7.0, 4.0))
-                                                .hint_text("Optional session notes..."),
+                                                .hint_text(tr(lang, "Optional session notes...", "Ghi chú tùy chọn cho phiên...")),
                                         );
                                     });
                                     ui.add_space(10.0);
                                     let preview = dialog.to_session().rusty_label();
                                     ui.label(
-                                        RichText::new(format!(
-                                            "User sessions tree display: {}",
-                                            preview
-                                        ))
+                                        RichText::new(match lang {
+                                            AppLanguage::English => format!("User sessions tree display: {}", preview),
+                                            AppLanguage::Vietnamese => format!("Hiển thị trên cây phiên: {}", preview),
+                                        })
                                         .monospace()
                                         .color(Color32::from_rgb(56, 189, 248)),
                                     );
@@ -1371,15 +1375,15 @@ pub fn render_new_session_dialog(
                 }
                 other_proto => {
                     let (proto_title, proto_col) = match other_proto {
-                        1 => ("Basic Shell settings", Color32::from_rgb(163, 113, 247)),
-                        2 => ("Basic Serial settings", Color32::from_rgb(244, 114, 182)),
-                        3 => ("Basic Telnet settings", Color32::from_rgb(165, 180, 252)),
-                        4 => ("Basic RDP (Remote Desktop) settings", Color32::from_rgb(56, 189, 248)),
-                        5 => ("Basic VNC settings", Color32::from_rgb(52, 211, 153)),
-                        6 => ("Basic FTP settings", Color32::from_rgb(251, 146, 60)),
-                        8 => ("Basic SFTP settings", Color32::from_rgb(45, 212, 191)),
-                        7 => ("Basic WSL (Windows Subsystem for Linux) settings", Color32::from_rgb(250, 204, 21)),
-                        _ => ("Basic Session settings", Color32::from_rgb(56, 189, 248)),
+                        1 => (tr(lang, "Basic Shell settings", "Thiết lập Shell cơ bản"), Color32::from_rgb(163, 113, 247)),
+                        2 => (tr(lang, "Basic Serial settings", "Thiết lập Serial cơ bản"), Color32::from_rgb(244, 114, 182)),
+                        3 => (tr(lang, "Basic Telnet settings", "Thiết lập Telnet cơ bản"), Color32::from_rgb(165, 180, 252)),
+                        4 => (tr(lang, "Basic RDP (Remote Desktop) settings", "Thiết lập RDP (Remote Desktop)"), Color32::from_rgb(56, 189, 248)),
+                        5 => (tr(lang, "Basic VNC settings", "Thiết lập VNC cơ bản"), Color32::from_rgb(52, 211, 153)),
+                        6 => (tr(lang, "Basic FTP settings", "Thiết lập FTP cơ bản"), Color32::from_rgb(251, 146, 60)),
+                        8 => (tr(lang, "Basic SFTP settings", "Thiết lập SFTP cơ bản"), Color32::from_rgb(45, 212, 191)),
+                        7 => (tr(lang, "Basic WSL (Windows Subsystem for Linux) settings", "Thiết lập WSL cơ bản"), Color32::from_rgb(250, 204, 21)),
+                        _ => (tr(lang, "Basic Session settings", "Thiết lập phiên cơ bản"), Color32::from_rgb(56, 189, 248)),
                     };
                     egui::Frame::none()
                         .fill(Color32::from_rgb(22, 27, 34))
@@ -1393,29 +1397,29 @@ pub fn render_new_session_dialog(
                             match other_proto {
                                 1 => {
                                     ui.horizontal(|ui| {
-                                        ui.label("Terminal shell:");
+                                        ui.label(tr(lang, "Terminal shell:", "Shell mặc định:"));
                                         ui.add(
                                             TextEdit::singleline(&mut dialog.local_shell)
                                                 .desired_width(240.0)
-                                                .hint_text("Default (Windows: cmd / macOS+Linux: terminal shell)"),
+                                                .hint_text(tr(lang, "Default (Windows: cmd / macOS+Linux: terminal shell)", "Mặc định hệ thống")),
                                         );
-                                        ui.label("Startup directory:");
+                                        ui.label(tr(lang, "Startup directory:", "Thư mục khởi đầu:"));
                                         ui.add(
                                             TextEdit::singleline(&mut dialog.local_workdir)
                                                 .desired_width(220.0)
-                                                .hint_text("Default ($HOME)"),
+                                                .hint_text(tr(lang, "Default ($HOME)", "Mặc định ($HOME)")),
                                         );
                                     });
                                 }
                                 2 => {
                                     ui.horizontal(|ui| {
-                                        ui.label("Serial port:");
+                                        ui.label(tr(lang, "Serial port:", "Cổng Serial:"));
                                         ui.add(
                                             TextEdit::singleline(&mut dialog.serial_port)
                                                 .desired_width(180.0)
                                                 .hint_text("COM1 or /dev/ttyUSB0"),
                                         );
-                                        ui.label("Speed (bps):");
+                                        ui.label(tr(lang, "Speed (bps):", "Tốc độ (bps):"));
                                         egui::ComboBox::from_id_salt("baud_rate_combo")
                                             .selected_text(format!("{}", dialog.serial_baud))
                                             .width(120.0)
@@ -1432,85 +1436,85 @@ pub fn render_new_session_dialog(
                                 }
                                 3 => {
                                     ui.horizontal(|ui| {
-                                        ui.label("Remote host *");
+                                        ui.label(tr(lang, "Remote host *", "Máy chủ *"));
                                         ui.add(
                                             TextEdit::singleline(&mut dialog.telnet_host)
                                                 .desired_width(220.0)
                                                 .hint_text("192.168.1.1"),
                                         );
-                                        ui.label("Port");
+                                        ui.label(tr(lang, "Port", "Cổng"));
                                         ui.add(egui::DragValue::new(&mut dialog.telnet_port).range(1..=65535));
                                     });
                                 }
                                 4 => {
                                     ui.horizontal(|ui| {
-                                        ui.label("Remote host *");
+                                        ui.label(tr(lang, "Remote host *", "Máy chủ *"));
                                         ui.add(
                                             TextEdit::singleline(&mut dialog.rdp_host)
                                                 .desired_width(180.0)
                                                 .hint_text("10.0.0.15"),
                                         );
-                                        ui.label("Username");
+                                        ui.label(tr(lang, "Username", "Tài khoản"));
                                         ui.add(
                                             TextEdit::singleline(&mut dialog.rdp_user)
                                                 .desired_width(130.0)
                                                 .hint_text("Administrator"),
                                         );
-                                        if ui.small_button("🔑").on_hover_text("Passwords & credentials settings").clicked() {
+                                        if ui.small_button("🔑").on_hover_text(tr(lang, "Passwords & credentials settings", "Quản lý mật khẩu & tài khoản")).clicked() {
                                             dialog.request_open_passwords = true;
                                         }
-                                        ui.label("Port");
+                                        ui.label(tr(lang, "Port", "Cổng"));
                                         ui.add(egui::DragValue::new(&mut dialog.rdp_port).range(1..=65535));
                                     });
                                 }
                                 5 => {
                                     ui.horizontal(|ui| {
-                                        ui.label("Remote hostname or IP address *");
+                                        ui.label(tr(lang, "Remote hostname or IP address *", "Tên miền hoặc IP máy chủ *"));
                                         ui.add(
                                             TextEdit::singleline(&mut dialog.vnc_host)
                                                 .desired_width(220.0)
                                                 .hint_text("192.168.1.50"),
                                         );
-                                        ui.label("Port");
+                                        ui.label(tr(lang, "Port", "Cổng"));
                                         ui.add(egui::DragValue::new(&mut dialog.vnc_port).range(1..=65535));
                                     });
                                 }
                                 6 | 8 => {
                                     ui.horizontal(|ui| {
-                                        ui.label("Remote host *");
+                                        ui.label(tr(lang, "Remote host *", "Máy chủ *"));
                                         ui.add(
                                             TextEdit::singleline(&mut dialog.ftp_host)
                                                 .desired_width(180.0)
                                                 .hint_text("ftp.example.com"),
                                         );
-                                        ui.label("Username");
+                                        ui.label(tr(lang, "Username", "Tài khoản"));
                                         ui.add(
                                             TextEdit::singleline(&mut dialog.ftp_user)
                                                 .desired_width(130.0)
                                                 .hint_text("anonymous"),
                                         );
-                                        if ui.small_button("🔑").on_hover_text("Passwords & credentials settings").clicked() {
+                                        if ui.small_button("🔑").on_hover_text(tr(lang, "Passwords & credentials settings", "Quản lý mật khẩu & tài khoản")).clicked() {
                                             dialog.request_open_passwords = true;
                                         }
-                                        ui.label("Port");
+                                        ui.label(tr(lang, "Port", "Cổng"));
                                         ui.add(egui::DragValue::new(&mut dialog.ftp_port).range(1..=65535));
                                     });
                                 }
                                 _ => {
                                     ui.horizontal(|ui| {
-                                        ui.label("Linux distribution:");
+                                        ui.label(tr(lang, "Linux distribution:", "Bản phân phối Linux:"));
                                         ui.add(
                                             TextEdit::singleline(&mut dialog.wsl_distro)
                                                 .desired_width(180.0)
                                                 .hint_text("Ubuntu"),
                                         );
-                                        ui.label("User:");
+                                        ui.label(tr(lang, "User:", "Tài khoản:"));
                                         ui.add(
                                             TextEdit::singleline(&mut dialog.wsl_user)
                                                 .desired_width(120.0)
                                                 .hint_text("root"),
                                         );
-                                        ui.label("Startup directory:");
+                                        ui.label(tr(lang, "Startup directory:", "Thư mục khởi đầu:"));
                                         ui.add(
                                             TextEdit::singleline(&mut dialog.wsl_workdir)
                                                 .desired_width(150.0)
@@ -1523,20 +1527,20 @@ pub fn render_new_session_dialog(
 
                     ui.add_space(8.0);
                     let adv_label = match other_proto {
-                        1 => "Advanced Shell settings",
-                        2 => "Advanced Serial settings",
-                        3 => "Advanced Telnet settings",
-                        4 => "Advanced RDP settings",
-                        5 => "Advanced VNC settings",
-                        6 => "Advanced FTP settings",
-                        8 => "Advanced SFTP settings",
-                        _ => "Advanced WSL settings",
+                        1 => tr(lang, "Advanced Shell settings", "Shell nâng cao"),
+                        2 => tr(lang, "Advanced Serial settings", "Serial nâng cao"),
+                        3 => tr(lang, "Advanced Telnet settings", "Telnet nâng cao"),
+                        4 => tr(lang, "Advanced RDP settings", "RDP nâng cao"),
+                        5 => tr(lang, "Advanced VNC settings", "VNC nâng cao"),
+                        6 => tr(lang, "Advanced FTP settings", "FTP nâng cao"),
+                        8 => tr(lang, "Advanced SFTP settings", "SFTP nâng cao"),
+                        _ => tr(lang, "Advanced WSL settings", "WSL nâng cao"),
                     };
                     let sub_tabs: &[(&str, usize, Color32)] = &[
                         (adv_label, 0, proto_col),
-                        ("Terminal settings", 1, Color32::from_rgb(52, 211, 153)),
-                        ("Network settings", 2, Color32::from_rgb(56, 189, 248)),
-                        ("Bookmark settings", 3, Color32::from_rgb(251, 191, 36)),
+                        (tr(lang, "Terminal settings", "Cấu hình Terminal"), 1, Color32::from_rgb(52, 211, 153)),
+                        (tr(lang, "Network settings", "Mạng & Gateway"), 2, Color32::from_rgb(56, 189, 248)),
+                        (tr(lang, "Bookmark settings", "Thẻ & Ghi chú"), 3, Color32::from_rgb(251, 191, 36)),
                     ];
                     ui.horizontal(|ui| {
                         ui.spacing_mut().item_spacing.x = 6.0;
@@ -1558,83 +1562,83 @@ pub fn render_new_session_dialog(
                             match dialog.ssh_sub_tab {
                                 0 => {
                                     ui.horizontal(|ui| {
-                                        ui.label("Password (Vault):");
+                                        ui.label(tr(lang, "Password (Vault):", "Mật khẩu (Két):"));
                                         ui.add(
                                             TextEdit::singleline(&mut dialog.password)
                                                 .password(true)
                                                 .desired_width(210.0)
-                                                .hint_text("Optional session password"),
+                                                .hint_text(tr(lang, "Optional session password", "Mật khẩu tùy chọn")),
                                         );
-                                        rusty_checkbox(ui, &mut dialog.save_password, "Save in AES-256 Vault");
-                                        if other_proto == 4 && ui.button("⚙ Expert RDP settings").clicked() {
+                                        rusty_checkbox(ui, &mut dialog.save_password, tr(lang, "Save in AES-256 Vault", "Lưu vào két AES-256"));
+                                        if other_proto == 4 && ui.button(tr(lang, "⚙ Expert RDP settings", "⚙ Cấu hình RDP chuyên sâu")).clicked() {
                                             dialog.show_expert_rdp = true;
                                         }
                                     });
                                     ui.add_space(10.0);
                                     ui.horizontal(|ui| {
-                                        ui.label("Execute command at startup:");
+                                        ui.label(tr(lang, "Execute command at startup:", "Chạy lệnh khi mở:"));
                                         ui.add(
                                             TextEdit::singleline(&mut dialog.remote_command)
                                                 .desired_width(300.0)
-                                                .hint_text("Optional startup command"),
+                                                .hint_text(tr(lang, "Optional startup command", "Lệnh khởi động tùy chọn")),
                                         );
                                     });
                                     ui.add_space(10.0);
                                     ui.separator();
                                     ui.add_space(6.0);
                                     ui.horizontal(|ui| {
-                                        ui.label("Session name:");
+                                        ui.label(tr(lang, "Session name:", "Tên phiên:"));
                                         ui.add(TextEdit::singleline(&mut dialog.session_name).desired_width(210.0));
-                                        ui.label("Folder / Group:");
+                                        ui.label(tr(lang, "Folder / Group:", "Thư mục / Nhóm:"));
                                         ui.add(TextEdit::singleline(&mut dialog.folder_name).desired_width(195.0));
                                     });
                                 }
                                 1 => {
                                     ui.horizontal(|ui| {
-                                        ui.label("Terminal font:");
+                                        ui.label(tr(lang, "Terminal font:", "Phông chữ:"));
                                         egui::ComboBox::from_id_salt("compact_term_font_family")
                                             .selected_text(crate::terminal::fonts::terminal_font_display_name(&dialog.terminal_font_family))
                                             .width(150.0)
                                             .show_ui(ui, |ui| {
-                                                ui.selectable_value(&mut dialog.terminal_font_family, "".to_string(), "Default (Global Setting)");
+                                                ui.selectable_value(&mut dialog.terminal_font_family, "".to_string(), tr(lang, "Default (Global Setting)", "Mặc định (Theo cài đặt chung)"));
                                                 for opt in crate::terminal::fonts::AVAILABLE_TERMINAL_FONTS {
                                                     ui.selectable_value(&mut dialog.terminal_font_family, opt.id.to_string(), opt.name);
                                                 }
                                             });
                                         ui.add_space(8.0);
-                                        ui.label("Size:");
+                                        ui.label(tr(lang, "Size:", "Cỡ chữ:"));
                                         ui.add(egui::DragValue::new(&mut dialog.terminal_font_size).range(9..=28));
-                                        if ui.button("Font settings...").clicked() {
+                                        if ui.button(tr(lang, "Font settings...", "Cài đặt phông...")).clicked() {
                                             dialog.show_font_selector = true;
                                         }
-                                        if ui.button("Colors...").clicked() {
+                                        if ui.button(tr(lang, "Colors...", "Màu sắc...")).clicked() {
                                             dialog.show_color_selector = true;
                                         }
-                                        if ui.button("Expert terminal settings...").clicked() {
+                                        if ui.button(tr(lang, "Expert terminal settings...", "Terminal nâng cao...")).clicked() {
                                             dialog.show_expert_term = true;
                                         }
                                     });
                                     ui.add_space(10.0);
-                                    rusty_checkbox(ui, &mut dialog.backspace_sends_ctrl_h, "Backspace sends ^H");
-                                    rusty_checkbox(ui, &mut dialog.right_click_paste, "Paste using right-click");
+                                    rusty_checkbox(ui, &mut dialog.backspace_sends_ctrl_h, tr(lang, "Backspace sends ^H", "Backspace gửi ^H"));
+                                    rusty_checkbox(ui, &mut dialog.right_click_paste, tr(lang, "Paste using right-click", "Chuột phải để dán"));
                                 }
                                 2 => {
-                                    rusty_checkbox(ui, &mut dialog.use_ssh_gateway, "Connect through SSH gateway (jump host)");
+                                    rusty_checkbox(ui, &mut dialog.use_ssh_gateway, tr(lang, "Connect through SSH gateway (jump host)", "Kết nối qua SSH Gateway (Jump Host)"));
                                     ui.add_space(8.0);
-                                    if ui.button("⛓ Configure jump hosts...").clicked() {
+                                    if ui.button(tr(lang, "⛓ Configure jump hosts...", "⛓ Cấu hình Jump Host...")).clicked() {
                                         dialog.show_jump_hosts = true;
                                     }
                                 }
                                 _ => {
                                     ui.horizontal(|ui| {
-                                        ui.label("Session name:");
+                                        ui.label(tr(lang, "Session name:", "Tên phiên:"));
                                         ui.add(TextEdit::singleline(&mut dialog.session_name).desired_width(210.0));
-                                        ui.label("Folder:");
+                                        ui.label(tr(lang, "Folder:", "Thư mục:"));
                                         ui.add(TextEdit::singleline(&mut dialog.folder_name).desired_width(180.0));
                                     });
                                     ui.add_space(8.0);
                                     ui.horizontal(|ui| {
-                                        ui.label("Comments:");
+                                        ui.label(tr(lang, "Comments:", "Ghi chú:"));
                                         ui.add(TextEdit::singleline(&mut dialog.comments).desired_width(340.0));
                                     });
                                 }
@@ -1645,12 +1649,12 @@ pub fn render_new_session_dialog(
 
             ui.add_space(6.0);
             ui.horizontal(|ui| {
-                ui.label(RichText::new("Execute macro at session start:").size(12.0));
+                ui.label(RichText::new(tr(lang, "Execute macro at session start:", "Chạy macro khi mở phiên:")).size(12.0));
                 egui::ComboBox::from_id_salt("session_start_macro")
-                    .selected_text(&dialog.startup_macro)
+                    .selected_text(if dialog.startup_macro == "None" { tr(lang, "None", "Không có") } else { &dialog.startup_macro })
                     .width(180.0)
                     .show_ui(ui, |ui| {
-                        ui.selectable_value(&mut dialog.startup_macro, "None".to_string(), "None");
+                        ui.selectable_value(&mut dialog.startup_macro, "None".to_string(), tr(lang, "None", "Không có"));
                         for (name, _cmd) in &dialog.available_macros {
                             ui.selectable_value(&mut dialog.startup_macro, name.clone(), name);
                         }
@@ -1660,12 +1664,12 @@ pub fn render_new_session_dialog(
                             }
                         }
                     });
-                if ui.button("↺ Reset defaults").clicked() {
+                if ui.button(tr(lang, "↺ Reset defaults", "↺ Khôi phục mặc định")).clicked() {
                     let prev_tab = dialog.protocol_tab;
                     dialog.open_for_new();
                     dialog.protocol_tab = prev_tab;
                 }
-                if ui.button(RichText::new("📥 Import SSH Profiles...").color(Color32::from_rgb(56, 189, 248))).clicked() {
+                if ui.button(RichText::new(tr(lang, "📥 Import SSH Profiles...", "📥 Nhập hồ sơ SSH...")).color(Color32::from_rgb(56, 189, 248))).clicked() {
                     dialog.request_open_import = true;
                     close_dialog = true;
                 }
@@ -1682,15 +1686,15 @@ pub fn render_new_session_dialog(
 
             // 4. CENTERED RUSTYBOX OK / CANCEL BUTTONS
             let (ok_clicked, cancel_clicked) =
-                rusty_ok_cancel_buttons(ui, "✔  OK", "✖  Cancel");
+                rusty_ok_cancel_buttons(ui, tr(lang, "✔  OK", "✔  Lưu"), tr(lang, "✖  Cancel", "✖  Hủy"));
             let enter_pressed = ui.input(|i| i.key_pressed(egui::Key::Enter));
             if ok_clicked || enter_pressed {
                 let (is_valid, err_msg) = match dialog.protocol_tab {
-                    0 if dialog.ssh_host.trim().is_empty() => (false, "Please specify a remote host/IP address for SSH."),
-                    3 if dialog.telnet_host.trim().is_empty() => (false, "Please specify a remote host/IP address for Telnet."),
-                    4 if dialog.rdp_host.trim().is_empty() => (false, "Please specify a remote host/IP address for RDP."),
-                    5 if dialog.vnc_host.trim().is_empty() => (false, "Please specify a remote host/IP address for VNC."),
-                    6 | 8 if dialog.ftp_host.trim().is_empty() => (false, "Please specify a remote host/IP address for FTP/SFTP."),
+                    0 if dialog.ssh_host.trim().is_empty() => (false, tr(lang, "Please specify a remote host/IP address for SSH.", "Vui lòng nhập địa chỉ máy chủ/IP cho SSH.")),
+                    3 if dialog.telnet_host.trim().is_empty() => (false, tr(lang, "Please specify a remote host/IP address for Telnet.", "Vui lòng nhập địa chỉ máy chủ/IP cho Telnet.")),
+                    4 if dialog.rdp_host.trim().is_empty() => (false, tr(lang, "Please specify a remote host/IP address for RDP.", "Vui lòng nhập địa chỉ máy chủ/IP cho RDP.")),
+                    5 if dialog.vnc_host.trim().is_empty() => (false, tr(lang, "Please specify a remote host/IP address for VNC.", "Vui lòng nhập địa chỉ máy chủ/IP cho VNC.")),
+                    6 | 8 if dialog.ftp_host.trim().is_empty() => (false, tr(lang, "Please specify a remote host/IP address for FTP/SFTP.", "Vui lòng nhập địa chỉ máy chủ/IP cho FTP/SFTP.")),
                     _ => (true, ""),
                 };
                 if is_valid {
@@ -1715,11 +1719,12 @@ pub fn render_new_session_dialog(
 }
 
 fn render_session_child_popups(ctx: &egui::Context, dialog: &mut NewSessionDialog) {
+    let lang = dialog.language;
     // 1. TFormSSHProtoSettings: Advanced SSH protocol settings
     if dialog.show_expert_ssh {
         let mut open = dialog.show_expert_ssh;
         let mut close_req = false;
-        egui::Window::new("Advanced SSH protocol settings")
+        egui::Window::new(tr(lang, "Advanced SSH protocol settings", "Cấu hình giao thức SSH nâng cao"))
             .open(&mut open)
             .collapsible(false)
             .resizable(false)
@@ -1728,10 +1733,10 @@ fn render_session_child_popups(ctx: &egui::Context, dialog: &mut NewSessionDialo
             .show(ctx, |ui| {
                 ui.group(|ui| {
                     ui.set_width(ui.available_width());
-                    ui.label(RichText::new("SSH protocol & algorithms").strong());
+                    ui.label(RichText::new(tr(lang, "SSH protocol & algorithms", "Giao thức & Thuật toán SSH")).strong());
                     ui.add_space(6.0);
                     egui::Grid::new("ssh_proto_grid").num_columns(2).spacing([12.0, 8.0]).show(ui, |ui| {
-                        ui.label("Protocol version:");
+                        ui.label(tr(lang, "Protocol version:", "Phiên bản giao thức:"));
                         egui::ComboBox::from_id_salt("ssh_proto_ver")
                             .selected_text(&dialog.ssh_proto_version)
                             .width(330.0)
@@ -1741,13 +1746,13 @@ fn render_session_child_popups(ctx: &egui::Context, dialog: &mut NewSessionDialo
                                 }
                             });
                         ui.end_row();
-                        ui.label("Encryption ciphers:");
+                        ui.label(tr(lang, "Encryption ciphers:", "Mã hóa (Ciphers):"));
                         ui.add_sized([330.0, 24.0], TextEdit::singleline(&mut dialog.ssh_cipher_order));
                         ui.end_row();
-                        ui.label("Key exchange (KEX):");
+                        ui.label(tr(lang, "Key exchange (KEX):", "Trao đổi khóa (KEX):"));
                         ui.add_sized([330.0, 24.0], TextEdit::singleline(&mut dialog.ssh_kex_algo));
                         ui.end_row();
-                        ui.label("Host key algorithms:");
+                        ui.label(tr(lang, "Host key algorithms:", "Thuật toán khóa máy chủ:"));
                         ui.add_sized([330.0, 24.0], TextEdit::singleline(&mut dialog.ssh_hostkey_algo));
                         ui.end_row();
                     });
@@ -1755,13 +1760,13 @@ fn render_session_child_popups(ctx: &egui::Context, dialog: &mut NewSessionDialo
                 ui.add_space(4.0);
                 ui.group(|ui| {
                     ui.set_width(ui.available_width());
-                    ui.label(RichText::new("Authentication & security options").strong());
-                    rusty_checkbox(ui, &mut dialog.ssh_agent_forwarding, "Allow SSH agent forwarding (ForwardAgent)");
-                    rusty_checkbox(ui, &mut dialog.ssh_gssapi_auth, "Attempt GSSAPI / Kerberos authentication");
-                    rusty_checkbox(ui, &mut dialog.ssh_strict_hostkey, "Strict host key checking (reject unknown host keys)");
+                    ui.label(RichText::new(tr(lang, "Authentication & security options", "Tùy chọn xác thực & bảo mật")).strong());
+                    rusty_checkbox(ui, &mut dialog.ssh_agent_forwarding, tr(lang, "Allow SSH agent forwarding (ForwardAgent)", "Cho phép chuyển tiếp SSH Agent"));
+                    rusty_checkbox(ui, &mut dialog.ssh_gssapi_auth, tr(lang, "Attempt GSSAPI / Kerberos authentication", "Thử xác thực GSSAPI / Kerberos"));
+                    rusty_checkbox(ui, &mut dialog.ssh_strict_hostkey, tr(lang, "Strict host key checking (reject unknown host keys)", "Kiểm tra chặt chẽ khóa máy chủ (từ chối khóa lạ)"));
                 });
                 ui.add_space(6.0);
-                let (ok, cancel) = rusty_ok_cancel_buttons(ui, "✔ OK", "✖ Cancel");
+                let (ok, cancel) = rusty_ok_cancel_buttons(ui, tr(lang, "✔ OK", "✔ Đồng ý"), tr(lang, "✖ Cancel", "✖ Hủy"));
                 if ok || cancel {
                     close_req = true;
                 }
@@ -1773,7 +1778,7 @@ fn render_session_child_popups(ctx: &egui::Context, dialog: &mut NewSessionDialo
     if dialog.show_expert_rdp {
         let mut open = dialog.show_expert_rdp;
         let mut close_req = false;
-        egui::Window::new("Advanced RDP settings")
+        egui::Window::new(tr(lang, "Advanced RDP settings", "Cấu hình RDP nâng cao"))
             .open(&mut open)
             .collapsible(false)
             .resizable(false)
@@ -1782,10 +1787,10 @@ fn render_session_child_popups(ctx: &egui::Context, dialog: &mut NewSessionDialo
             .show(ctx, |ui| {
                 ui.group(|ui| {
                     ui.set_width(ui.available_width());
-                    ui.label(RichText::new("Display & redirection").strong());
+                    ui.label(RichText::new(tr(lang, "Display & redirection", "Hiển thị & chuyển tiếp")).strong());
                     ui.add_space(4.0);
                     egui::Grid::new("rdp_expert_grid").num_columns(2).spacing([12.0, 8.0]).show(ui, |ui| {
-                        ui.label("Resolution:");
+                        ui.label(tr(lang, "Resolution:", "Độ phân giải:"));
                         egui::ComboBox::from_id_salt("rdp_res_combo")
                             .selected_text(&dialog.rdp_resolution)
                             .width(260.0)
@@ -1795,7 +1800,7 @@ fn render_session_child_popups(ctx: &egui::Context, dialog: &mut NewSessionDialo
                                 }
                             });
                         ui.end_row();
-                        ui.label("Color depth:");
+                        ui.label(tr(lang, "Color depth:", "Độ sâu màu:"));
                         egui::ComboBox::from_id_salt("rdp_depth_combo")
                             .selected_text(&dialog.rdp_color_depth)
                             .width(260.0)
@@ -1807,13 +1812,13 @@ fn render_session_child_popups(ctx: &egui::Context, dialog: &mut NewSessionDialo
                         ui.end_row();
                     });
                     ui.add_space(4.0);
-                    rusty_checkbox(ui, &mut dialog.rdp_redirect_clipboard, "Enable Clipboard redirection");
-                    rusty_checkbox(ui, &mut dialog.rdp_redirect_audio, "Enable Audio redirection");
-                    rusty_checkbox(ui, &mut dialog.rdp_redirect_drives, "Redirect local disks to remote session");
-                    rusty_checkbox(ui, &mut dialog.rdp_nla_security, "Enable Network Level Authentication (NLA / CredSSP)");
+                    rusty_checkbox(ui, &mut dialog.rdp_redirect_clipboard, tr(lang, "Enable Clipboard redirection", "Chia sẻ Clipboard"));
+                    rusty_checkbox(ui, &mut dialog.rdp_redirect_audio, tr(lang, "Enable Audio redirection", "Chuyển tiếp âm thanh"));
+                    rusty_checkbox(ui, &mut dialog.rdp_redirect_drives, tr(lang, "Redirect local disks to remote session", "Chia sẻ ổ đĩa cục bộ vào máy từ xa"));
+                    rusty_checkbox(ui, &mut dialog.rdp_nla_security, tr(lang, "Enable Network Level Authentication (NLA / CredSSP)", "Bật xác thực cấp mạng (NLA / CredSSP)"));
                 });
                 ui.add_space(6.0);
-                let (ok, cancel) = rusty_ok_cancel_buttons(ui, "✔ OK", "✖ Cancel");
+                let (ok, cancel) = rusty_ok_cancel_buttons(ui, tr(lang, "✔ OK", "✔ Đồng ý"), tr(lang, "✖ Cancel", "✖ Hủy"));
                 if ok || cancel {
                     close_req = true;
                 }
@@ -1825,7 +1830,7 @@ fn render_session_child_popups(ctx: &egui::Context, dialog: &mut NewSessionDialo
     if dialog.show_expert_term {
         let mut open = dialog.show_expert_term;
         let mut close_req = false;
-        egui::Window::new("Advanced terminal settings")
+        egui::Window::new(tr(lang, "Advanced terminal settings", "Cấu hình Terminal nâng cao"))
             .open(&mut open)
             .collapsible(false)
             .resizable(false)
@@ -1834,10 +1839,10 @@ fn render_session_child_popups(ctx: &egui::Context, dialog: &mut NewSessionDialo
             .show(ctx, |ui| {
                 ui.group(|ui| {
                     ui.set_width(ui.available_width());
-                    ui.label(RichText::new("Terminal emulation & bell").strong());
+                    ui.label(RichText::new(tr(lang, "Terminal emulation & bell", "Giả lập Terminal & chuông báo")).strong());
                     ui.add_space(4.0);
                     egui::Grid::new("term_expert_grid").num_columns(2).spacing([12.0, 8.0]).show(ui, |ui| {
-                        ui.label("Terminal type ($TERM):");
+                        ui.label(tr(lang, "Terminal type ($TERM):", "Loại Terminal ($TERM):"));
                         egui::ComboBox::from_id_salt("term_type_combo")
                             .selected_text(&dialog.term_type_str)
                             .width(240.0)
@@ -1847,7 +1852,7 @@ fn render_session_child_popups(ctx: &egui::Context, dialog: &mut NewSessionDialo
                                 }
                             });
                         ui.end_row();
-                        ui.label("Remote character set:");
+                        ui.label(tr(lang, "Remote character set:", "Bảng mã ký tự:"));
                         egui::ComboBox::from_id_salt("term_charset_combo")
                             .selected_text(&dialog.term_charset)
                             .width(240.0)
@@ -1857,10 +1862,10 @@ fn render_session_child_popups(ctx: &egui::Context, dialog: &mut NewSessionDialo
                                 }
                             });
                         ui.end_row();
-                        ui.label("Scrollback buffer lines:");
+                        ui.label(tr(lang, "Scrollback buffer lines:", "Số dòng lịch sử cuộn:"));
                         ui.add_sized([120.0, 24.0], egui::DragValue::new(&mut dialog.term_scrollback_lines).range(500..=500000).speed(100));
                         ui.end_row();
-                        ui.label("Terminal bell:");
+                        ui.label(tr(lang, "Terminal bell:", "Âm báo Terminal:"));
                         egui::ComboBox::from_id_salt("term_bell_combo")
                             .selected_text(&dialog.term_bell_mode)
                             .width(240.0)
@@ -1873,7 +1878,7 @@ fn render_session_child_popups(ctx: &egui::Context, dialog: &mut NewSessionDialo
                     });
                 });
                 ui.add_space(6.0);
-                let (ok, cancel) = rusty_ok_cancel_buttons(ui, "✔ OK", "✖ Cancel");
+                let (ok, cancel) = rusty_ok_cancel_buttons(ui, tr(lang, "✔ OK", "✔ Đồng ý"), tr(lang, "✖ Cancel", "✖ Hủy"));
                 if ok || cancel {
                     close_req = true;
                 }
@@ -1885,34 +1890,34 @@ fn render_session_child_popups(ctx: &egui::Context, dialog: &mut NewSessionDialo
     if dialog.show_jump_hosts {
         let mut open = dialog.show_jump_hosts;
         let mut close_req = false;
-        egui::Window::new("RustyBox jump hosts configuration")
+        egui::Window::new(tr(lang, "RustyBox jump hosts configuration", "Cấu hình Jump Host (SSH Gateway)"))
             .open(&mut open)
             .collapsible(false)
             .resizable(false)
             .default_width(540.0)
             .anchor(Align2::CENTER_CENTER, Vec2::ZERO)
             .show(ctx, |ui| {
-                ui.label("Configure SSH gateway (bastion / jump host) before reaching target server:");
+                ui.label(tr(lang, "Configure SSH gateway (bastion / jump host) before reaching target server:", "Thiết lập máy chủ trung gian (Bastion / Jump Host) trước khi kết nối đích:"));
                 ui.add_space(4.0);
                 ui.group(|ui| {
                     ui.set_width(ui.available_width());
-                    rusty_checkbox(ui, &mut dialog.use_ssh_gateway, "Enable SSH gateway (jump host)");
+                    rusty_checkbox(ui, &mut dialog.use_ssh_gateway, tr(lang, "Enable SSH gateway (jump host)", "Bật SSH Gateway (Jump Host)"));
                     ui.add_space(6.0);
                     egui::Grid::new("jump_hosts_grid").num_columns(4).spacing([10.0, 8.0]).show(ui, |ui| {
-                        ui.label("Gateway host:");
+                        ui.label(tr(lang, "Gateway host:", "Máy chủ Gateway:"));
                         ui.add_sized([195.0, 24.0], TextEdit::singleline(&mut dialog.gateway_host).hint_text("bastion.company.com"));
-                        ui.label("Port:");
+                        ui.label(tr(lang, "Port:", "Cổng:"));
                         ui.add_sized([80.0, 24.0], egui::DragValue::new(&mut dialog.gateway_port).range(1..=65535));
                         ui.end_row();
-                        ui.label("Username:");
+                        ui.label(tr(lang, "Username:", "Tài khoản:"));
                         ui.add_sized([195.0, 24.0], TextEdit::singleline(&mut dialog.gateway_user).hint_text("ec2-user"));
-                        ui.label("Key:");
-                        ui.add_sized([140.0, 24.0], TextEdit::singleline(&mut dialog.gateway_key).hint_text("Optional key"));
+                        ui.label(tr(lang, "Key:", "Khóa:"));
+                        ui.add_sized([140.0, 24.0], TextEdit::singleline(&mut dialog.gateway_key).hint_text(tr(lang, "Optional key", "Khóa tùy chọn")));
                         ui.end_row();
                     });
                 });
                 ui.add_space(6.0);
-                let (ok, cancel) = rusty_ok_cancel_buttons(ui, "✔ OK", "✖ Cancel");
+                let (ok, cancel) = rusty_ok_cancel_buttons(ui, tr(lang, "✔ OK", "✔ Đồng ý"), tr(lang, "✖ Cancel", "✖ Hủy"));
                 if ok || cancel {
                     close_req = true;
                 }
@@ -1924,7 +1929,7 @@ fn render_session_child_popups(ctx: &egui::Context, dialog: &mut NewSessionDialo
     if dialog.show_color_selector {
         let mut open = dialog.show_color_selector;
         let mut close_req = false;
-        egui::Window::new("Terminal colors selection")
+        egui::Window::new(tr(lang, "Terminal colors selection", "Chọn bảng màu Terminal"))
             .open(&mut open)
             .collapsible(false)
             .resizable(false)
@@ -1933,7 +1938,7 @@ fn render_session_child_popups(ctx: &egui::Context, dialog: &mut NewSessionDialo
             .show(ctx, |ui| {
                 ui.group(|ui| {
                     ui.set_width(ui.available_width());
-                    ui.label(RichText::new("Select terminal color palette").strong());
+                    ui.label(RichText::new(tr(lang, "Select terminal color palette", "Chọn bảng màu hiển thị")).strong());
                     for scheme in &[
                         "RustyBox Dark (Default)",
                         "Dracula Pro",
@@ -1947,7 +1952,7 @@ fn render_session_child_popups(ctx: &egui::Context, dialog: &mut NewSessionDialo
                     }
                 });
                 ui.add_space(6.0);
-                let (ok, cancel) = rusty_ok_cancel_buttons(ui, "✔ OK", "✖ Cancel");
+                let (ok, cancel) = rusty_ok_cancel_buttons(ui, tr(lang, "✔ OK", "✔ Đồng ý"), tr(lang, "✖ Cancel", "✖ Hủy"));
                 if ok || cancel {
                     close_req = true;
                 }
@@ -1959,7 +1964,7 @@ fn render_session_child_popups(ctx: &egui::Context, dialog: &mut NewSessionDialo
     if dialog.show_font_selector {
         let mut open = dialog.show_font_selector;
         let mut close_req = false;
-        egui::Window::new("Terminal font selection")
+        egui::Window::new(tr(lang, "Terminal font selection", "Chọn phông chữ Terminal"))
             .open(&mut open)
             .collapsible(false)
             .resizable(false)
@@ -1968,15 +1973,15 @@ fn render_session_child_popups(ctx: &egui::Context, dialog: &mut NewSessionDialo
             .show(ctx, |ui| {
                 ui.group(|ui| {
                     ui.set_width(ui.available_width());
-                    ui.label(RichText::new("Monospace terminal font").strong());
+                    ui.label(RichText::new(tr(lang, "Monospace terminal font", "Phông chữ đơn cách (Monospace)")).strong());
                     ui.add_space(4.0);
                     ui.horizontal(|ui| {
-                        ui.label("Font family:");
+                        ui.label(tr(lang, "Font family:", "Tên phông:"));
                         egui::ComboBox::from_id_salt("tform_font_family")
                             .selected_text(crate::terminal::fonts::terminal_font_display_name(&dialog.terminal_font_family))
                             .width(220.0)
                             .show_ui(ui, |ui| {
-                                ui.selectable_value(&mut dialog.terminal_font_family, "".to_string(), "Default (Global Setting)");
+                                ui.selectable_value(&mut dialog.terminal_font_family, "".to_string(), tr(lang, "Default (Global Setting)", "Mặc định (Theo cài đặt chung)"));
                                 for opt in crate::terminal::fonts::AVAILABLE_TERMINAL_FONTS {
                                     ui.selectable_value(&mut dialog.terminal_font_family, opt.id.to_string(), opt.name);
                                 }
@@ -1984,20 +1989,20 @@ fn render_session_child_popups(ctx: &egui::Context, dialog: &mut NewSessionDialo
                     });
                     ui.add_space(4.0);
                     ui.horizontal(|ui| {
-                        ui.label("Font size (pt):");
+                        ui.label(tr(lang, "Font size (pt):", "Cỡ chữ (pt):"));
                         ui.add(egui::DragValue::new(&mut dialog.terminal_font_size).range(9..=28));
                     });
                     ui.add_space(4.0);
                     ui.horizontal(|ui| {
-                        ui.label("Cursor shape:");
-                        ui.radio_value(&mut dialog.term_cursor_shape, 0, "Block");
-                        ui.radio_value(&mut dialog.term_cursor_shape, 1, "Underline");
-                        ui.radio_value(&mut dialog.term_cursor_shape, 2, "Vertical bar");
+                        ui.label(tr(lang, "Cursor shape:", "Kiểu con trỏ:"));
+                        ui.radio_value(&mut dialog.term_cursor_shape, 0, tr(lang, "Block", "Khối"));
+                        ui.radio_value(&mut dialog.term_cursor_shape, 1, tr(lang, "Underline", "Gạch dưới"));
+                        ui.radio_value(&mut dialog.term_cursor_shape, 2, tr(lang, "Vertical bar", "Vạch đứng"));
                     });
-                    rusty_checkbox(ui, &mut dialog.term_cursor_blink, "Blinking cursor");
+                    rusty_checkbox(ui, &mut dialog.term_cursor_blink, tr(lang, "Blinking cursor", "Con trỏ nhấp nháy"));
                 });
                 ui.add_space(6.0);
-                let (ok, cancel) = rusty_ok_cancel_buttons(ui, "✔ OK", "✖ Cancel");
+                let (ok, cancel) = rusty_ok_cancel_buttons(ui, tr(lang, "✔ OK", "✔ Đồng ý"), tr(lang, "✖ Cancel", "✖ Hủy"));
                 if ok || cancel {
                     close_req = true;
                 }
@@ -2009,7 +2014,7 @@ fn render_session_child_popups(ctx: &egui::Context, dialog: &mut NewSessionDialo
     if dialog.show_syntax_customizer {
         let mut open = dialog.show_syntax_customizer;
         let mut close_req = false;
-        egui::Window::new("Customize syntax highlighting")
+        egui::Window::new(tr(lang, "Customize syntax highlighting", "Tùy chỉnh tô màu cú pháp"))
             .open(&mut open)
             .collapsible(false)
             .resizable(false)
@@ -2018,14 +2023,14 @@ fn render_session_child_popups(ctx: &egui::Context, dialog: &mut NewSessionDialo
             .show(ctx, |ui| {
                 ui.group(|ui| {
                     ui.set_width(ui.available_width());
-                    ui.label(RichText::new("Active terminal keyword highlighting rules").strong());
-                    ui.label("• Error / Fatal / Failed / Denied  -> Red (#F85149)");
-                    ui.label("• Warning / Timeout / Deprecated -> Amber (#FBBF24)");
-                    ui.label("• OK / Connected / Success / Active -> Green (#3FB950)");
-                    ui.label("• IPv4 / IPv6 / MAC / URLs / Paths -> Cyan (#38BDF8)");
+                    ui.label(RichText::new(tr(lang, "Active terminal keyword highlighting rules", "Quy tắc tô màu từ khóa Terminal đang bật")).strong());
+                    ui.label(tr(lang, "• Error / Fatal / Failed / Denied  -> Red (#F85149)", "• Error / Fatal / Failed / Denied  -> Đỏ (#F85149)"));
+                    ui.label(tr(lang, "• Warning / Timeout / Deprecated -> Amber (#FBBF24)", "• Warning / Timeout / Deprecated -> Vàng (#FBBF24)"));
+                    ui.label(tr(lang, "• OK / Connected / Success / Active -> Green (#3FB950)", "• OK / Connected / Success / Active -> Xanh lá (#3FB950)"));
+                    ui.label(tr(lang, "• IPv4 / IPv6 / MAC / URLs / Paths -> Cyan (#38BDF8)", "• IPv4 / IPv6 / MAC / URLs / Paths -> Xanh dương (#38BDF8)"));
                 });
                 ui.add_space(6.0);
-                let (ok, cancel) = rusty_ok_cancel_buttons(ui, "✔ OK", "✖ Cancel");
+                let (ok, cancel) = rusty_ok_cancel_buttons(ui, tr(lang, "✔ OK", "✔ Đồng ý"), tr(lang, "✖ Cancel", "✖ Hủy"));
                 if ok || cancel {
                     close_req = true;
                 }

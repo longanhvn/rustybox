@@ -3,6 +3,7 @@ pub mod syntax;
 
 use self::layouter::render_editor_layouter;
 use self::syntax::{detect_syntax, SyntaxType};
+use crate::session::storage::{tr, AppLanguage};
 use egui::{vec2, Color32, FontId, RichText, ScrollArea, TextEdit, Vec2};
 use std::path::PathBuf;
 
@@ -32,6 +33,7 @@ pub struct Editor {
     pub active_match_idx: usize,
     pub syntax: SyntaxType,
     pub show_unsaved_confirm: bool,
+    pub language: AppLanguage,
 }
 
 impl Default for Editor {
@@ -51,6 +53,7 @@ impl Default for Editor {
             active_match_idx: 0,
             syntax: SyntaxType::PlainText,
             show_unsaved_confirm: false,
+            language: AppLanguage::English,
         }
     }
 }
@@ -190,6 +193,7 @@ impl Editor {
 
         let mut window_open = self.open;
         let mut request_close = false;
+        let lang = self.language;
 
         egui::Window::new(window_title)
             .id(egui::Id::new("builtin_quick_code_editor_window"))
@@ -205,7 +209,7 @@ impl Editor {
             .show(ctx, |ui| {
                 // Toolbar
                 ui.horizontal(|ui| {
-                    if (ui.button("💾 Save (Ctrl+S)").clicked() || trigger_save)
+                    if (ui.button(tr(lang, "💾 Save (Ctrl+S)", "💾 Lưu (Ctrl+S)")).clicked() || trigger_save)
                         && self.file_path.is_some()
                         && let Some(ref path) = self.file_path {
                             action = EditorAction::Save {
@@ -215,25 +219,29 @@ impl Editor {
                             };
                         }
 
-                    if ui.button("🔍 Find (Ctrl+F)").clicked() {
+                    if ui.button(tr(lang, "🔍 Find (Ctrl+F)", "🔍 Tìm kiếm (Ctrl+F)")).clicked() {
                         self.show_search = !self.show_search;
                     }
 
-                    let wrap_text = if self.word_wrap { "↩ Wrap: ON" } else { "➡ Wrap: OFF" };
-                    if ui.button(wrap_text).on_hover_text("Toggle word wrapping").clicked() {
+                    let wrap_text = if self.word_wrap {
+                        tr(lang, "↩ Wrap: ON", "↩ Xuống dòng: BẬT")
+                    } else {
+                        tr(lang, "➡ Wrap: OFF", "➡ Xuống dòng: TẮT")
+                    };
+                    if ui.button(wrap_text).on_hover_text(tr(lang, "Toggle word wrapping", "Bật/tắt tự động xuống dòng")).clicked() {
                         self.word_wrap = !self.word_wrap;
                     }
 
-                    if ui.button("🧹 Clean Tabs").on_hover_text("Convert all Tab characters to 2 spaces (fixes indentation in YAML, Python, etc.)").clicked() {
+                    if ui.button(tr(lang, "🧹 Clean Tabs", "🧹 Chuẩn hóa Tab")).on_hover_text(tr(lang, "Convert all Tab characters to 2 spaces (fixes indentation in YAML, Python, etc.)", "Đổi tất cả ký tự Tab thành 2 dấu cách")).clicked() {
                         self.clean_tabs_to_spaces(2);
                     }
 
                     // Font Zoom
-                    if ui.small_button("➖").on_hover_text("Zoom out font").clicked() && self.font_size > 9.0 {
+                    if ui.small_button("➖").on_hover_text(tr(lang, "Zoom out font", "Thu nhỏ cỡ chữ")).clicked() && self.font_size > 9.0 {
                         self.font_size -= 1.0;
                     }
                     ui.label(RichText::new(format!("{:.0}px", self.font_size)).size(11.0).monospace());
-                    if ui.small_button("➕").on_hover_text("Zoom in font").clicked() && self.font_size < 28.0 {
+                    if ui.small_button("➕").on_hover_text(tr(lang, "Zoom in font", "Phóng to cỡ chữ")).clicked() && self.font_size < 28.0 {
                         self.font_size += 1.0;
                     }
 
@@ -267,7 +275,7 @@ impl Editor {
                             }
                         });
 
-                    if ui.button("✖ Close").clicked() {
+                    if ui.button(tr(lang, "✖ Close", "✖ Đóng")).clicked() {
                         request_close = true;
                     }
 
@@ -280,10 +288,10 @@ impl Editor {
                 if self.show_search {
                     ui.add_space(3.0);
                     ui.horizontal(|ui| {
-                        ui.label(RichText::new("Find:").size(11.5).strong());
+                        ui.label(RichText::new(tr(lang, "Find:", "Tìm:")).size(11.5).strong());
                         let search_resp = ui.add(
                             TextEdit::singleline(&mut self.search_query)
-                                .hint_text("Type keyword (Enter for next)...")
+                                .hint_text(tr(lang, "Type keyword (Enter for next)...", "Nhập từ khóa (Enter để tìm tiếp)..."))
                                 .desired_width(200.0),
                         );
                         if search_resp.changed() {
@@ -297,10 +305,10 @@ impl Editor {
                             }
                         }
 
-                        if ui.small_button("▲ Prev").on_hover_text("Previous match (Shift+F3)").clicked() {
+                        if ui.small_button(tr(lang, "▲ Prev", "▲ Trước")).on_hover_text(tr(lang, "Previous match (Shift+F3)", "Kết quả trước (Shift+F3)")).clicked() {
                             self.prev_match();
                         }
-                        if ui.small_button("▼ Next").on_hover_text("Next match (F3 or Enter)").clicked() {
+                        if ui.small_button(tr(lang, "▼ Next", "▼ Tiếp")).on_hover_text(tr(lang, "Next match (F3 or Enter)", "Kết quả tiếp theo (F3 hoặc Enter)")).clicked() {
                             self.next_match();
                         }
 
@@ -311,14 +319,17 @@ impl Editor {
                                 Color32::from_rgb(248, 113, 113)
                             };
                             let match_text = if self.search_matches > 0 {
-                                format!("{}/{} matches", self.active_match_idx + 1, self.search_matches)
+                                match lang {
+                                    AppLanguage::English => format!("{}/{} matches", self.active_match_idx + 1, self.search_matches),
+                                    AppLanguage::Vietnamese => format!("{}/{} kết quả", self.active_match_idx + 1, self.search_matches),
+                                }
                             } else {
-                                "0 matches".to_string()
+                                tr(lang, "0 matches", "0 kết quả").to_string()
                             };
                             ui.label(RichText::new(match_text).color(match_color).size(11.0).monospace());
                         }
 
-                        if ui.small_button("✖").on_hover_text("Close search").clicked() {
+                        if ui.small_button("✖").on_hover_text(tr(lang, "Close search", "Đóng tìm kiếm")).clicked() {
                             self.show_search = false;
                         }
                     });
@@ -412,25 +423,34 @@ impl Editor {
                 ui.separator();
                 ui.horizontal(|ui| {
                     let dirty_indicator = if self.is_dirty() {
-                        RichText::new("● Modified").color(Color32::from_rgb(251, 191, 36)).size(11.0).strong()
+                        RichText::new(tr(lang, "● Modified", "● Đã sửa")).color(Color32::from_rgb(251, 191, 36)).size(11.0).strong()
                     } else {
-                        RichText::new("✔ Saved").color(Color32::from_rgb(52, 211, 153)).size(11.0)
+                        RichText::new(tr(lang, "✔ Saved", "✔ Đã lưu")).color(Color32::from_rgb(52, 211, 153)).size(11.0)
                     };
                     ui.label(dirty_indicator);
                     ui.separator();
-                    ui.label(RichText::new(format!("Lines: {}  |  Length: {} bytes", line_count, total_chars)).size(11.0).weak());
+                    ui.label(RichText::new(match lang {
+                        AppLanguage::English => format!("Lines: {}  |  Length: {} bytes", line_count, total_chars),
+                        AppLanguage::Vietnamese => format!("Dòng: {}  |  Dung lượng: {} bytes", line_count, total_chars),
+                    }).size(11.0).weak());
                     ui.separator();
-                    ui.label(RichText::new(format!("Syntax: {}", self.syntax.name())).size(11.0).color(Color32::from_rgb(148, 163, 184)));
+                    ui.label(RichText::new(match lang {
+                        AppLanguage::English => format!("Syntax: {}", self.syntax.name()),
+                        AppLanguage::Vietnamese => format!("Cú pháp: {}", self.syntax.name()),
+                    }).size(11.0).color(Color32::from_rgb(148, 163, 184)));
 
                     let tab_count = self.content.matches('\t').count();
                     if tab_count > 0 {
                         ui.separator();
                         if ui.button(
-                            RichText::new(format!("⚠️ {} Tab(s) (Click to clean)", tab_count))
+                            RichText::new(match lang {
+                                AppLanguage::English => format!("⚠️ {} Tab(s) (Click to clean)", tab_count),
+                                AppLanguage::Vietnamese => format!("⚠️ {} Tab (Nhấn để đổi)", tab_count),
+                            })
                                 .color(Color32::from_rgb(251, 191, 36))
                                 .size(11.0)
                                 .strong(),
-                        ).on_hover_text("Convert all tabs into 2 spaces").clicked() {
+                        ).on_hover_text(tr(lang, "Convert all tabs into 2 spaces", "Đổi tất cả Tab thành 2 dấu cách")).clicked() {
                             self.clean_tabs_to_spaces(2);
                         }
                     }
@@ -463,23 +483,23 @@ impl Editor {
             let mut confirm_exit = false;
             let mut confirm_save = false;
 
-            egui::Window::new("⚠️ Unsaved Changes")
+            egui::Window::new(tr(lang, "⚠️ Unsaved Changes", "⚠️ Thay đổi chưa lưu"))
                 .collapsible(false)
                 .resizable(false)
                 .anchor(egui::Align2::CENTER_CENTER, Vec2::ZERO)
                 .show(ctx, |ui| {
-                    ui.label("You have unsaved changes. Do you want to save before closing?");
+                    ui.label(tr(lang, "You have unsaved changes. Do you want to save before closing?", "Bạn có thay đổi chưa lưu. Bạn có muốn lưu trước khi đóng không?"));
                     ui.add_space(8.0);
                     ui.horizontal(|ui| {
-                        if ui.button("💾 Save & Close").clicked() {
+                        if ui.button(tr(lang, "💾 Save & Close", "💾 Lưu & Đóng")).clicked() {
                             confirm_save = true;
                             close_dialog = true;
                         }
-                        if ui.button("Discard Changes").clicked() {
+                        if ui.button(tr(lang, "Discard Changes", "Bỏ thay đổi")).clicked() {
                             confirm_exit = true;
                             close_dialog = true;
                         }
-                        if ui.button("Cancel").clicked() {
+                        if ui.button(tr(lang, "Cancel", "Hủy")).clicked() {
                             close_dialog = true;
                         }
                     });

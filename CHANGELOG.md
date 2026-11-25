@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [v1.4.9] - 2026-11-25
+### Added & Improved
+- **Complete Bilingual Localization (English / Tiếng Việt) Across Every Screen & Modal:**
+  - Extended `AppLanguage` (`tr(lang, en, vi)`) to cover 100% of the application UI, including all menus (`File`, `Terminal`, `View`, `Tools`, `Settings`, `Help`), top toolbar controls & tooltips, bottom quick macros & connection status chips, tab strip, tab switcher, tab context menu, split-view placeholders, and the Home Dashboard (`Quick Connect`, feature cards, `Recent Connections`).
+  - Localized the **Sessions Sidebar** (`Sessions` / `SFTP Browser` tabs, filter box, folder/session right-click menus) and the entire **SFTP Browser** (`src/sftp/ui.rs`: toolbar, table headers/tooltips, disconnect/reconnect notices, context menus, `Chmod`, `Rename`, `Properties`, `Compare`, `Confirm Delete`, `File Conflict`, `New Folder/File`, and `Sudo Root Mode`).
+  - Localized the **Terminal Widget** right-click context menu (`src/terminal/widget.rs`), **Multi-line Paste Warning** modal, **Built-in Code Editor** (`src/editor/mod.rs`), and **New/Edit Session Dialog** + all 7 sub-popups (`src/session/ui.rs`) while preserving canonical internal config values in `RustyBox.json`.
+  - Localized all remaining tool & management modals: `Import Sessions`, `Network Tools Suite` (`NetScan`, `Ping`, `Ports`, `Netstat`, `DNS`, `WOL`), `Embedded Daemons` (`HTTP`, `Syslog`, `TFTP`), `SSH Tunnels`, `Command Snippets`, `Auto-Highlight Keywords`, `KeyGen`, `Password Generator`, `RustyBox Diff`, `RustyBox Apt`, `Macro Manager`, `Manage Passwords`, `New Credential`, `Settings` (all 7 tabs), `Keyboard Shortcuts`, `About`, `Connect as...`, and `Rename` dialogs.
+- **Master Password & AES-256 Vault Modal Layout Refinement:**
+  - Standardized modal width (`480px`), full-width `ui.group` containers, 2-column `egui::Grid` password inputs, and uniform `30px`-tall bottom action buttons aligned flush-right with `Close`.
+- **Documentation & Preview:**
+  - Refreshed `docs/screenshots/rustybox_preview.png`, updated `README.md` download table and bilingual feature highlights for `v1.4.9`.
+
 ## [v1.4.8] - 2026-11-25
 ### Added & Improved
 - **Bilingual UI (English & Vietnamese):**
