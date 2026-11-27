@@ -90,6 +90,7 @@ pub struct RemoteSessionState {
     pub status_message: Option<String>,
     pub sudo_mode: bool,
     pub sudo_password: Option<String>,
+    pub requested_path: Option<PathBuf>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -193,6 +194,20 @@ impl Default for FileExplorer {
 }
 
 impl FileExplorer {
+    pub fn is_any_modal_open(&self) -> bool {
+        self.editor.open
+            || self.chmod_open
+            || self.show_new_folder
+            || self.show_new_file
+            || self.pending_delete.is_some()
+            || !self.pending_delete_many.is_empty()
+            || self.show_rename
+            || self.properties_open
+            || self.diff_open
+            || self.pending_conflict.is_some()
+            || !self.pending_conflicts.is_empty()
+            || self.show_sudo_password_dialog
+    }
     pub fn new() -> Self {
         let initial_path = dirs::home_dir().unwrap_or_else(|| PathBuf::from("."));
         let path_input = Self::format_display_path(&initial_path);
@@ -485,6 +500,7 @@ impl FileExplorer {
             existing.is_connected = false;
             existing.is_loading = true;
             existing.error_message = None;
+            existing.requested_path = None;
             existing.client.lock().force_reconnect(cfg);
             self.load_active_remote_state(&label);
             return;
@@ -502,8 +518,21 @@ impl FileExplorer {
         self.save_active_remote_state();
 
         if let Some(existing) = self.remote_sessions.get_mut(&label) {
-            // If config matches, load existing session state
-            if existing.config == cfg {
+            // Compare core connection credentials only (ignore sudo_mode/sudo_password toggled at runtime)
+            let same_creds = existing.config.host == cfg.host
+                && existing.config.port == cfg.port
+                && existing.config.user == cfg.user
+                && existing.config.password == cfg.password
+                && existing.config.key_path == cfg.key_path;
+            if same_creds {
+                if existing.error_message.is_some() && !existing.is_connected && !existing.is_loading {
+                    existing.is_loading = true;
+                    existing.error_message = None;
+                    let mut reconnect_cfg = cfg;
+                    reconnect_cfg.sudo_mode = existing.sudo_mode;
+                    reconnect_cfg.sudo_password = existing.sudo_password.clone();
+                    existing.client.lock().force_reconnect(reconnect_cfg);
+                }
                 self.load_active_remote_state(&label);
                 return;
             }
@@ -512,6 +541,7 @@ impl FileExplorer {
             existing.is_connected = false;
             existing.is_loading = true;
             existing.error_message = None;
+            existing.requested_path = None;
             existing.client.lock().force_reconnect(cfg);
             self.load_active_remote_state(&label);
             return;
@@ -549,10 +579,32 @@ impl FileExplorer {
             status_message: None,
             sudo_mode: false,
             sudo_password: None,
+            requested_path: None,
         };
 
         self.remote_sessions.insert(label.clone(), new_session);
         self.load_active_remote_state(&label);
+    }
+
+    /// Switches the explorer view back to local files while keeping active remote SFTP sessions alive in `remote_sessions`.
+    pub fn switch_to_local(&mut self) {
+        self.save_active_remote_state();
+        self.remote_label = None;
+        self.remote_client = None;
+        self.is_remote = false;
+        self.is_connected = false;
+        self.is_loading = false;
+        self.active_remote_label = None;
+        self.remote_disk_stats = None;
+        self.remote_telemetry = None;
+        self.remote_raw_entries.clear();
+        self.remote_home_dir = None;
+        self.remote_os = RemoteOsKind::Posix;
+        self.last_synced_terminal_cwd = None;
+        self.error_message = None;
+        self.current_path = dirs::home_dir().unwrap_or_else(|| PathBuf::from("."));
+        self.path_input = Self::format_display_path(&self.current_path);
+        self.refresh();
     }
 
     pub fn disconnect_remote(&mut self) {
@@ -755,6 +807,7 @@ impl FileExplorer {
 
         let mut opened_editor: Option<(String, PathBuf, String)> = None;
         let mut editor_saved_target: Option<String> = None;
+        let mut active_session_changed = false;
 
         for (label, sess) in self.remote_sessions.iter_mut() {
             let mut events = Vec::new();
@@ -763,6 +816,10 @@ impl FileExplorer {
                 while let Some(evt) = c.try_recv() {
                     events.push(evt);
                 }
+            }
+
+            if !events.is_empty() && self.remote_label.as_deref() == Some(label.as_str()) {
+                active_session_changed = true;
             }
 
             let mut needs_dir_refresh = false;
@@ -780,8 +837,14 @@ impl FileExplorer {
                         sess.remote_os = remote_os;
                         let init_path = PathBuf::from(&initial_dir);
                         sess.remote_home_dir = Some(init_path.clone());
-                        sess.current_path = init_path.clone();
-                        sess.path_input = Self::format_path_with_mode(&sess.current_path, true, remote_os);
+                        if let Some(ref req) = sess.requested_path {
+                            sess.current_path = req.clone();
+                            sess.path_input = Self::format_path_with_mode(&sess.current_path, true, remote_os);
+                            needs_dir_refresh = true;
+                        } else if sess.remote_raw_entries.is_empty() {
+                            sess.current_path = init_path.clone();
+                            sess.path_input = Self::format_path_with_mode(&sess.current_path, true, remote_os);
+                        }
                         if !sess.path_history.contains(&sess.current_path) {
                             sess.path_history.insert(0, sess.current_path.clone());
                         }
@@ -790,6 +853,7 @@ impl FileExplorer {
                         sess.is_connected = false;
                         sess.error_message = Some(format!("SFTP Error: {}", err));
                         sess.is_loading = false;
+                        sess.requested_path = None;
                         if self.remote_label.as_deref() == Some(label.as_str()) {
                             self.is_connected = false;
                             self.error_message = sess.error_message.clone();
@@ -800,6 +864,25 @@ impl FileExplorer {
                         sess.is_connected = true;
                         if self.remote_label.as_deref() == Some(label.as_str()) {
                             self.is_connected = true;
+                        }
+                        let listed_norm = dir.replace('\\', "/");
+                        let listed_clean = if listed_norm.len() > 1 {
+                            listed_norm.trim_end_matches('/')
+                        } else {
+                            listed_norm.as_str()
+                        };
+                        if let Some(ref req) = sess.requested_path {
+                            let req_norm = req.to_string_lossy().replace('\\', "/");
+                            let req_clean = if req_norm.len() > 1 {
+                                req_norm.trim_end_matches('/')
+                            } else {
+                                req_norm.as_str()
+                            };
+                            if req_clean != listed_clean {
+                                // Ignore stale directory listing from an earlier request
+                                continue;
+                            }
+                            sess.requested_path = None;
                         }
                         sess.current_path = PathBuf::from(&dir);
                         sess.path_input = Self::format_path_with_mode(&sess.current_path, true, sess.remote_os);
@@ -858,6 +941,7 @@ impl FileExplorer {
                                 self.is_connected = false;
                             }
                         }
+                        sess.requested_path = None;
                         sess.error_message = Some(err);
                         sess.is_loading = false;
                         if self.remote_label.as_deref() == Some(label.as_str()) {
@@ -908,10 +992,12 @@ impl FileExplorer {
             self.editor.mark_saved();
         }
 
-        if self.is_remote
-            && let Some(active_label) = self.remote_label.clone() {
-                self.load_active_remote_state(&active_label);
-            }
+        if active_session_changed
+            && self.is_remote
+            && let Some(active_label) = self.remote_label.clone()
+        {
+            self.load_active_remote_state(&active_label);
+        }
     }
 
     pub fn get_active_telemetry(&self) -> Option<crate::telemetry::RemoteSystemMetrics> {
@@ -953,6 +1039,11 @@ impl FileExplorer {
             };
             self.current_path = PathBuf::from(normalized);
             self.path_input = self.format_path(&self.current_path);
+            if let Some(ref label) = self.remote_label
+                && let Some(sess) = self.remote_sessions.get_mut(label)
+            {
+                sess.requested_path = Some(self.current_path.clone());
+            }
             if !self.path_history.contains(&self.current_path) {
                 self.path_history.insert(0, self.current_path.clone());
                 if self.path_history.len() > 12 {
@@ -2693,6 +2784,7 @@ mod tests {
             status_message: None,
             sudo_mode: false,
             sudo_password: None,
+            requested_path: None,
         };
 
         explorer.remote_sessions.insert(label.clone(), sess);
@@ -2773,6 +2865,7 @@ mod tests {
             status_message: None,
             sudo_mode: false,
             sudo_password: None,
+            requested_path: None,
         };
 
         explorer.remote_sessions.insert(label.clone(), sess);
@@ -2905,6 +2998,7 @@ mod tests {
             remote_telemetry: None,
             sudo_mode: true,
             sudo_password: Some("secret".into()),
+            requested_path: None,
         };
 
         explorer.remote_sessions.insert(label.clone(), sess);
@@ -3037,5 +3131,166 @@ mod tests {
         // 7. But if user triggers reconnect (is_loading becomes true) -> must immediately NOT report disconnected
         explorer.is_loading = true;
         assert!(!explorer.is_confirmed_disconnected(), "When reconnecting, must suppress disconnected banner");
+    }
+
+    #[test]
+    fn test_sftp_preserves_path_and_sudo_across_tab_and_local_switches() {
+        let mut explorer = FileExplorer::new();
+        let cfg_a = SftpTargetConfig {
+            host: "10.0.0.10".into(),
+            port: 22,
+            user: "root".into(),
+            password: Some("pw_a".into()),
+            key_path: None,
+            sudo_mode: false,
+            sudo_password: None,
+        };
+        let cfg_b = SftpTargetConfig {
+            host: "10.0.0.20".into(),
+            port: 22,
+            user: "ubuntu".into(),
+            password: Some("pw_b".into()),
+            key_path: None,
+            sudo_mode: false,
+            sudo_password: None,
+        };
+
+        // Connect Server A, browse /var/www/html, enable sudo_mode
+        explorer.connect_remote(cfg_a.clone());
+        let client_a = explorer.remote_client.clone().unwrap();
+        explorer.is_connected = true;
+        explorer.is_loading = false;
+        explorer.current_path = PathBuf::from("/var/www/html");
+        explorer.path_input = "/var/www/html".into();
+        explorer.remote_raw_entries = vec![FileEntry {
+            name: "index.html".into(),
+            path: PathBuf::from("/var/www/html/index.html"),
+            is_dir: false,
+            is_hidden: false,
+            size: 128,
+            modified: None,
+            permissions: "-rw-r--r--".into(),
+            owner: "root".into(),
+            group: "root".into(),
+        }];
+        explorer.apply_remote_filter_and_sort();
+        if let Some(sess) = explorer.remote_sessions.get_mut("root@10.0.0.10:22") {
+            sess.sudo_mode = true;
+            sess.config.sudo_mode = true;
+            sess.sudo_password = Some("sudo_pw".into());
+        }
+
+        // Switch to Server B and browse /etc/nginx
+        explorer.connect_remote(cfg_b.clone());
+        explorer.is_connected = true;
+        explorer.is_loading = false;
+        explorer.current_path = PathBuf::from("/etc/nginx");
+        explorer.path_input = "/etc/nginx".into();
+
+        // Switch to Local tab (must NOT disconnect Server A or B)
+        explorer.switch_to_local();
+        assert!(!explorer.is_remote);
+        assert!(explorer.remote_sessions.contains_key("root@10.0.0.10:22"));
+        assert!(explorer.remote_sessions.contains_key("ubuntu@10.0.0.20:22"));
+
+        // Switch back to Server A with sudo_mode=false in tab config -> must NOT reconnect or reset path!
+        explorer.connect_remote(cfg_a);
+        assert!(Arc::ptr_eq(&client_a, explorer.remote_client.as_ref().unwrap()));
+        assert_eq!(explorer.current_path, PathBuf::from("/var/www/html"));
+        assert!(explorer.is_connected);
+        assert!(explorer.is_active_sudo_mode());
+        assert_eq!(explorer.entries.len(), 1);
+        assert_eq!(explorer.entries[0].name, "index.html");
+
+        // Switch back to Server B -> must preserve /etc/nginx
+        explorer.connect_remote(cfg_b);
+        assert_eq!(explorer.current_path, PathBuf::from("/etc/nginx"));
+    }
+
+    #[test]
+    fn test_sftp_ignores_stale_dir_listed_and_respects_requested_path() {
+        let mut explorer = FileExplorer::new();
+        let (cmd_tx, cmd_rx) = std::sync::mpsc::channel();
+        let (evt_tx, evt_rx) = std::sync::mpsc::channel();
+        let client_arc = Arc::new(Mutex::new(crate::sftp::remote::RemoteSftpClient::new_mock(cmd_tx, evt_rx)));
+        let label = "root@10.0.0.30:22".to_string();
+
+        let sess = RemoteSessionState {
+            config: SftpTargetConfig {
+                host: "10.0.0.30".into(),
+                port: 22,
+                user: "root".into(),
+                password: None,
+                key_path: None,
+                sudo_mode: false,
+                sudo_password: None,
+            },
+            client: client_arc,
+            is_connected: true,
+            is_loading: false,
+            current_path: PathBuf::from("/var/log"),
+            path_input: "/var/log".into(),
+            path_history: vec![PathBuf::from("/var/log")],
+            remote_raw_entries: Vec::new(),
+            remote_home_dir: Some(PathBuf::from("/root")),
+            remote_os: RemoteOsKind::Posix,
+            last_synced_terminal_cwd: None,
+            selected_file: None,
+            selected_files: Vec::new(),
+            remote_disk_stats: None,
+            remote_telemetry: None,
+            last_telemetry_poll: None,
+            error_message: None,
+            status_message: None,
+            sudo_mode: false,
+            sudo_password: None,
+            requested_path: None,
+        };
+
+        explorer.remote_sessions.insert(label.clone(), sess);
+        explorer.load_active_remote_state(&label);
+
+        // User requests /etc/nginx
+        explorer.set_path(PathBuf::from("/etc/nginx"));
+        let _ = cmd_rx.try_recv(); // consume ListDir("/etc/nginx")
+
+        // Stale DirListed for /var/log arrives late -> must be ignored!
+        let _ = evt_tx.send(crate::sftp::remote::SftpEvent::DirListed {
+            dir: "/var/log".into(),
+            entries: vec![],
+        });
+        explorer.poll();
+        assert_eq!(explorer.current_path, PathBuf::from("/etc/nginx"));
+
+        // Matching DirListed for /etc/nginx arrives -> applied!
+        let _ = evt_tx.send(crate::sftp::remote::SftpEvent::DirListed {
+            dir: "/etc/nginx".into(),
+            entries: vec![FileEntry {
+                name: "nginx.conf".into(),
+                path: PathBuf::from("/etc/nginx/nginx.conf"),
+                is_dir: false,
+                is_hidden: false,
+                size: 42,
+                modified: None,
+                permissions: "-rw-r--r--".into(),
+                owner: "root".into(),
+                group: "root".into(),
+            }],
+        });
+        explorer.poll();
+        assert_eq!(explorer.current_path, PathBuf::from("/etc/nginx"));
+        assert_eq!(explorer.entries.len(), 1);
+        assert_eq!(explorer.entries[0].name, "nginx.conf");
+
+        // Reconnect Connected event with requested_path set must keep requested_path, not reset to /root
+        if let Some(s) = explorer.remote_sessions.get_mut(&label) {
+            s.requested_path = Some(PathBuf::from("/opt/app"));
+        }
+        let _ = evt_tx.send(crate::sftp::remote::SftpEvent::Connected {
+            initial_dir: "/root".into(),
+            remote_os: RemoteOsKind::Posix,
+        });
+        explorer.poll();
+        assert_eq!(explorer.current_path, PathBuf::from("/opt/app"));
     }
 }

@@ -383,6 +383,7 @@ impl RustyBoxApp {
             || self.pending_paste_text.is_some()
             || self.show_new_cred_modal
             || self.show_highlight_modal
+            || self.explorer.is_any_modal_open()
     }
 
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
@@ -396,6 +397,7 @@ impl RustyBoxApp {
 
         // Configure embedded Unicode fonts for full Vietnamese diacritics & international symbols
         crate::terminal::fonts::setup_terminal_fonts(&cc.egui_ctx, &terminal_font_family);
+        crate::register_ui_repaint_context(cc.egui_ctx.clone());
 
         let mut sessions = config.sessions.clone();
         let credentials = config.credentials.clone();
@@ -857,6 +859,67 @@ impl RustyBoxApp {
         (effective_jump, cfg)
     }
 
+    fn save_current_tab_sftp_path(&mut self) {
+        if self.explorer.is_remote
+            && self.explorer.is_connected
+            && let Some(ref prev_id) = self.last_synced_tab_id
+            && let Some(ref active_label) = self.explorer.remote_label
+        {
+            let cur_sftp = self.explorer.current_path.to_string_lossy().to_string();
+            if let Some(prev_tab) = self.open_tabs.iter_mut().find(|t| &t.id == prev_id) {
+                let tab_matches_remote = prev_tab.session_def.as_ref().map(|s| {
+                    if let SessionType::Ssh { ref host, port, ref user, .. } = s.session_type {
+                        format!("{}@{}:{}", user, host, port) == *active_label
+                    } else {
+                        false
+                    }
+                }).unwrap_or(false);
+                if tab_matches_remote {
+                    prev_tab.last_sftp_path = Some(cur_sftp);
+                }
+            }
+        }
+    }
+
+    /// Disconnects and removes any background SFTP sessions in `explorer.remote_sessions`
+    /// that are no longer referenced by any open SSH tab.
+    fn cleanup_unused_remote_sftp_sessions(&mut self) {
+        let active_labels: std::collections::HashSet<String> = self
+            .open_tabs
+            .iter()
+            .filter_map(|t| {
+                t.session_def.as_ref().and_then(|s| {
+                    if let SessionType::Ssh { ref host, port, ref user, .. } = s.session_type {
+                        Some(format!("{}@{}:{}", user, host, port))
+                    } else {
+                        None
+                    }
+                })
+            })
+            .collect();
+
+        let stale_labels: Vec<String> = self
+            .explorer
+            .remote_sessions
+            .keys()
+            .filter(|lbl| !active_labels.contains(*lbl))
+            .cloned()
+            .collect();
+
+        for lbl in stale_labels {
+            if let Some(sess) = self.explorer.remote_sessions.remove(&lbl) {
+                sess.client.lock().disconnect();
+            }
+            if self.explorer.remote_label.as_deref() == Some(lbl.as_str()) {
+                self.explorer.remote_label = None;
+                self.explorer.remote_client = None;
+                self.explorer.is_remote = false;
+                self.explorer.is_connected = false;
+                self.explorer.is_loading = false;
+            }
+        }
+    }
+
     pub fn spawn_local_terminal_ext(
         &mut self,
         title: &str,
@@ -864,6 +927,7 @@ impl RustyBoxApp {
         workdir: Option<&str>,
         session_def: Option<Session>,
     ) {
+        self.save_current_tab_sftp_path();
         self.is_home_active = false;
         let log_path = match session_def.as_ref() {
             Some(s) => self.resolve_session_log_path(s),
@@ -888,6 +952,9 @@ impl RustyBoxApp {
                 };
                 self.open_tabs.push(tab);
                 self.active_tab_idx = self.open_tabs.len() - 1;
+                self.last_synced_is_home = false;
+                self.last_synced_tab_id = self.open_tabs.last().map(|t| t.id.clone());
+                self.last_synced_tab_idx = self.active_tab_idx;
                 self.sync_sidebar_with_active_tab();
                 self.sidebar_tab = 0;
                 self.scroll_active_tab_into_view = true;
@@ -915,6 +982,7 @@ impl RustyBoxApp {
     }
 
     pub fn spawn_ssh_terminal(&mut self, mut s: Session) {
+        self.save_current_tab_sftp_path();
         self.is_home_active = false;
         self.record_session_connected(&mut s);
         self.selected_sidebar_session_id = Some(s.id.clone());
@@ -1029,6 +1097,10 @@ impl RustyBoxApp {
             || self.last_synced_tab_id != current_tab_id
             || self.last_synced_tab_idx != current_idx
         {
+            // Save the current SFTP path on the outgoing tab before switching away
+            if self.last_synced_tab_id != current_tab_id {
+                self.save_current_tab_sftp_path();
+            }
             self.last_synced_is_home = current_is_home;
             self.last_synced_tab_id = current_tab_id;
             self.last_synced_tab_idx = current_idx;
@@ -1037,20 +1109,33 @@ impl RustyBoxApp {
     }
 
     pub fn sync_sidebar_with_active_tab(&mut self) {
+        let current_is_home = self.is_home_active || self.open_tabs.is_empty();
+        let current_tab_id = if current_is_home {
+            None
+        } else {
+            let idx = self.active_tab_idx.min(self.open_tabs.len() - 1);
+            Some(self.open_tabs[idx].id.clone())
+        };
+        let current_idx = if current_is_home { 0 } else { self.active_tab_idx.min(self.open_tabs.len().saturating_sub(1)) };
+
+        if self.last_synced_tab_id != current_tab_id {
+            self.save_current_tab_sftp_path();
+        }
+        self.last_synced_is_home = current_is_home;
+        self.last_synced_tab_id = current_tab_id;
+        self.last_synced_tab_idx = current_idx;
+
         // Poll background SFTP events so status is fresh
         self.explorer.poll();
         if self.explorer.just_connected {
             self.explorer.just_connected = false;
-            if !self.is_home_active {
-                self.sidebar_tab = 1;
-                self.show_sftp_sidebar = true;
-            }
         }
 
         if self.is_home_active || self.open_tabs.is_empty() {
             self.selected_sidebar_session_id = None;
-            if self.open_tabs.is_empty() && self.explorer.is_remote {
-                self.explorer.disconnect_remote();
+            if self.open_tabs.is_empty() && (self.explorer.is_remote || !self.explorer.remote_sessions.is_empty()) {
+                self.explorer.disconnect_all_remotes();
+                self.explorer.switch_to_local();
             }
             return;
         }
@@ -1070,7 +1155,9 @@ impl RustyBoxApp {
 
         // 2. Sync SFTP / File Explorer in Left Sidebar
         let tab = &mut self.open_tabs[idx];
-        tab.last_synced_cwd = None;
+        if tab.last_sftp_path.is_none() {
+            tab.last_synced_cwd = None;
+        }
         let is_ssh = tab.session_def.as_ref().map(|s| matches!(s.session_type, SessionType::Ssh { .. })).unwrap_or(false);
         let tab_def = tab.session_def.clone();
         let tab_workdir = tab.workdir.clone();
@@ -1119,14 +1206,17 @@ impl RustyBoxApp {
                     let target_label = format!("{}@{}:{}", user, host, port);
                     if self.explorer.is_remote && self.explorer.remote_label.as_deref() == Some(&target_label) && self.explorer.is_connected {
                         if let Some(ref p) = tab_last_sftp {
-                            self.explorer.sync_terminal_cwd(p);
+                            let target = std::path::PathBuf::from(p);
+                            if self.explorer.current_path != target {
+                                self.explorer.set_path(target);
+                            }
                         } else if let Some(detected) = self.open_tabs.get(idx).and_then(detect_terminal_cwd) {
                             self.explorer.sync_terminal_cwd(&detected);
                         } else if let Some(ref w) = tab_workdir {
                             self.explorer.sync_terminal_cwd(w);
                         }
                     } else {
-                        self.explorer.force_reconnect_remote(crate::sftp::remote::SftpTargetConfig {
+                        self.explorer.connect_remote(crate::sftp::remote::SftpTargetConfig {
                             host: host.clone(),
                             port,
                             user: user.clone(),
@@ -1135,17 +1225,24 @@ impl RustyBoxApp {
                             sudo_mode: false,
                             sudo_password: None,
                         });
+                        if self.explorer.is_connected
+                            && let Some(ref p) = tab_last_sftp
+                        {
+                            let target = std::path::PathBuf::from(p);
+                            if self.explorer.current_path != target {
+                                self.explorer.set_path(target);
+                            }
+                        }
                     }
 
                     if s.auto_sftp {
                         self.show_sftp_sidebar = true;
-                        self.sidebar_tab = 1;
                     }
                 }
         } else {
-            // Local Terminal / WSL: switch explorer to local files
+            // Local Terminal / WSL: switch explorer to local files without disconnecting SSH SFTP sessions
             if self.explorer.is_remote {
-                self.explorer.disconnect_remote();
+                self.explorer.switch_to_local();
             }
             let target_local_dir = self.open_tabs.get(idx)
                 .and_then(detect_terminal_cwd)
@@ -1337,10 +1434,10 @@ impl RustyBoxApp {
                     } else {
                         format!("wsl -d {}", distro)
                     };
-                    if let Some(u) = user {
-                        if !u.is_empty() {
-                            cmd.push_str(&format!(" -u {}", u));
-                        }
+                    if let Some(u) = user
+                        && !u.is_empty()
+                    {
+                        cmd.push_str(&format!(" -u {}", u));
                     }
                     self.spawn_local_terminal_ext(&s.name, Some(&cmd), working_dir.as_deref(), Some(s.clone()));
                 }
@@ -1402,10 +1499,6 @@ impl RustyBoxApp {
         self.explorer.poll();
         if self.explorer.just_connected {
             self.explorer.just_connected = false;
-            if !self.is_home_active {
-                self.sidebar_tab = 1;
-                self.show_sftp_sidebar = true;
-            }
         }
 
         let elapsed = self.last_telemetry_time.elapsed();
@@ -2063,11 +2156,12 @@ impl eframe::App for RustyBoxApp {
                     if self.open_tabs.is_empty() {
                         self.is_home_active = true;
                         self.active_tab_idx = 0;
+                        self.sidebar_tab = 0;
                     } else if self.active_tab_idx >= self.open_tabs.len() {
                         self.active_tab_idx = self.open_tabs.len() - 1;
                     }
+                    self.cleanup_unused_remote_sftp_sessions();
                     self.sync_sidebar_with_active_tab();
-                    self.sidebar_tab = 0;
                 }
             }
         if ctx.input_mut(|i| i.consume_key(egui::Modifiers::CTRL, egui::Key::T) || i.consume_key(egui::Modifiers::COMMAND, egui::Key::T)) {
@@ -2165,10 +2259,21 @@ impl eframe::App for RustyBoxApp {
             }
         }
 
-        if visible_has_data || any_bg_has_data {
+        let is_minimized = ctx.input(|i| i.viewport().minimized == Some(true))
+            || ctx.screen_rect().width() <= 1.0
+            || ctx.screen_rect().height() <= 1.0;
+        crate::set_ui_minimized(is_minimized);
+
+        if is_minimized {
+            ctx.request_repaint_after(std::time::Duration::from_secs(2));
+        } else if visible_has_data || any_bg_has_data {
             ctx.request_repaint();
+        } else if self.explorer.is_loading || self.explorer.transfer_progress.is_some() {
+            ctx.request_repaint_after(std::time::Duration::from_millis(80));
         } else {
-            ctx.request_repaint_after(std::time::Duration::from_millis(50));
+            // PTY reader & SFTP worker threads call `crate::request_ui_repaint()` immediately on
+            // incoming data, so idle frames only need a gentle 500ms tick for cursor blink & telemetry.
+            ctx.request_repaint_after(std::time::Duration::from_millis(500));
         }
 
         // 1. TOP MENU BAR (Branded Header + Menus + Quick Utilities)
@@ -2194,7 +2299,7 @@ impl eframe::App for RustyBoxApp {
                         .inner_margin(egui::Margin::symmetric(5.0, 1.5))
                         .show(ui, |ui| {
                             ui.label(
-                                RichText::new("v1.4.9")
+                                RichText::new("v1.4.12")
                                     .color(Color32::from_rgb(147, 197, 253))
                                     .size(10.5)
                                     .strong(),
@@ -2260,7 +2365,7 @@ impl eframe::App for RustyBoxApp {
                         });
                         if let Some((title, session_def, custom_cmd, workdir)) = dup_info {
                             if let Some(s) = session_def {
-                                self.spawn_ssh_terminal(s);
+                                self.launch_generic_session(s);
                             } else {
                                 let name = format!("{} (Copy)", title);
                                 self.spawn_local_terminal(&name, custom_cmd.as_deref(), workdir.as_deref());
@@ -2277,11 +2382,12 @@ impl eframe::App for RustyBoxApp {
                                 if self.open_tabs.is_empty() {
                                     self.is_home_active = true;
                                     self.active_tab_idx = 0;
+                                    self.sidebar_tab = 0;
                                 } else if self.active_tab_idx >= self.open_tabs.len() {
                                     self.active_tab_idx = self.open_tabs.len() - 1;
                                 }
+                                self.cleanup_unused_remote_sftp_sessions();
                                 self.sync_sidebar_with_active_tab();
-                                self.sidebar_tab = 0;
                             }
                         }
                         ui.close_menu();
@@ -3292,7 +3398,12 @@ impl eframe::App for RustyBoxApp {
                                         let (rect, _) = ui.allocate_exact_size(egui::vec2(ui.available_width(), 38.0), egui::Sense::hover());
                                         let resp = ui.interact(rect, id, egui::Sense::click());
 
-                                        if resp.clicked() || resp.secondary_clicked() {
+                                        if resp.clicked() {
+                                            self.selected_sidebar_session_id = Some(s.id.clone());
+                                            if !resp.double_clicked() {
+                                                resp.request_focus();
+                                            }
+                                        } else if resp.secondary_clicked() {
                                             self.selected_sidebar_session_id = Some(s.id.clone());
                                         }
 
@@ -3347,15 +3458,13 @@ impl eframe::App for RustyBoxApp {
                                             ui.painter().circle_filled(dot_pos, 4.0, Color32::from_rgb(34, 197, 94));
                                         }
 
-                                        if resp.double_clicked() {
-                                            if let Some(existing_pos) = self.open_tabs.iter().position(|t| t.session_def.as_ref().map(|def| def.id == s.id).unwrap_or(false) && t.session.is_alive()) {
-                                                self.is_home_active = false;
-                                                self.active_tab_idx = existing_pos;
-                                                self.sync_sidebar_with_active_tab();
-                                            } else {
-                                                to_launch = Some(s.clone());
-                                            }
-                                        } else if self.selected_sidebar_session_id.as_deref() == Some(&s.id) && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+                                        let row_enter_launch = resp.has_focus()
+                                            && !self.is_any_modal_open()
+                                            && ui.input_mut(|i| {
+                                                i.consume_key(egui::Modifiers::NONE, egui::Key::Enter)
+                                            });
+                                        if resp.double_clicked() || row_enter_launch {
+                                            resp.surrender_focus();
                                             to_launch = Some(s.clone());
                                         }
                                         resp.context_menu(|ui| {
@@ -3819,19 +3928,6 @@ impl eframe::App for RustyBoxApp {
                 ui.ctx().data_mut(|d| d.insert_temp(tabs_overflow_id, tabs_overflow));
             }
 
-            if let Some(idx) = switch_to_tab {
-                self.is_home_active = false;
-                self.active_tab_idx = idx;
-                self.scroll_active_tab_into_view = true;
-                self.selected_sidebar_session_id = self.open_tabs.get(idx).and_then(|t| t.session_def.as_ref()).map(|def| def.id.clone());
-                self.sync_active_tab_sftp();
-                ctx.memory_mut(|m| {
-                    if let Some(fid) = m.focused() {
-                        m.surrender_focus(fid);
-                    }
-                });
-            }
-
             // 2. RIGHT TAB SWITCHER DROPDOWN + OVERFLOW ARROWS (when multiple tabs exist)
             if tab_count > 1 {
                 let mut right_ui = ui.new_child(egui::UiBuilder::new().max_rect(right_rect).layout(Layout::right_to_left(Align::Center)));
@@ -3927,6 +4023,21 @@ impl eframe::App for RustyBoxApp {
                 }
             }
 
+            if let Some(idx) = switch_to_tab
+                && idx < self.open_tabs.len()
+            {
+                self.is_home_active = false;
+                self.active_tab_idx = idx;
+                self.scroll_active_tab_into_view = true;
+                self.selected_sidebar_session_id = self.open_tabs.get(idx).and_then(|t| t.session_def.as_ref()).map(|def| def.id.clone());
+                self.sync_active_tab_sftp();
+                ctx.memory_mut(|m| {
+                    if let Some(fid) = m.focused() {
+                        m.surrender_focus(fid);
+                    }
+                });
+            }
+
             // Tab Right-Click Context Menu (Floating Foreground Area)
             if let Some((menu_idx, pos)) = self.tab_context_menu {
                 let mut close_menu = false;
@@ -3995,7 +4106,7 @@ impl eframe::App for RustyBoxApp {
                             });
                             if let Some((title, session_def, custom_cmd, workdir)) = dup_info {
                                 if let Some(s) = session_def {
-                                    self.spawn_ssh_terminal(s);
+                                    self.launch_generic_session(s);
                                 } else {
                                     let name = format!("{}_copy", title);
                                     self.spawn_local_terminal(&name, custom_cmd.as_deref(), workdir.as_deref());
@@ -4021,6 +4132,7 @@ impl eframe::App for RustyBoxApp {
                                 }
                                 self.open_tabs.push(keep);
                                 self.active_tab_idx = 0;
+                                self.cleanup_unused_remote_sftp_sessions();
                                 self.sync_sidebar_with_active_tab();
                             }
                         }
@@ -4031,6 +4143,7 @@ impl eframe::App for RustyBoxApp {
                             if self.active_tab_idx > idx {
                                 self.active_tab_idx = idx;
                             }
+                            self.cleanup_unused_remote_sftp_sessions();
                             self.sync_sidebar_with_active_tab();
                         }
                     }
@@ -4043,13 +4156,14 @@ impl eframe::App for RustyBoxApp {
                         if self.open_tabs.is_empty() {
                             self.is_home_active = true;
                             self.active_tab_idx = 0;
+                            self.sidebar_tab = 0;
                         } else if self.active_tab_idx >= self.open_tabs.len() {
                             self.active_tab_idx = self.open_tabs.len() - 1;
                         } else if self.active_tab_idx > close_idx {
                             self.active_tab_idx = self.active_tab_idx.saturating_sub(1);
                         }
+                        self.cleanup_unused_remote_sftp_sessions();
                         self.sync_sidebar_with_active_tab();
-                        self.sidebar_tab = 0;
                     }
 
                 ui.add_space(2.0);
@@ -4851,11 +4965,12 @@ impl eframe::App for RustyBoxApp {
                         if self.open_tabs.is_empty() {
                             self.is_home_active = true;
                             self.active_tab_idx = 0;
+                            self.sidebar_tab = 0;
                         } else if self.active_tab_idx >= self.open_tabs.len() {
                             self.active_tab_idx = self.open_tabs.len() - 1;
                         }
+                        self.cleanup_unused_remote_sftp_sessions();
                         self.sync_sidebar_with_active_tab();
-                        self.sidebar_tab = 0;
                     }
                 }
             }
@@ -7567,7 +7682,7 @@ impl eframe::App for RustyBoxApp {
                         ui.heading("🚀 RustyBox");
                         ui.label(RichText::new(tr(lang, "Complete Remote Toolbox & Terminal Suite in Pure Rust", "Bộ công cụ Terminal & Quản trị từ xa toàn diện viết bằng Rust")).strong());
                         ui.add_space(4.0);
-                        ui.label(RichText::new(tr(lang, "Version v1.4.9", "Phiên bản v1.4.9")).color(Color32::from_rgb(147, 197, 253)).strong());
+                        ui.label(RichText::new(tr(lang, "Version v1.4.12", "Phiên bản v1.4.12")).color(Color32::from_rgb(147, 197, 253)).strong());
                         ui.add_space(8.0);
                         ui.label(tr(lang, "High-performance, zero-install, lightweight remote terminal toolbox.", "Gọn nhẹ, hiệu năng cao, không cần cài đặt."));
                         ui.label(tr(lang, "Runs natively on Windows, macOS, and Linux.", "Chạy trực tiếp trên Windows, macOS và Linux."));

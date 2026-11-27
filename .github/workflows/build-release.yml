@@ -90,7 +90,7 @@ jobs:
               content = f.read()
           match = re.search(r'(##\s*\[v[^\]]+\].*?)(?=\n##\s*\[v|\Z)', content, re.DOTALL)
           notes = match.group(1).strip() if match else ''
-          header = 'Tác giả: Long kakaka (longanhvn)\n\n'
+          header = 'Author: longanhvn\n\n'
           with open('RELEASE_NOTES.md', 'w', encoding='utf-8') as out:
               out.write(header + notes + '\n')
           "

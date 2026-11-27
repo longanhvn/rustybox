@@ -199,7 +199,7 @@ pub struct RustyBoxConfig {
     pub highlight_rules: Vec<crate::terminal::HighlightRule>,
     #[serde(default = "default_true")]
     pub remote_monitoring_enabled: bool,
-    #[serde(default = "default_true")]
+    #[serde(default)]
     pub follow_terminal_folder: bool,
     #[serde(default)]
     pub sftp_bookmarks: Vec<String>,
@@ -235,7 +235,7 @@ impl Default for RustyBoxConfig {
             highlight_rules_enabled: true,
             highlight_rules: crate::terminal::highlight::default_highlight_rules(),
             remote_monitoring_enabled: true,
-            follow_terminal_folder: true,
+            follow_terminal_folder: false,
             sftp_bookmarks: Vec::new(),
             auto_log_sessions: false,
             default_log_directory: default_log_directory(),

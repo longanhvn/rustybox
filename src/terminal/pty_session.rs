@@ -383,6 +383,7 @@ impl PtySession {
                                 p.process(b"\r\n\x1b[33m----------------------------------------------------------------\x1b[0m\r\n\x1b[1;31mSession stopped (connection closed).\x1b[0m\r\n\x1b[1;36mPress <Enter> to restart session, or <Ctrl+W> to close tab.\x1b[0m\r\n");
                             }
                             has_new_data_clone.store(true, Ordering::Relaxed);
+                            crate::request_ui_repaint();
                             break;
                         }
                         Err(_) => {
@@ -392,6 +393,7 @@ impl PtySession {
                                 p.process(b"\r\n\x1b[33m----------------------------------------------------------------\x1b[0m\r\n\x1b[1;31mSession stopped (connection closed).\x1b[0m\r\n\x1b[1;36mPress <Enter> to restart session, or <Ctrl+W> to close tab.\x1b[0m\r\n");
                             }
                             has_new_data_clone.store(true, Ordering::Relaxed);
+                            crate::request_ui_repaint();
                             break;
                         }
                         Ok(n) => {
@@ -437,6 +439,7 @@ impl PtySession {
                                             p.process(b"\r\n\x1b[1;32m[RustyBox] \xe2\x9c\x94 Auto-submitting saved password...\x1b[0m\r\n");
                                         }
                                         has_new_data_for_notify.store(true, Ordering::Relaxed);
+                                        crate::request_ui_repaint();
 
                                         thread::sleep(Duration::from_millis(100));
                                         let clean_pwd = pwd.trim();
@@ -574,6 +577,8 @@ impl PtySession {
                             let mut p = parser_clone.lock();
                             p.process(chunk);
                             has_new_data_clone.store(true, Ordering::Relaxed);
+                            drop(p);
+                            crate::request_ui_repaint();
                         }
                     }
                 }

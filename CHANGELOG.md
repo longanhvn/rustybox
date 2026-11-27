@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [v1.4.12] - 2026-11-27
+### Fixed & Improved (Long-Running Windows GPU Stability, Multi-Tab SFTP Isolation & Keyboard Focus Precision)
+- **Eliminate Multi-Hour Windows OpenGL Driver Crash (`igxelpicd64.dll` `0xC0000005`):**
+  - Migrated the Windows rendering backend (`src/main.rs`, `Cargo.toml`) from legacy OpenGL (`glow` / `opengl32.dll` / `igxelpicd64.dll`) to native **DirectX 12 / Vulkan (`eframe::Renderer::Wgpu`)** with `LowPower` integrated-GPU preference and automatic `Glow` fallback for legacy VMs.
+  - Configured `on_surface_error` to automatically recreate the DXGI/Vulkan swapchain (`SurfaceErrorAction::RecreateSurface`) on `SurfaceError::Lost` across display power-off, Windows Lock Screen, DPI/HDR transitions, and overnight sleep, while cleanly skipping frames while minimized (`SurfaceError::Outdated` / `Timeout`).
+- **Event-Driven UI Repainting & Idle/Minimized GPU Throttling (`src/lib.rs`, `src/terminal/pty_session.rs`, `src/sftp/remote.rs`, `src/app.rs`):**
+  - Registered a shared `egui::Context` waker so PTY reader threads and SFTP worker threads wake the UI loop immediately (`< 1 ms`) on incoming terminal bytes or SFTP events.
+  - Replaced the unconditional `50 ms` (20 FPS / 72,000 swaps per hour) idle timer with a calm `500 ms` blink/clock tick when idle and `2 s` pause with suppressed background swap wakeups when the window is minimized, cutting idle GPU presentation churn by 90%+.
+- **SFTP Multi-Server Session Pool, Sudo Persistence & Stale Event Protection (`src/sftp/mod.rs`, `src/sftp/remote.rs`, `src/sftp/ui.rs`, `src/app.rs`):**
+  - Preserved live SFTP connections, active remote directories, and elevated `sudo` mode when switching across multiple tabs on the same or different servers (`connect_remote` compares core credentials without forcing reconnect on runtime `sudo_mode` toggles).
+  - Added `requested_path` tracking per remote session to discard out-of-order `DirListed` events during rapid folder/tab switches, with automatic reset on `ConnectionFailed`, `OperationError`, or manual reconnect.
+  - Changed the SFTP `Local` toolbar button to `switch_to_local()` so browsing local files no longer disconnects active remote SFTP sessions, and added `cleanup_unused_remote_sftp_sessions()` to close orphaned SFTP workers when SSH tabs close.
+  - Added atomic `telemetry_in_flight` backpressure in `RemoteSftpClient::fetch_telemetry()` to prevent unbounded `mpsc` queue growth if a remote server stalls over multi-hour sessions, plus automatic dead-session teardown on fatal SSH socket errors.
+- **Strict Sidebar, SFTP Table & Modal Keyboard Focus Isolation (`src/app.rs`, `src/sftp/ui.rs`, `src/sftp/mod.rs`, `src/terminal/widget.rs`):**
+  - Bound `Enter` session launch in `SidePanel::left` strictly to explicit row focus (`resp.has_focus()`) requested on single click and surrendered upon launch, preventing the session tree from intercepting `Enter` while typing in the SSH terminal.
+  - Isolated `Ctrl+A` and `Delete` shortcuts in the SFTP file table to an explicit `sftp_file_table_focus` ID so terminal shell shortcuts (`Ctrl+A` start-of-line / `tmux` prefix, `Delete`) are never stolen when the SFTP browser is visible.
+  - Included all SFTP modal dialogs in `is_any_modal_open()` and gated terminal keyboard forwarding when any modal is active.
+  - Restored `auto_sftp` sidebar activation (`sidebar_tab = 1`) strictly at initial SSH launch without hijacking the active sidebar tab during background connection events or tab switches; fixed the `📑 N ▾` overflow tab switcher and multi-protocol `Duplicate Tab`.
+- **Automatic Panic Diagnostic Log (`src/main.rs`):**
+  - Installed a bounded (`512 KB` rotating) `std::panic::set_hook` crash logger writing thread, source location, and backtrace details to `./data/crash.log`.
+
 ## [v1.4.9] - 2026-11-25
 ### Added & Improved
 - **Complete Bilingual Localization (English / Tiếng Việt) Across Every Screen & Modal:**

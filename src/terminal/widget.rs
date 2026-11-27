@@ -917,8 +917,8 @@ impl<'a> TerminalWidget<'a> {
             response.clone().on_hover_text(format!("Ctrl+Click to open:\n{}", url));
         }
 
-        // Process keyboard inputs when terminal has focus
-        if has_focus {
+        // Process keyboard inputs when terminal has focus and no modal dialog is open on top
+        if has_focus && !self.suppress_escape {
             let mut input_bytes: Vec<u8> = Vec::new();
             let mut paste_text_to_check: Option<String> = None;
             let mut copy_or_sigint_handled = false;

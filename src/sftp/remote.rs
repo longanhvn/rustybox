@@ -98,6 +98,7 @@ pub struct RemoteSftpClient {
     cmd_tx: Sender<SftpCommand>,
     event_rx: Receiver<SftpEvent>,
     pub cancel_flag: Arc<AtomicBool>,
+    telemetry_in_flight: Arc<AtomicBool>,
     pub active_target: Option<String>,
     pub is_connected: bool,
     pub is_busy: bool,
@@ -115,11 +116,13 @@ impl RemoteSftpClient {
         let (event_tx, event_rx) = channel::<SftpEvent>();
         let cancel_flag = Arc::new(AtomicBool::new(false));
         let cancel_flag_worker = Arc::clone(&cancel_flag);
+        let telemetry_in_flight = Arc::new(AtomicBool::new(false));
+        let telemetry_in_flight_worker = Arc::clone(&telemetry_in_flight);
 
         thread::Builder::new()
             .name("rustybox-sftp-worker".to_string())
             .spawn(move || {
-                run_sftp_worker(cmd_rx, event_tx, cancel_flag_worker);
+                run_sftp_worker(cmd_rx, event_tx, cancel_flag_worker, telemetry_in_flight_worker);
             })
             .expect("Failed to spawn SFTP worker thread");
 
@@ -127,6 +130,7 @@ impl RemoteSftpClient {
             cmd_tx,
             event_rx,
             cancel_flag,
+            telemetry_in_flight,
             active_target: None,
             is_connected: false,
             is_busy: false,
@@ -139,6 +143,7 @@ impl RemoteSftpClient {
             cmd_tx,
             event_rx,
             cancel_flag: Arc::new(AtomicBool::new(false)),
+            telemetry_in_flight: Arc::new(AtomicBool::new(false)),
             active_target: None,
             is_connected: true,
             is_busy: false,
@@ -226,7 +231,13 @@ impl RemoteSftpClient {
     }
 
     pub fn fetch_telemetry(&mut self) {
-        let _ = self.cmd_tx.send(SftpCommand::FetchTelemetry);
+        // Prevent unbounded queue pile-ups over multi-hour runs if a remote server lags or stalls
+        if self.is_busy || self.telemetry_in_flight.swap(true, Ordering::AcqRel) {
+            return;
+        }
+        if self.cmd_tx.send(SftpCommand::FetchTelemetry).is_err() {
+            self.telemetry_in_flight.store(false, Ordering::Release);
+        }
     }
 
     pub fn set_sudo_mode(&mut self, enabled: bool, password: Option<String>) {
@@ -346,6 +357,7 @@ fn run_sftp_worker(
     cmd_rx: Receiver<SftpCommand>,
     event_tx: Sender<SftpEvent>,
     cancel_flag: Arc<AtomicBool>,
+    telemetry_in_flight: Arc<AtomicBool>,
 ) {
     let mut current_sess: Option<ActiveSftpSession> = None;
     let mut last_net_sample: Option<(u64, u64, Instant)> = None;
@@ -987,12 +999,26 @@ fn run_sftp_worker(
             }
 
             SftpCommand::FetchTelemetry => {
-                if let Some((ref sess, ..)) = current_sess
-                    && let Ok(raw) = execute_remote_cmd(sess, crate::telemetry::TELEMETRY_PROBE_CMD) {
-                        let (metrics, next_sample) = crate::telemetry::parse_remote_telemetry_output(&raw, last_net_sample);
-                        last_net_sample = next_sample;
-                        let _ = event_tx.send(SftpEvent::Telemetry(metrics));
+                if let Some((ref sess, ..)) = current_sess {
+                    match execute_remote_cmd(sess, crate::telemetry::TELEMETRY_PROBE_CMD) {
+                        Ok(raw) => {
+                            let (metrics, next_sample) =
+                                crate::telemetry::parse_remote_telemetry_output(&raw, last_net_sample);
+                            last_net_sample = next_sample;
+                            let _ = event_tx.send(SftpEvent::Telemetry(metrics));
+                        }
+                        Err(e) => {
+                            if is_fatal_ssh_error(&e) {
+                                current_sess = None;
+                                let _ = event_tx.send(SftpEvent::ConnectionFailed(format!(
+                                    "SFTP connection lost (server rebooted or disconnected): {}",
+                                    e
+                                )));
+                            }
+                        }
                     }
+                }
+                telemetry_in_flight.store(false, Ordering::Release);
             }
 
             SftpCommand::SetSudoMode { enabled, password } => {
@@ -1009,6 +1035,7 @@ fn run_sftp_worker(
                 }
             }
         }
+        crate::request_ui_repaint();
     }
 }
 
@@ -1764,4 +1791,33 @@ pub fn read_sudo_dir(
     files.sort_by_key(|a| a.name.to_lowercase());
     dirs.extend(files);
     Ok(dirs)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_fetch_telemetry_backpressure_prevents_unbounded_queue_pileup() {
+        let (cmd_tx, cmd_rx) = channel::<SftpCommand>();
+        let (_event_tx, event_rx) = channel::<SftpEvent>();
+        let mut client = RemoteSftpClient::new_mock(cmd_tx, event_rx);
+
+        // Simulate 100 rapid poll ticks while the worker has not yet finished the first probe
+        for _ in 0..100 {
+            client.fetch_telemetry();
+        }
+
+        let first = cmd_rx.try_recv();
+        assert!(matches!(first, Ok(SftpCommand::FetchTelemetry)));
+        assert!(
+            cmd_rx.try_recv().is_err(),
+            "Duplicate FetchTelemetry commands must not pile up while one is in flight"
+        );
+
+        // Once the worker clears telemetry_in_flight, the next poll is allowed again
+        client.telemetry_in_flight.store(false, Ordering::Release);
+        client.fetch_telemetry();
+        assert!(matches!(cmd_rx.try_recv(), Ok(SftpCommand::FetchTelemetry)));
+    }
 }

@@ -34,7 +34,7 @@ pub fn render_sftp_sidebar(ui: &mut Ui, explorer: &mut FileExplorer, lang: AppLa
                 }
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                     if ui.small_button(tr(lang, "💻 Local", "💻 Máy cục bộ")).on_hover_text(tr(lang, "Switch to browsing local files", "Chuyển sang duyệt tệp trên máy")).clicked() {
-                        explorer.disconnect_remote();
+                        explorer.switch_to_local();
                     }
 
                     // Sudo SFTP Toggle Button
@@ -1400,8 +1400,19 @@ pub fn render_sftp_sidebar(ui: &mut Ui, explorer: &mut FileExplorer, lang: AppLa
                     }
                 }
 
-                // Ctrl+A & Delete keyboard shortcuts when SFTP panel has no active text input
-                if !ui.ctx().wants_keyboard_input() {
+                let sftp_table_focus_id = egui::Id::new("sftp_file_table_focus");
+                if clear_sel
+                    || click_single.is_some()
+                    || click_toggle.is_some()
+                    || click_range.is_some()
+                    || explorer.drag_select_start.is_some()
+                {
+                    ui.ctx().memory_mut(|m| m.request_focus(sftp_table_focus_id));
+                }
+
+                // Ctrl+A & Delete keyboard shortcuts strictly when the SFTP file table itself holds focus
+                let sftp_table_focused = ui.ctx().memory(|m| m.has_focus(sftp_table_focus_id));
+                if sftp_table_focused && !explorer.is_any_modal_open() {
                     if ui.ctx().input_mut(|i| i.consume_key(egui::Modifiers::CTRL, egui::Key::A)) {
                         explorer.selected_files = explorer.entries.iter().map(|e| e.path.clone()).collect();
                         explorer.selected_file = explorer.selected_files.last().cloned();
