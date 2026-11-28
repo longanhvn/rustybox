@@ -803,13 +803,8 @@ impl FileExplorer {
     }
 
     pub fn poll(&mut self) {
-        self.save_active_remote_state();
-
-        let mut opened_editor: Option<(String, PathBuf, String)> = None;
-        let mut editor_saved_target: Option<String> = None;
-        let mut active_session_changed = false;
-
-        for (label, sess) in self.remote_sessions.iter_mut() {
+        let mut batched_events: Vec<(String, Vec<SftpEvent>)> = Vec::new();
+        for (label, sess) in self.remote_sessions.iter() {
             let mut events = Vec::new();
             {
                 let c = sess.client.lock();
@@ -817,8 +812,25 @@ impl FileExplorer {
                     events.push(evt);
                 }
             }
+            if !events.is_empty() {
+                batched_events.push((label.clone(), events));
+            }
+        }
 
-            if !events.is_empty() && self.remote_label.as_deref() == Some(label.as_str()) {
+        if !batched_events.is_empty() {
+            self.save_active_remote_state();
+        }
+
+        let mut opened_editor: Option<(String, PathBuf, String)> = None;
+        let mut editor_saved_target: Option<String> = None;
+        let mut active_session_changed = false;
+
+        for (label, events) in batched_events {
+            let Some(sess) = self.remote_sessions.get_mut(&label) else {
+                continue;
+            };
+
+            if self.remote_label.as_deref() == Some(label.as_str()) {
                 active_session_changed = true;
             }
 
@@ -1828,6 +1840,22 @@ impl FileExplorer {
         }
     }
 
+    pub fn resolve_conflict_overwrite_all(&mut self) {
+        let mut all = Vec::new();
+        if let Some(first) = self.pending_conflict.take() {
+            all.push(first);
+        }
+        all.append(&mut self.pending_conflicts);
+        for conflict in all {
+            if conflict.is_upload {
+                let remote_dest = conflict.dest_path.to_string_lossy().replace('\\', "/");
+                self.execute_upload(conflict.src_path, remote_dest);
+            } else {
+                self.execute_download(&conflict.src_path, conflict.dest_path);
+            }
+        }
+    }
+
     pub fn resolve_conflict_rename(&mut self) {
         if let Some(conflict) = self.pending_conflict.take() {
             let parent = conflict.dest_path.parent().unwrap_or_else(|| Path::new("."));
@@ -2740,6 +2768,19 @@ mod tests {
         assert!(explorer.pending_conflict.is_some());
         explorer.resolve_conflict_skip();
         assert!(explorer.pending_conflict.is_none());
+
+        // Multi-file download conflict overwrite-all drains entire queue in one call
+        let dl3 = base_dir.join("dl3.txt");
+        let dl4 = base_dir.join("dl4.txt");
+        let _ = fs::write(&dl3, "local3");
+        let _ = fs::write(&dl4, "local4");
+        explorer.download_file(Path::new("/remote/dl3.txt"), dl3);
+        explorer.download_file(Path::new("/remote/dl4.txt"), dl4);
+        assert!(explorer.pending_conflict.is_some());
+        assert_eq!(explorer.pending_conflicts.len(), 1);
+        explorer.resolve_conflict_overwrite_all();
+        assert!(explorer.pending_conflict.is_none());
+        assert!(explorer.pending_conflicts.is_empty());
 
         let _ = fs::remove_dir_all(&base_dir);
     }

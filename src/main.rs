@@ -100,7 +100,7 @@ fn install_crash_panic_hook() {
             use std::io::Write;
             let _ = writeln!(
                 f,
-                "=== RustyBox v1.4.12 Panic @ {} ===\nThread: {}\nLocation: {}\nReason: {}\nBacktrace:\n{}\n",
+                "=== RustyBox v1.4.14 Panic @ {} ===\nThread: {}\nLocation: {}\nReason: {}\nBacktrace:\n{}\n",
                 ts, thread_name, location, payload, bt
             );
             let _ = f.flush();
@@ -116,7 +116,7 @@ fn build_windows_wgpu_options() -> eframe::egui_wgpu::WgpuConfiguration {
 
     WgpuConfiguration {
         present_mode: wgpu::PresentMode::AutoVsync,
-        desired_maximum_frame_latency: Some(2),
+        desired_maximum_frame_latency: Some(1),
         wgpu_setup: WgpuSetup::CreateNew {
             // Strictly prefer native DirectX 12 / Vulkan on Windows and avoid legacy OpenGL ICDs
             // (such as Intel igxelpicd64.dll, whose background wglSwapBuffers worker thread
@@ -138,7 +138,7 @@ fn build_windows_wgpu_options() -> eframe::egui_wgpu::WgpuConfiguration {
                         max_texture_dimension_2d: 8192,
                         ..base_limits
                     },
-                    memory_hints: wgpu::MemoryHints::MemoryUsage,
+                    memory_hints: wgpu::MemoryHints::Performance,
                 }
             }),
         },
@@ -158,7 +158,7 @@ fn build_windows_wgpu_options() -> eframe::egui_wgpu::WgpuConfiguration {
 fn build_viewport(app_icon: egui::IconData) -> ViewportBuilder {
     ViewportBuilder::default()
         .with_app_id("rustybox")
-        .with_title("RustyBox v1.4.12 - Remote Toolbox & Terminal")
+        .with_title("RustyBox v1.4.14 - Remote Toolbox & Terminal")
         .with_icon(app_icon)
         .with_drag_and_drop(true)
         .with_maximized(true)

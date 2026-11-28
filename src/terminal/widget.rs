@@ -701,7 +701,11 @@ impl<'a> TerminalWidget<'a> {
                     self.highlight_rules,
                     self.highlight_enabled,
                 );
-                let row_urls = detect_row_urls(&row_str);
+                let row_urls = if row_str.contains("://") || row_str.contains("www.") {
+                    detect_row_urls(&row_str)
+                } else {
+                    Vec::new()
+                };
 
                 // Check search highlight occurrences
                 let mut search_matches: Vec<std::ops::Range<usize>> = Vec::new();
@@ -717,6 +721,12 @@ impl<'a> TerminalWidget<'a> {
                     }
                 }
 
+                let row_y = rect.min.y + (r as f32) * row_height;
+                let mut run_text = String::with_capacity(64);
+                let mut run_start_x = 0.0_f32;
+                let mut run_fg = Color32::TRANSPARENT;
+                let mut run_next_col: u16 = 0;
+
                 for c in 0..screen_cols.min(cols) {
                     if let Some(cell) = screen.cell(r, c) {
                         if cell.is_wide_continuation() {
@@ -724,10 +734,9 @@ impl<'a> TerminalWidget<'a> {
                         }
                         let span_cols: u16 = if cell.is_wide() { 2 } else { 1 };
                         let cell_x = rect.min.x + (c as f32) * char_width;
-                        let cell_y = rect.min.y + (r as f32) * row_height;
                         let cell_w = char_width * (span_cols as f32);
                         let cell_rect =
-                            Rect::from_min_size(pos2(cell_x, cell_y), vec2(cell_w, row_height));
+                            Rect::from_min_size(pos2(cell_x, row_y), vec2(cell_w, row_height));
 
                         // Check if current cell (or its wide continuation) is selected or inside search match
                         let is_selected_cell = (0..span_cols).any(|dc| {
@@ -809,15 +818,60 @@ impl<'a> TerminalWidget<'a> {
 
                             fg_color = apply_bold_dim(fg_color, cell.bold(), cell.dim());
 
-                            painter.text(
-                                pos2(cell_x, cell_y),
-                                egui::Align2::LEFT_TOP,
-                                contents,
-                                font_id.clone(),
-                                fg_color,
-                            );
+                            if contents.len() == 1 && contents.as_bytes()[0].is_ascii() && span_cols == 1 {
+                                let gap = c.saturating_sub(run_next_col);
+                                if !run_text.is_empty() && fg_color == run_fg && gap <= 4 {
+                                    for _ in 0..gap {
+                                        run_text.push(' ');
+                                    }
+                                    run_text.push_str(contents);
+                                    run_next_col = c + 1;
+                                } else {
+                                    if !run_text.is_empty() {
+                                        painter.text(
+                                            pos2(run_start_x, row_y),
+                                            egui::Align2::LEFT_TOP,
+                                            &run_text,
+                                            font_id.clone(),
+                                            run_fg,
+                                        );
+                                        run_text.clear();
+                                    }
+                                    run_start_x = cell_x;
+                                    run_fg = fg_color;
+                                    run_text.push_str(contents);
+                                    run_next_col = c + 1;
+                                }
+                            } else {
+                                if !run_text.is_empty() {
+                                    painter.text(
+                                        pos2(run_start_x, row_y),
+                                        egui::Align2::LEFT_TOP,
+                                        &run_text,
+                                        font_id.clone(),
+                                        run_fg,
+                                    );
+                                    run_text.clear();
+                                }
+                                painter.text(
+                                    pos2(cell_x, row_y),
+                                    egui::Align2::LEFT_TOP,
+                                    contents,
+                                    font_id.clone(),
+                                    fg_color,
+                                );
+                            }
                         }
                     }
+                }
+                if !run_text.is_empty() {
+                    painter.text(
+                        pos2(run_start_x, row_y),
+                        egui::Align2::LEFT_TOP,
+                        &run_text,
+                        font_id.clone(),
+                        run_fg,
+                    );
                 }
             }
 

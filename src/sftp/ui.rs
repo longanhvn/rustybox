@@ -1985,14 +1985,16 @@ pub fn render_sftp_sidebar(ui: &mut Ui, explorer: &mut FileExplorer, lang: AppLa
     if let Some(conflict) = explorer.pending_conflict.clone() {
         let mut open = true;
         let mut do_overwrite = false;
+        let mut do_overwrite_all = false;
         let mut do_rename = false;
         let mut do_skip = false;
+        let total_conflicts = explorer.pending_conflicts.len() + 1;
 
         egui::Window::new(tr(lang, "⚠️ File Already Exists", "⚠️ Trùng tên tệp"))
             .open(&mut open)
             .collapsible(false)
             .resizable(false)
-            .default_size(Vec2::new(410.0, 175.0))
+            .default_size(Vec2::new(450.0, 175.0))
             .anchor(egui::Align2::CENTER_CENTER, Vec2::ZERO)
             .show(ui.ctx(), |ui| {
                 let action = if conflict.is_upload {
@@ -2031,9 +2033,18 @@ pub fn render_sftp_sidebar(ui: &mut Ui, explorer: &mut FileExplorer, lang: AppLa
                 ui.add_space(10.0);
                 ui.separator();
                 ui.add_space(6.0);
-                ui.horizontal(|ui| {
+                ui.horizontal_wrapped(|ui| {
                     if ui.button(RichText::new(tr(lang, "🔄 Overwrite", "🔄 Ghi đè")).strong().color(Color32::from_rgb(248, 113, 113))).clicked() {
                         do_overwrite = true;
+                    }
+                    if total_conflicts > 1 {
+                        let all_label = match lang {
+                            AppLanguage::English => format!("🔄 Overwrite All ({})", total_conflicts),
+                            AppLanguage::Vietnamese => format!("🔄 Ghi đè tất cả ({})", total_conflicts),
+                        };
+                        if ui.button(RichText::new(all_label).strong().color(Color32::from_rgb(239, 68, 68))).clicked() {
+                            do_overwrite_all = true;
+                        }
                     }
                     if ui.button(RichText::new(tr(lang, "📝 Keep both", "📝 Giữ cả hai")).strong().color(Color32::from_rgb(56, 189, 248))).clicked() {
                         do_rename = true;
@@ -2044,7 +2055,9 @@ pub fn render_sftp_sidebar(ui: &mut Ui, explorer: &mut FileExplorer, lang: AppLa
                 });
             });
 
-        if do_overwrite {
+        if do_overwrite_all {
+            explorer.resolve_conflict_overwrite_all();
+        } else if do_overwrite {
             explorer.resolve_conflict_overwrite();
         } else if do_rename {
             explorer.resolve_conflict_rename();

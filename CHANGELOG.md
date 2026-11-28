@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [v1.4.14] - 2026-11-28
+### Improved (UI Responsiveness, Terminal Rendering Throughput & SFTP Polling)
+- **Batched Terminal ASCII Text Rendering & URL Fast-Path (`src/terminal/widget.rs`):**
+  - Coalesced contiguous same-color ASCII runs on each terminal row into single `painter.text(...)` calls (while preserving exact per-cell placement for Unicode/wide/CJK characters), cutting per-frame `Galley` layout allocations by 10x–30x.
+  - Added a fast substring check (`"://"` / `"www."`) before invoking `detect_row_urls()` across visible rows.
+- **Lower Windows `wgpu` Swapchain Latency & Performance Hints (`src/main.rs`):**
+  - Reduced `desired_maximum_frame_latency` from `2` to `1` and switched `memory_hints` from `MemoryUsage` to `Performance` for crisper DX12/Vulkan frame pacing and lower input-to-photon lag.
+- **Zero-Allocation Idle SFTP Polling (`src/sftp/mod.rs`, `src/app.rs`):**
+  - Removed the duplicate `self.explorer.poll()` call inside `update_telemetry()` and avoided cloning `remote_raw_entries` / `path_history` inside `FileExplorer::poll()` on frames with no incoming SFTP events.
+
+## [v1.4.13] - 2026-11-28
+### Added (SFTP Conflict Queue)
+- **SFTP `Overwrite All (N)` Action (`src/sftp/mod.rs`, `src/sftp/ui.rs`):**
+  - Added `FileExplorer::resolve_conflict_overwrite_all()` and a bilingual `🔄 Overwrite All (N)` / `🔄 Ghi đè tất cả (N)` button in the `File Already Exists` dialog when multiple conflicts are queued (for both uploads and downloads), plus unit test coverage.
+
 ## [v1.4.12] - 2026-11-27
 ### Fixed & Improved (Long-Running Windows GPU Stability, Multi-Tab SFTP Isolation & Keyboard Focus Precision)
 - **Eliminate Multi-Hour Windows OpenGL Driver Crash (`igxelpicd64.dll` `0xC0000005`):**
